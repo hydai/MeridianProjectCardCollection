@@ -23,15 +23,27 @@ export function isAuthorized(
 
 const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
-// Cloudflare Access guard. Access already gates these paths at the edge for the
-// owner's email; this verifies the signed assertion in-Worker as defense in
-// depth. When ACCESS_TEAM_DOMAIN is unset (local dev / tests) it is a no-op.
+// Cloudflare Access guard. Access gates these paths at the edge for the owner's
+// email; this verifies the signed assertion in-Worker as defense in depth.
+// Production fails closed: if Access is not configured, admin is locked.
 export const accessGuard: MiddlewareHandler<{ Bindings: Env }> = async (
   c,
   next,
 ) => {
-  const { ACCESS_TEAM_DOMAIN, ACCESS_AUD, OWNER_EMAIL } = c.env;
-  if (!ACCESS_TEAM_DOMAIN) return next();
+  const { ACCESS_TEAM_DOMAIN, ACCESS_AUD, OWNER_EMAIL, ALLOW_INSECURE_ADMIN } =
+    c.env;
+
+  // Bypass for local dev / tests only — set via .dev.vars or test bindings,
+  // never in wrangler.jsonc, so a deployed worker can never bypass.
+  if (ALLOW_INSECURE_ADMIN === "1") return next();
+
+  // Fail closed until Cloudflare Access is configured.
+  if (!ACCESS_TEAM_DOMAIN || !ACCESS_AUD) {
+    return c.json(
+      { error: "admin locked: Cloudflare Access not configured" },
+      503,
+    );
+  }
 
   const token = c.req.header("Cf-Access-Jwt-Assertion");
   if (!token) return c.json({ error: "unauthenticated" }, 403);

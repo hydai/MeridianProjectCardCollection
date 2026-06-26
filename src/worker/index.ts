@@ -6,6 +6,8 @@ export interface Env {
   OWNER_EMAIL: string;
   ACCESS_TEAM_DOMAIN: string;
   ACCESS_AUD: string;
+  // "1" only in local dev (.dev.vars) and tests; never set on the deployed worker.
+  ALLOW_INSECURE_ADMIN?: string;
 }
 
 export default {

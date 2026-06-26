@@ -14,7 +14,7 @@ export default defineConfig({
       isolatedStorage: true,
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
-        bindings: { TEST_MIGRATIONS: migrations },
+        bindings: { TEST_MIGRATIONS: migrations, ALLOW_INSECURE_ADMIN: "1" },
       },
     }),
   ],
