@@ -5,6 +5,7 @@ import type {
   RecordTxnInput,
   UpdateCardInput,
 } from "../shared/types";
+import { accessGuard } from "./auth";
 import {
   addCards,
   createOpening,
@@ -27,8 +28,9 @@ app.get("/api/missing", async (c) => c.json(await getMissing(c.env.DB)));
 app.get("/api/market", async (c) => c.json(await getMarket(c.env.DB)));
 app.get("/api/stats", async (c) => c.json(await getStats(c.env.DB)));
 
-// ---- Admin write API (gated by Cloudflare Access in Task 8) ----
+// ---- Admin write API (gated by Cloudflare Access) ----
 const admin = new Hono<{ Bindings: Env }>();
+admin.use("*", accessGuard);
 
 admin.post("/cards", async (c) => {
   const body = await c.req.json<{
