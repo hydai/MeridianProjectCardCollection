@@ -130,7 +130,9 @@ admin 設定狀態 → cards 表 → getMarket() → GET /api/market
   - 餵 `null` 斷言 `載入中…`。
 - **既有**：後端 `/api/market` 已有測試（`test/worker/queries-read.test.ts`、
   `api-public.test.ts`、`api-admin.test.ts`），不需新增。
-- **建置**：最後 `npm run build` 重建 `dist/`，使已 commit 的前端 bundle 含新分頁。
+- **建置 / 部署**：`npm run build` 在本機驗證前端 bundle 可正常編譯（`dist/` 已
+  gitignore、不進版控）；新分頁要實際上線需另行部署
+  （`npm run deploy` = `vite build && wrangler deploy`，由使用者執行）。
 
 ## 6. 變更檔案清單
 
@@ -140,7 +142,7 @@ admin 設定狀態 → cards 表 → getMarket() → GET /api/market
 | `src/client/PublicViewer.tsx` | 改（新增 tab、`listings` state/effect、`ActiveView` case） |
 | `src/client/index.css` | 視需要新增極少量 `.view-market` 列樣式（盡量重用既有 class） |
 | `test/client/views.test.tsx` | 新增 `MarketBoard` 測試 |
-| `dist/*` | `npm run build` 重新產生 |
+| `dist/`（gitignore） | `npm run build` 驗證可編譯；上線時由 `npm run deploy` 重建，不 commit |
 
 ## 7. 風險
 
