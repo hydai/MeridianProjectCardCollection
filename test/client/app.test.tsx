@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "../../src/client/App";
 import type { OverviewResponse } from "../../src/shared/types";
@@ -61,5 +61,34 @@ describe("App", () => {
     await waitFor(() =>
       expect(screen.getByText(/無法載入資料/)).toBeInTheDocument(),
     );
+  });
+
+  it("shows market listings on the 交易看板 tab", async () => {
+    const listings = [
+      {
+        cardId: 1,
+        series: "NEW YEAR",
+        character: "Mizuki",
+        rarity: "SR",
+        status: "for_sale",
+        askingPrice: 500,
+        wantInReturn: null,
+        note: null,
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => ({
+        ok: true,
+        json: async () =>
+          String(url).includes("/api/market") ? listings : overview,
+      })),
+    );
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getByText("子午計畫")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("交易看板"));
+    await waitFor(() => expect(screen.getByText("500 元")).toBeInTheDocument());
   });
 });

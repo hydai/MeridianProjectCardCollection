@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { fetchOverview } from "./api";
+import type { MarketListing } from "../shared/types";
+import { fetchMarket, fetchOverview } from "./api";
 import { type Matrix, buildMatrix } from "./collection";
 import { Glance } from "./views/Glance";
 import { Grid } from "./views/Grid";
+import { MarketBoard } from "./views/Market";
 import { StatsBar } from "./views/StatsBar";
 import { Trade } from "./views/Trade";
 import { Wishlist } from "./views/Wishlist";
@@ -16,11 +18,22 @@ const TABS = [
   { id: "glance", zh: "速覽", en: "At a Glance" },
   { id: "grid", zh: "格表", en: "Grid" },
   { id: "trade", zh: "交換", en: "Trade" },
+  { id: "market", zh: "交易看板", en: "Market" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
 
-function ActiveView({ id, m }: { id: TabId; m: Matrix }) {
+function ActiveView({
+  id,
+  m,
+  listings,
+  marketError,
+}: {
+  id: TabId;
+  m: Matrix;
+  listings: MarketListing[] | null;
+  marketError: string | null;
+}) {
   switch (id) {
     case "char":
       return <ByCharacter m={m} />;
@@ -36,6 +49,8 @@ function ActiveView({ id, m }: { id: TabId; m: Matrix }) {
       return <Grid m={m} />;
     case "trade":
       return <Trade m={m} />;
+    case "market":
+      return <MarketBoard listings={listings} error={marketError} />;
     default:
       return null;
   }
@@ -50,11 +65,19 @@ export default function PublicViewer() {
   const [matrix, setMatrix] = useState<Matrix | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>(initialTab);
+  const [listings, setListings] = useState<MarketListing[] | null>(null);
+  const [marketError, setMarketError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchOverview()
       .then((o) => setMatrix(buildMatrix(o)))
       .catch((e) => setError(String(e)));
+  }, []);
+
+  useEffect(() => {
+    fetchMarket()
+      .then(setListings)
+      .catch((e) => setMarketError(String(e)));
   }, []);
 
   const selectTab = (id: TabId) => {
@@ -93,7 +116,12 @@ export default function PublicViewer() {
         {error ? (
           <div className="state-msg">無法載入資料：{error}</div>
         ) : matrix ? (
-          <ActiveView id={tab} m={matrix} />
+          <ActiveView
+            id={tab}
+            m={matrix}
+            listings={listings}
+            marketError={marketError}
+          />
         ) : (
           <div className="state-msg">載入中…</div>
         )}
