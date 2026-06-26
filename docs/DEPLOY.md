@@ -102,7 +102,9 @@ When `ACCESS_TEAM_DOMAIN` is set, the worker verifies the Access JWT on every
 ## Updating later
 
 - Code changes: `npm run deploy`.
-- New series (e.g. MP 5TH): add it to `seed/catalog-def.ts`, run
-  `npm run seed:gen`, create a new migration for the added catalog rows, and
-  `wrangler d1 migrations apply meridian-cards --remote`.
+- **New series or character:** use the **manage-card-catalog** skill (`.claude/skills/`).
+  Do NOT run `npm run seed:gen` for this — it would overwrite `0002`/`0003` and
+  re-import the collection. Edit `seed/catalog-def.ts`, then `npm run catalog:sync`
+  (writes an additive UPSERT migration), apply it `--local` then `--remote`, and
+  `npm run deploy`.
 - The local dev DB and the remote DB are separate; `--local` vs `--remote`.
