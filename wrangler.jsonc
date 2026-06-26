@@ -19,7 +19,7 @@
   ],
   "vars": {
     "OWNER_EMAIL": "z54981220@gmail.com",
-    "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": ""
+    "ACCESS_TEAM_DOMAIN": "hydai.cloudflareaccess.com",
+    "ACCESS_AUD": "0d5ce2ad1b8a22b74a0c59946c8536a382f79a52cc8934fa229c5f5bc4534e38"
   }
 }
