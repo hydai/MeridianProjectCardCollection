@@ -66,3 +66,61 @@ export interface StatsResponse {
   byCharacter: CharacterStat[];
   pullRates: PullRate[];
 }
+
+// ---- Mutation DTOs ----
+
+export interface AddCardInput {
+  series: string;
+  character: string;
+  rarity: Rarity;
+  source?: CardSource;
+  note?: string;
+}
+
+export interface OpeningInput {
+  series?: string;
+  openedAt: string;
+  cost?: number;
+  note?: string;
+}
+
+export interface UpdateCardInput {
+  status?: CardStatus;
+  askingPrice?: number | null;
+  wantInReturn?: string | null;
+  note?: string | null;
+}
+
+export interface RecordTxnInput {
+  type: TransactionType;
+  counterparty?: string;
+  price?: number;
+  happenedAt: string;
+  note?: string;
+  // For trades: the card received in return (added to the collection).
+  receivedSeries?: string;
+  receivedCharacter?: string;
+  receivedRarity?: Rarity;
+}
+
+export interface OpeningSummary {
+  id: number;
+  series: string | null;
+  openedAt: string;
+  cost: number | null;
+  cardCount: number;
+  avgCost: number | null;
+}
+
+export interface TxnRecord {
+  id: number;
+  cardId: number;
+  type: TransactionType;
+  counterparty: string | null;
+  price: number | null;
+  happenedAt: string;
+  series: string;
+  character: string;
+  rarity: Rarity;
+  note: string | null;
+}
