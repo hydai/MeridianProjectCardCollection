@@ -2,6 +2,7 @@
   "name": "meridian-cards",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-06-01",
+  "routes": [{ "pattern": "mpcards.oshi.tw", "custom_domain": true }],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -12,7 +13,7 @@
     {
       "binding": "DB",
       "database_name": "meridian-cards",
-      "database_id": "PLACEHOLDER_LOCAL_OK",
+      "database_id": "d35afa28-489c-4c21-b637-69633df84be1",
       "migrations_dir": "migrations"
     }
   ],
