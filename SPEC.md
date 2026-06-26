@@ -97,8 +97,7 @@ CREATE TABLE openings (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   series     TEXT,                             -- 該次開箱主要系列（可空）
   opened_at  TEXT    NOT NULL,                 -- ISO 日期 YYYY-MM-DD
-  cost       REAL,                             -- 總花費（可空）
-  currency   TEXT    NOT NULL DEFAULT 'TWD',
+  cost       REAL,                             -- 總花費（可空，單位 TWD）
   note       TEXT,
   created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -123,8 +122,7 @@ CREATE TABLE transactions (
   card_id             INTEGER NOT NULL REFERENCES cards(id),
   type                TEXT    NOT NULL,              -- sale / trade
   counterparty        TEXT,                          -- 對象
-  price               REAL,                          -- 賣出成交價（type=sale）
-  currency            TEXT    DEFAULT 'TWD',
+  price               REAL,                          -- 賣出成交價（type=sale，單位 TWD）
   received_catalog_id INTEGER REFERENCES card_catalog(id), -- 換得的卡種（type=trade）
   received_card_id    INTEGER REFERENCES cards(id),        -- 換得的卡在 cards 的對應列
   happened_at         TEXT    NOT NULL,              -- ISO 日期
@@ -220,7 +218,7 @@ CREATE INDEX idx_txn_card      ON transactions(card_id);
 - 一鍵匯出回 Google Sheet 備份。
 - 進階統計與圖表。
 
-## 12. 開放問題
+## 12. 已確認的設計決定（原開放問題）
 
-- 前端視覺風格：以既有 artifact（`meridian-cards.html`）的外觀為基礎重建；實作階段請使用者提供截圖以精準對齊，否則採乾淨的卡片收藏風格設計。
-- 幣別預設 TWD；若有跨幣別交易需求再擴充。
+- **前端視覺**：以既有 artifact（`meridian-cards.html`）的外觀為基礎重建。實作前端階段會取得該 artifact 截圖以精準對齊。
+- **幣別**：全系統僅使用 **TWD**，不支援多幣別（資料表不另設 currency 欄位）。
