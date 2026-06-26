@@ -1,0 +1,24 @@
+{
+  "name": "meridian-cards",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-06-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "meridian-cards",
+      "database_id": "PLACEHOLDER_LOCAL_OK",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "OWNER_EMAIL": "z54981220@gmail.com",
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": ""
+  }
+}
