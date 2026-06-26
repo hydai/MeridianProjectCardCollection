@@ -7,7 +7,6 @@
   "include": [
     "src/worker",
     "src/shared",
-    "scripts",
     "seed",
     "test/worker",
     "worker-configuration.d.ts"
