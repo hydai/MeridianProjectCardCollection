@@ -1,16 +1,17 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { SERIES, buildCatalog } from "../../seed/catalog-def";
 
 describe("public api", () => {
-  it("GET /api/overview returns 180 cells", async () => {
+  it("GET /api/overview returns one cell per catalog type", async () => {
     const res = await SELF.fetch("https://example.com/api/overview");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       cells: unknown[];
       progress: unknown[];
     };
-    expect(body.cells).toHaveLength(180);
-    expect(body.progress).toHaveLength(4);
+    expect(body.cells).toHaveLength(buildCatalog().length);
+    expect(body.progress).toHaveLength(SERIES.length);
   });
 
   it("GET /api/stats returns four pull rates", async () => {

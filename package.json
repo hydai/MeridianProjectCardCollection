@@ -15,6 +15,7 @@
     "format": "biome check --write .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "seed:gen": "tsx scripts/generate-seed.ts",
+    "catalog:sync": "tsx scripts/sync-catalog.ts",
     "deploy": "vite build && wrangler deploy"
   },
   "dependencies": {

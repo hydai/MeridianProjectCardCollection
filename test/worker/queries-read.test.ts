@@ -1,5 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { buildCatalog } from "../../seed/catalog-def";
 import {
   getMarket,
   getMissing,
@@ -8,9 +9,9 @@ import {
 } from "../../src/worker/db/queries";
 
 describe("read queries", () => {
-  it("overview has 180 cells and correct per-series progress", async () => {
+  it("overview has one cell per catalog type and correct per-series progress", async () => {
     const o = await getOverview(env.DB);
-    expect(o.cells).toHaveLength(180);
+    expect(o.cells).toHaveLength(buildCatalog().length);
 
     const ny = o.progress.find((p) => p.series === "NEW YEAR");
     expect(ny?.totalTypes).toBe(44);
@@ -30,8 +31,8 @@ describe("read queries", () => {
     const m = await getMissing(env.DB);
     expect(m.length).toBeGreaterThan(0);
     expect(m.every((x) => x.catalogId > 0)).toBe(true);
-    // 180 types minus distinct collected; sanity bound.
-    expect(m.length).toBeLessThan(180);
+    // total types minus distinct collected; sanity bound.
+    expect(m.length).toBeLessThan(buildCatalog().length);
   });
 
   it("market lists only for_sale/for_trade cards", async () => {

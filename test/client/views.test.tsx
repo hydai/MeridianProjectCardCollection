@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { buildCatalog } from "../../seed/catalog-def";
+import { SERIES, buildCatalog, charactersFor } from "../../seed/catalog-def";
 import { type Matrix, buildMatrix } from "../../src/client/collection";
 import { Glance } from "../../src/client/views/Glance";
 import { Grid } from "../../src/client/views/Grid";
@@ -41,9 +41,8 @@ describe("views render against full collection data", () => {
     }
   });
 
-  it("derives the canonical 4 series and 12 characters incl. KSP", () => {
-    expect(m.series).toEqual(["NEW YEAR", "BUNNY GIRL", "KILLER", "MP 4TH"]);
-    expect(m.characters).toHaveLength(12);
-    expect(m.characters[11]).toBe("KSP");
+  it("derives series and characters from the catalog definition", () => {
+    expect(m.series).toEqual(SERIES);
+    expect(m.characters).toEqual([...new Set(SERIES.flatMap(charactersFor))]);
   });
 });

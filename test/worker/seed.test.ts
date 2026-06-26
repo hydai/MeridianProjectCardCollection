@@ -3,12 +3,11 @@ import { ownedCards } from "../../seed/cards";
 import { buildCatalog } from "../../seed/catalog-def";
 
 describe("seed data", () => {
-  it("catalog has 180 unique types", () => {
+  it("catalog types are all unique (no duplicate series/character/rarity)", () => {
     const c = buildCatalog();
-    expect(c).toHaveLength(180);
     expect(
       new Set(c.map((x) => `${x.series}|${x.character}|${x.rarity}`)).size,
-    ).toBe(180);
+    ).toBe(c.length);
   });
 
   it("every owned card maps to a catalog type", () => {
