@@ -15,6 +15,7 @@ import {
   getOverview,
   getStats,
   getTransactions,
+  listCards,
   recordTransaction,
   updateCard,
 } from "./db/queries";
@@ -31,6 +32,15 @@ app.get("/api/stats", async (c) => c.json(await getStats(c.env.DB)));
 // ---- Admin write API (gated by Cloudflare Access) ----
 const admin = new Hono<{ Bindings: Env }>();
 admin.use("*", accessGuard);
+
+admin.get("/cards", async (c) =>
+  c.json(
+    await listCards(c.env.DB, {
+      series: c.req.query("series"),
+      status: c.req.query("status"),
+    }),
+  ),
+);
 
 admin.post("/cards", async (c) => {
   const body = await c.req.json<{

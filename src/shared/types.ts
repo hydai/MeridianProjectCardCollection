@@ -124,3 +124,18 @@ export interface TxnRecord {
   rarity: Rarity;
   note: string | null;
 }
+
+// A physical card joined with its catalog identity, plus whether the owner has
+// a duplicate of that type (i.e. it is a candidate to sell or trade).
+export interface CardRow {
+  id: number;
+  series: string;
+  character: string;
+  rarity: Rarity;
+  status: CardStatus;
+  source: CardSource;
+  askingPrice: number | null;
+  wantInReturn: string | null;
+  note: string | null;
+  duplicate: boolean;
+}

@@ -1,12 +1,12 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { buildCatalog } from "../../seed/catalog-def";
-import { buildMatrix, type Matrix } from "../../src/client/collection";
+import { type Matrix, buildMatrix } from "../../src/client/collection";
 import { Glance } from "../../src/client/views/Glance";
 import { Grid } from "../../src/client/views/Grid";
-import { ByCharacter, ByRarity, BySeries } from "../../src/client/views/tables";
 import { Trade } from "../../src/client/views/Trade";
 import { Wishlist } from "../../src/client/views/Wishlist";
+import { ByCharacter, ByRarity, BySeries } from "../../src/client/views/tables";
 import type { OverviewResponse } from "../../src/shared/types";
 
 // Full 180-type universe with a mix of missing (0), single, and duplicate (>=2)
@@ -26,7 +26,15 @@ const m: Matrix = buildMatrix(full);
 
 describe("views render against full collection data", () => {
   it("renders all seven views without crashing", () => {
-    for (const View of [ByCharacter, BySeries, ByRarity, Wishlist, Glance, Grid, Trade]) {
+    for (const View of [
+      ByCharacter,
+      BySeries,
+      ByRarity,
+      Wishlist,
+      Glance,
+      Grid,
+      Trade,
+    ]) {
       const { container, unmount } = render(<View m={m} />);
       expect(container.querySelector("section.view")).toBeTruthy();
       unmount();

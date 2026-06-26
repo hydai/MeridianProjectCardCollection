@@ -1,5 +1,6 @@
 import type {
   AddCardInput,
+  CardRow,
   CharacterStat,
   MarketListing,
   MissingEntry,
@@ -303,4 +304,41 @@ export async function getTransactions(db: D1Database): Promise<TxnRecord[]> {
       )
       .all<TxnRecord>()
   ).results;
+}
+
+export async function listCards(
+  db: D1Database,
+  filter: { series?: string; status?: string } = {},
+): Promise<CardRow[]> {
+  const conds: string[] = [];
+  const vals: unknown[] = [];
+  if (filter.series) {
+    conds.push("c.series = ?");
+    vals.push(filter.series);
+  }
+  if (filter.status === "active") {
+    conds.push(`k.status IN ${ACTIVE}`);
+  } else if (filter.status) {
+    conds.push("k.status = ?");
+    vals.push(filter.status);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const stmt = db.prepare(
+    `SELECT k.id, c.series, c.character, c.rarity, k.status, k.source,
+            k.asking_price AS askingPrice, k.want_in_return AS wantInReturn, k.note,
+            (SELECT COUNT(*) FROM cards k2
+             WHERE k2.catalog_id = k.catalog_id AND k2.status IN ${ACTIVE}) AS activeCount
+     FROM cards k
+     JOIN card_catalog c ON c.id = k.catalog_id
+     ${where}
+     ORDER BY c.sort_order, k.id`,
+  );
+  const bound = vals.length ? stmt.bind(...vals) : stmt;
+  const rows = (
+    await bound.all<Omit<CardRow, "duplicate"> & { activeCount: number }>()
+  ).results;
+  return rows.map(({ activeCount, ...r }) => ({
+    ...r,
+    duplicate: activeCount > 1,
+  }));
 }
