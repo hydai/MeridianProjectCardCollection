@@ -1,0 +1,90 @@
+import type { OverviewResponse, Rarity } from "../shared/types";
+
+export const RARITIES: Rarity[] = ["R", "SR", "SSR", "UR"];
+export const RARITY_KEYS = ["r", "sr", "ssr", "ur"] as const;
+export type RarityKey = (typeof RARITY_KEYS)[number];
+
+export type Counts = [number, number, number, number];
+
+// The artifact's data shape: cards[seriesIdx][charIdx] = [R,SR,SSR,UR] or null
+// (null = that character does not appear in that series, e.g. KSP outside MP 4TH).
+export interface Matrix {
+  series: string[];
+  characters: string[];
+  cards: (Counts | null)[][];
+}
+
+const RARITY_INDEX: Record<Rarity, number> = { R: 0, SR: 1, SSR: 2, UR: 3 };
+
+export function buildMatrix(overview: OverviewResponse): Matrix {
+  const series: string[] = [];
+  const characters: string[] = [];
+  const map = new Map<string, Counts>();
+
+  // Cells arrive ordered by catalog sort_order (series-major, then character,
+  // then rarity), so first-appearance order yields the canonical ordering.
+  for (const cell of overview.cells) {
+    if (!series.includes(cell.series)) series.push(cell.series);
+    if (!characters.includes(cell.character)) characters.push(cell.character);
+    const key = `${cell.series}|${cell.character}`;
+    let counts = map.get(key);
+    if (!counts) {
+      counts = [0, 0, 0, 0];
+      map.set(key, counts);
+    }
+    counts[RARITY_INDEX[cell.rarity]] = cell.owned;
+  }
+
+  const cards = series.map((s) =>
+    characters.map((c) => map.get(`${s}|${c}`) ?? null),
+  );
+  return { series, characters, cards };
+}
+
+export const cellOf = (m: Matrix, s: number, c: number): Counts | null =>
+  m.cards[s][c];
+export const exists = (m: Matrix, s: number, c: number): boolean =>
+  m.cards[s][c] !== null;
+export const getN = (m: Matrix, s: number, c: number, r: number): number => {
+  const x = m.cards[s][c];
+  return x === null ? 0 : x[r];
+};
+export const sumRow = (arr: number[]): number => arr.reduce((a, b) => a + b, 0);
+
+export function grandTotalByRarity(m: Matrix): Counts {
+  return RARITIES.map((_, ri) =>
+    m.series.reduce(
+      (sum, _s, si) =>
+        sum +
+        m.characters.reduce((acc, _c, ci) => acc + getN(m, si, ci, ri), 0),
+      0,
+    ),
+  ) as Counts;
+}
+
+export interface TradeItem {
+  ri: number;
+  si: number;
+  ci: number;
+  spare: number;
+}
+
+// Surplus = duplicates that could be traded away (count - 1); needs = missing.
+export function computeTrade(m: Matrix): {
+  surplus: TradeItem[];
+  needs: TradeItem[];
+} {
+  const surplus: TradeItem[] = [];
+  const needs: TradeItem[] = [];
+  m.series.forEach((_s, si) =>
+    m.characters.forEach((_c, ci) => {
+      if (!exists(m, si, ci)) return;
+      RARITIES.forEach((_r, ri) => {
+        const n = getN(m, si, ci, ri);
+        if (n >= 2) surplus.push({ ri, si, ci, spare: n - 1 });
+        else if (n === 0) needs.push({ ri, si, ci, spare: 0 });
+      });
+    }),
+  );
+  return { surplus, needs };
+}
