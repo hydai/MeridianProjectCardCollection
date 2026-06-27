@@ -1,4 +1,8 @@
-import type { OverviewResponse, Rarity } from "../shared/types";
+import type {
+  OverviewResponse,
+  PublicPendingTrade,
+  Rarity,
+} from "../shared/types";
 
 export const RARITIES: Rarity[] = ["R", "SR", "SSR", "UR"];
 export const RARITY_KEYS = ["r", "sr", "ssr", "ur"] as const;
@@ -87,4 +91,48 @@ export function computeTrade(m: Matrix): {
     }),
   );
   return { surplus, needs };
+}
+
+// Overlay pending reservations on the derived trade view:
+// give lines reduce surplus spare (drop at 0); receive lines clear the matching need.
+export function computeTradeWithPending(
+  m: Matrix,
+  pending: PublicPendingTrade[],
+): { surplus: TradeItem[]; needs: TradeItem[] } {
+  const { surplus, needs } = computeTrade(m);
+  const key = (si: number, ci: number, ri: number) => `${si}|${ci}|${ri}`;
+  const coord = (series: string, character: string, rarity: Rarity) => {
+    const si = m.series.indexOf(series);
+    const ci = m.characters.indexOf(character);
+    const ri = RARITIES.indexOf(rarity);
+    return si < 0 || ci < 0 || ri < 0 ? null : { si, ci, ri };
+  };
+
+  const giveQty = new Map<string, number>();
+  const receiveKeys = new Set<string>();
+  for (const p of pending) {
+    for (const g of p.give) {
+      const k = coord(g.series, g.character, g.rarity);
+      if (k)
+        giveQty.set(
+          key(k.si, k.ci, k.ri),
+          (giveQty.get(key(k.si, k.ci, k.ri)) ?? 0) + g.qty,
+        );
+    }
+    for (const r of p.receive) {
+      const k = coord(r.series, r.character, r.rarity);
+      if (k) receiveKeys.add(key(k.si, k.ci, k.ri));
+    }
+  }
+
+  const adjustedSurplus = surplus
+    .map((s) => ({
+      ...s,
+      spare: s.spare - (giveQty.get(key(s.si, s.ci, s.ri)) ?? 0),
+    }))
+    .filter((s) => s.spare > 0);
+  const adjustedNeeds = needs.filter(
+    (n) => !receiveKeys.has(key(n.si, n.ci, n.ri)),
+  );
+  return { surplus: adjustedSurplus, needs: adjustedNeeds };
 }
