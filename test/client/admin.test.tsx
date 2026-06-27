@@ -8,7 +8,13 @@ import { PendingTrades } from "../../src/client/admin/PendingTrades";
 afterEach(() => vi.restoreAllMocks());
 
 describe("AddCards", () => {
-  it("submits added cards via POST /api/admin/cards", async () => {
+  it("disables the submit button while the tally is empty", () => {
+    render(<AddCards />);
+    expect(screen.getByRole("button", { name: "新增 0 張" })).toBeDisabled();
+    expect(screen.getByText("點上方角色加入卡片")).toBeInTheDocument();
+  });
+
+  it("adds a tapped character at the selected rarity and submits via POST", async () => {
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
       ok: true,
       json: async () => ({ ids: [101] }),
@@ -16,7 +22,9 @@ describe("AddCards", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AddCards />);
-    fireEvent.click(screen.getByRole("button", { name: /新增 1 張/ }));
+    // Defaults: series "NEW YEAR", rarity "R".
+    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
+    fireEvent.click(screen.getByRole("button", { name: "新增 1 張" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const [url, init] = fetchMock.mock.calls[0];
@@ -24,11 +32,69 @@ describe("AddCards", () => {
     expect(init.method).toBe("POST");
     const body = JSON.parse(init.body as string);
     expect(body.cards).toHaveLength(1);
-    expect(body.cards[0]).toMatchObject({ series: "NEW YEAR", rarity: "R" });
+    expect(body.cards[0]).toMatchObject({
+      series: "NEW YEAR",
+      character: "Mizuki",
+      rarity: "R",
+    });
 
     await waitFor(() =>
       expect(screen.getByText(/已新增 1 張/)).toBeInTheDocument(),
     );
+  });
+
+  it("increments quantity when the same character+rarity is tapped again", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      json: async () => ({ ids: [1, 2] }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AddCards />);
+    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
+    expect(screen.getByText("×2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "新增 2 張" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.cards).toHaveLength(2);
+    expect(
+      body.cards.every(
+        (c: { character: string; rarity: string }) =>
+          c.character === "Mizuki" && c.rarity === "R",
+      ),
+    ).toBe(true);
+  });
+
+  it("adds at the chosen rarity and decrements a row with its remove button", () => {
+    render(<AddCards />);
+    fireEvent.click(screen.getByRole("button", { name: "SR" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rei" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rei" }));
+    expect(screen.getByText("×2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "移除 Rei SR" }));
+    expect(screen.getByText("×1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "移除 Rei SR" }));
+    expect(screen.queryByText("×1")).toBeNull();
+    expect(screen.getByText("點上方角色加入卡片")).toBeInTheDocument();
+  });
+
+  it("drops tally entries whose character is absent from the newly selected series", () => {
+    render(<AddCards />);
+    fireEvent.click(screen.getByRole("button", { name: "MP 4TH" }));
+    fireEvent.click(screen.getByRole("button", { name: "KSP" }));
+    expect(
+      screen.getByRole("button", { name: "新增 1 張" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "NEW YEAR" }));
+    expect(screen.queryByText("KSP")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "新增 0 張" }),
+    ).toBeInTheDocument();
   });
 });
 

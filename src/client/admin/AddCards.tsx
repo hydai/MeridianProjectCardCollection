@@ -1,21 +1,18 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { RARITIES, SERIES, charactersFor } from "../../../seed/catalog-def";
 import type { AddCardInput, OpeningInput, Rarity } from "../../shared/types";
 import { postCards } from "../api";
 
-interface Row {
-  id: number;
+interface TallyEntry {
   character: string;
   rarity: Rarity;
+  qty: number;
 }
 
 export function AddCards() {
   const [series, setSeries] = useState<string>(SERIES[0]);
-  const chars = charactersFor(series);
-  const nextId = useRef(2);
-  const [rows, setRows] = useState<Row[]>([
-    { id: 1, character: chars[0], rarity: "R" },
-  ]);
+  const [rarity, setRarity] = useState<Rarity>("R");
+  const [tally, setTally] = useState<TallyEntry[]>([]);
   const [isOpening, setIsOpening] = useState(false);
   const [openedAt, setOpenedAt] = useState("");
   const [cost, setCost] = useState("");
@@ -23,43 +20,54 @@ export function AddCards() {
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const chars = charactersFor(series);
+  const total = tally.reduce((n, e) => n + e.qty, 0);
+
   const changeSeries = (s: string) => {
     setSeries(s);
     const valid = charactersFor(s);
-    setRows((rs) =>
-      rs.map((r) =>
-        valid.includes(r.character) ? r : { ...r, character: valid[0] },
-      ),
-    );
+    setTally((t) => t.filter((e) => valid.includes(e.character)));
   };
 
-  const setRow = (id: number, patch: Partial<Row>) =>
-    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  const addRow = () =>
-    setRows((rs) => [
-      ...rs,
-      { id: nextId.current++, character: chars[0], rarity: "R" },
-    ]);
-  const removeRow = (id: number) =>
-    setRows((rs) => (rs.length > 1 ? rs.filter((r) => r.id !== id) : rs));
+  const addCard = (character: string) =>
+    setTally((t) => {
+      const i = t.findIndex(
+        (e) => e.character === character && e.rarity === rarity,
+      );
+      if (i === -1) return [...t, { character, rarity, qty: 1 }];
+      return t.map((e, j) => (j === i ? { ...e, qty: e.qty + 1 } : e));
+    });
+
+  const removeOne = (character: string, r: Rarity) =>
+    setTally((t) =>
+      t
+        .map((e) =>
+          e.character === character && e.rarity === r
+            ? { ...e, qty: e.qty - 1 }
+            : e,
+        )
+        .filter((e) => e.qty > 0),
+    );
 
   const submit = async () => {
     setBusy(true);
     setError(null);
     setToast(null);
     try {
-      const cards: AddCardInput[] = rows.map((r) => ({
-        series,
-        character: r.character,
-        rarity: r.rarity,
-      }));
+      const cards: AddCardInput[] = tally.flatMap((e) =>
+        Array.from({ length: e.qty }, () => ({
+          series,
+          character: e.character,
+          rarity: e.rarity,
+        })),
+      );
       let opening: OpeningInput | undefined;
       if (isOpening && openedAt) {
         opening = { series, openedAt, cost: cost ? Number(cost) : undefined };
       }
       const { ids } = await postCards(cards, opening);
       setToast(`已新增 ${ids.length} 張${opening ? "（已記為一次開箱）" : ""}`);
-      setRows([{ id: nextId.current++, character: chars[0], rarity: "R" }]);
+      setTally([]);
       setCost("");
     } catch (e) {
       setError(String(e));
@@ -72,67 +80,79 @@ export function AddCards() {
     <section className="panel">
       <h2 className="panel-title">開箱新增</h2>
 
-      <label className="field" htmlFor="add-series">
+      <div className="field">
         <span className="field-label">系列</span>
-        <select
-          id="add-series"
-          value={series}
-          onChange={(e) => changeSeries(e.target.value)}
-        >
+        <div className="opt-group">
           {SERIES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <div style={{ marginTop: 16 }}>
-        {rows.map((r) => (
-          <div className="add-row" key={r.id}>
-            <label className="field">
-              <span className="field-label">角色</span>
-              <select
-                value={r.character}
-                onChange={(e) => setRow(r.id, { character: e.target.value })}
-              >
-                {chars.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="field-label">稀有度</span>
-              <select
-                value={r.rarity}
-                onChange={(e) =>
-                  setRow(r.id, { rarity: e.target.value as Rarity })
-                }
-              >
-                {RARITIES.map((rr) => (
-                  <option key={rr} value={rr}>
-                    {rr}
-                  </option>
-                ))}
-              </select>
-            </label>
             <button
+              key={s}
               type="button"
-              className="btn btn-ghost"
-              onClick={() => removeRow(r.id)}
-              disabled={rows.length === 1}
+              className={`opt${s === series ? " active" : ""}`}
+              onClick={() => changeSeries(s)}
             >
-              移除
+              {s}
             </button>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
-      <button type="button" className="btn btn-ghost" onClick={addRow}>
-        + 新增一列
-      </button>
+      <div className="field" style={{ marginTop: 16 }}>
+        <span className="field-label">稀有度</span>
+        <div className="opt-group">
+          {RARITIES.map((rr) => (
+            <button
+              key={rr}
+              type="button"
+              className={`opt rarity ${rr.toLowerCase()}${
+                rr === rarity ? " active" : ""
+              }`}
+              onClick={() => setRarity(rr)}
+            >
+              {rr}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="field" style={{ marginTop: 16 }}>
+        <span className="field-label">角色（點一下 = 加一張）</span>
+        <div className="opt-group">
+          {chars.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className="opt"
+              onClick={() => addCard(c)}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tally.length > 0 ? (
+        <div className="tally">
+          {tally.map((e) => (
+            <div className="tally-row" key={`${e.character}-${e.rarity}`}>
+              <span className="tally-name">{e.character}</span>
+              <span className={`pill ${e.rarity.toLowerCase()}`}>
+                {e.rarity}
+              </span>
+              <span className="tally-qty">×{e.qty}</span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                aria-label={`移除 ${e.character} ${e.rarity}`}
+                onClick={() => removeOne(e.character, e.rarity)}
+              >
+                –
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="tally-empty">點上方角色加入卡片</p>
+      )}
 
       <label
         style={{
@@ -181,9 +201,9 @@ export function AddCards() {
           type="button"
           className="btn btn-primary"
           onClick={submit}
-          disabled={busy}
+          disabled={busy || total === 0}
         >
-          {busy ? "新增中…" : `新增 ${rows.length} 張`}
+          {busy ? "新增中…" : `新增 ${total} 張`}
         </button>
         {toast ? <span className="toast">{toast}</span> : null}
         {error ? <span className="error-text">{error}</span> : null}
