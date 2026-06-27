@@ -139,3 +139,47 @@ export interface CardRow {
   note: string | null;
   duplicate: boolean;
 }
+
+// ---- Pending trade reservations ----
+export type TradeDirection = "give" | "receive";
+
+export interface ReservationLine {
+  direction: TradeDirection;
+  catalogId: number;
+  series: string;
+  character: string;
+  rarity: Rarity;
+  qty: number;
+}
+
+// Public DTO: never includes counterparty or note.
+export interface PublicPendingTrade {
+  id: number;
+  reservedAt: string;
+  give: ReservationLine[];
+  receive: ReservationLine[];
+}
+
+export interface AdminPendingTrade extends PublicPendingTrade {
+  counterparty: string | null;
+  note: string | null;
+}
+
+export interface ReservationLineInput {
+  series: string;
+  character: string;
+  rarity: Rarity;
+  qty: number;
+}
+
+export interface CreateReservationInput {
+  counterparty?: string;
+  reservedAt: string;
+  note?: string;
+  give: ReservationLineInput[];
+  receive: ReservationLineInput[];
+}
+
+export interface CompleteReservationInput {
+  happenedAt: string;
+}

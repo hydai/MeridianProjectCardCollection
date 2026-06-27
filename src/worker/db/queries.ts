@@ -1,18 +1,24 @@
 import type {
   AddCardInput,
+  AdminPendingTrade,
   CardRow,
   CharacterStat,
+  CreateReservationInput,
   MarketListing,
   MissingEntry,
   OpeningInput,
   OpeningSummary,
   OverviewCell,
   OverviewResponse,
+  PublicPendingTrade,
   Rarity,
   RarityCount,
   RecordTxnInput,
+  ReservationLine,
+  ReservationLineInput,
   SeriesProgress,
   StatsResponse,
+  TradeDirection,
   TxnRecord,
   UpdateCardInput,
 } from "../../shared/types";
@@ -341,4 +347,127 @@ export async function listCards(
     ...r,
     duplicate: activeCount > 1,
   }));
+}
+
+// ---- Pending trade reservations ----
+
+interface RawResvLine {
+  reservationId: number;
+  direction: TradeDirection;
+  catalogId: number;
+  series: string;
+  character: string;
+  rarity: Rarity;
+  qty: number;
+}
+
+// All lines for all reservations, joined to catalog for display, catalog-sorted.
+async function reservationLines(db: D1Database): Promise<RawResvLine[]> {
+  return (
+    await db
+      .prepare(
+        `SELECT l.reservation_id AS reservationId, l.direction,
+                l.catalog_id AS catalogId, c.series, c.character, c.rarity, l.qty
+         FROM trade_reservation_lines l
+         JOIN card_catalog c ON c.id = l.catalog_id
+         ORDER BY c.sort_order`,
+      )
+      .all<RawResvLine>()
+  ).results;
+}
+
+function attachLines<
+  T extends { id: number; give: ReservationLine[]; receive: ReservationLine[] },
+>(headers: T[], lines: RawResvLine[]): T[] {
+  const byId = new Map<number, T>(headers.map((h) => [h.id, h]));
+  for (const l of lines) {
+    const h = byId.get(l.reservationId);
+    if (!h) continue;
+    const line: ReservationLine = {
+      direction: l.direction,
+      catalogId: l.catalogId,
+      series: l.series,
+      character: l.character,
+      rarity: l.rarity,
+      qty: l.qty,
+    };
+    (l.direction === "give" ? h.give : h.receive).push(line);
+  }
+  return headers;
+}
+
+export async function getPublicPendingTrades(
+  db: D1Database,
+): Promise<PublicPendingTrade[]> {
+  const headers = (
+    await db
+      .prepare(
+        `SELECT id, reserved_at AS reservedAt FROM trade_reservations
+         ORDER BY reserved_at DESC, id DESC`,
+      )
+      .all<{ id: number; reservedAt: string }>()
+  ).results.map((h) => ({ ...h, give: [], receive: [] }) as PublicPendingTrade);
+  return attachLines(headers, await reservationLines(db));
+}
+
+export async function getAdminPendingTrades(
+  db: D1Database,
+): Promise<AdminPendingTrade[]> {
+  const headers = (
+    await db
+      .prepare(
+        `SELECT id, reserved_at AS reservedAt, counterparty, note
+         FROM trade_reservations ORDER BY reserved_at DESC, id DESC`,
+      )
+      .all<{
+        id: number;
+        reservedAt: string;
+        counterparty: string | null;
+        note: string | null;
+      }>()
+  ).results.map((h) => ({ ...h, give: [], receive: [] }) as AdminPendingTrade);
+  return attachLines(headers, await reservationLines(db));
+}
+
+export async function createReservation(
+  db: D1Database,
+  input: CreateReservationInput,
+): Promise<number> {
+  const header = await db
+    .prepare(
+      "INSERT INTO trade_reservations (counterparty, reserved_at, note) VALUES (?, ?, ?) RETURNING id",
+    )
+    .bind(input.counterparty ?? null, input.reservedAt, input.note ?? null)
+    .first<{ id: number }>();
+  if (!header) throw new Error("failed to create reservation");
+
+  const insertLine = async (
+    line: ReservationLineInput,
+    direction: TradeDirection,
+  ) => {
+    const cid = await catalogId(db, line.series, line.character, line.rarity);
+    await db
+      .prepare(
+        "INSERT INTO trade_reservation_lines (reservation_id, direction, catalog_id, qty) VALUES (?, ?, ?, ?)",
+      )
+      .bind(header.id, direction, cid, line.qty)
+      .run();
+  };
+  for (const g of input.give) await insertLine(g, "give");
+  for (const r of input.receive) await insertLine(r, "receive");
+  return header.id;
+}
+
+export async function cancelReservation(
+  db: D1Database,
+  id: number,
+): Promise<void> {
+  await db
+    .prepare("DELETE FROM trade_reservation_lines WHERE reservation_id = ?")
+    .bind(id)
+    .run();
+  await db
+    .prepare("DELETE FROM trade_reservations WHERE id = ?")
+    .bind(id)
+    .run();
 }
