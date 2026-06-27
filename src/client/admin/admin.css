@@ -157,13 +157,6 @@
   font-size: 11px;
 }
 
-.add-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 10px;
-  align-items: end;
-  margin-bottom: 10px;
-}
 .add-actions {
   display: flex;
   gap: 12px;
@@ -305,9 +298,6 @@
 }
 
 @media (max-width: 600px) {
-  .add-row {
-    grid-template-columns: 1fr 1fr;
-  }
   .opening-fields {
     grid-template-columns: 1fr;
   }
@@ -341,4 +331,90 @@
 .pill.reserved {
   background: rgba(234, 179, 8, 0.15);
   color: #a16207;
+}
+
+/* Flat option buttons (series / rarity / character) — replace the
+   add-card dropdowns with directly-clickable chips. */
+.opt-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.opt {
+  appearance: none;
+  background: var(--bg-subtle);
+  border: 0.5px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-family: "IBM Plex Sans TC", sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+.opt:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.opt.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(201, 161, 74, 0.08);
+}
+/* A selected rarity takes its own colour. */
+.opt.rarity.r.active {
+  border-color: rgba(154, 149, 139, 0.5);
+  color: var(--r-color);
+  background: rgba(154, 149, 139, 0.08);
+}
+.opt.rarity.sr.active {
+  border-color: rgba(212, 168, 87, 0.5);
+  color: var(--sr-color);
+  background: rgba(212, 168, 87, 0.08);
+}
+.opt.rarity.ssr.active {
+  border-color: rgba(214, 138, 163, 0.5);
+  color: var(--ssr-color);
+  background: rgba(214, 138, 163, 0.08);
+}
+.opt.rarity.ur.active {
+  border-color: rgba(224, 113, 113, 0.5);
+  color: var(--ur-color);
+  background: rgba(224, 113, 113, 0.08);
+}
+
+/* Running tally of cards added this opening. */
+.tally {
+  margin-top: 16px;
+  border: 0.5px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-subtle);
+}
+.tally-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 0.5px solid var(--border);
+}
+.tally-row:last-child {
+  border-bottom: none;
+}
+.tally-name {
+  color: var(--text);
+  font-size: 14px;
+  min-width: 84px;
+}
+.tally-qty {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+}
+.tally-empty {
+  margin-top: 16px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  letter-spacing: 0.06em;
 }
