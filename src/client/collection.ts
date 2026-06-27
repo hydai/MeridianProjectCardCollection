@@ -93,8 +93,9 @@ export function computeTrade(m: Matrix): {
   return { surplus, needs };
 }
 
-// Overlay pending reservations on the derived trade view:
-// give lines reduce surplus spare (drop at 0); receive lines clear the matching need.
+// Overlay pending reservations on the derived trade view. Give-side deduction is
+// done upstream in getOverview (so it shows everywhere), so here we only clear
+// the needs that a pending receive line will fill.
 export function computeTradeWithPending(
   m: Matrix,
   pending: PublicPendingTrade[],
@@ -108,31 +109,16 @@ export function computeTradeWithPending(
     return si < 0 || ci < 0 || ri < 0 ? null : { si, ci, ri };
   };
 
-  const giveQty = new Map<string, number>();
   const receiveKeys = new Set<string>();
   for (const p of pending) {
-    for (const g of p.give) {
-      const k = coord(g.series, g.character, g.rarity);
-      if (k)
-        giveQty.set(
-          key(k.si, k.ci, k.ri),
-          (giveQty.get(key(k.si, k.ci, k.ri)) ?? 0) + g.qty,
-        );
-    }
     for (const r of p.receive) {
       const k = coord(r.series, r.character, r.rarity);
       if (k) receiveKeys.add(key(k.si, k.ci, k.ri));
     }
   }
 
-  const adjustedSurplus = surplus
-    .map((s) => ({
-      ...s,
-      spare: s.spare - (giveQty.get(key(s.si, s.ci, s.ri)) ?? 0),
-    }))
-    .filter((s) => s.spare > 0);
   const adjustedNeeds = needs.filter(
     (n) => !receiveKeys.has(key(n.si, n.ci, n.ri)),
   );
-  return { surplus: adjustedSurplus, needs: adjustedNeeds };
+  return { surplus, needs: adjustedNeeds };
 }

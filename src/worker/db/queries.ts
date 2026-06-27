@@ -27,18 +27,29 @@ const ACTIVE = "('owned','for_sale','for_trade')";
 const RARITY_ORDER: Rarity[] = ["R", "SR", "SSR", "UR"];
 
 export async function getOverview(db: D1Database): Promise<OverviewResponse> {
-  const cells = (
+  const rawCells = (
     await db
       .prepare(
         `SELECT c.id AS catalogId, c.series, c.character, c.rarity,
-                COUNT(k.id) AS owned
+                COUNT(k.id) AS owned,
+                COALESCE(g.reserved, 0) AS reserved
          FROM card_catalog c
          LEFT JOIN cards k ON k.catalog_id = c.id AND k.status IN ${ACTIVE}
+         LEFT JOIN (
+           SELECT catalog_id, SUM(qty) AS reserved
+           FROM trade_reservation_lines
+           WHERE direction = 'give'
+           GROUP BY catalog_id
+         ) g ON g.catalog_id = c.id
          GROUP BY c.id
          ORDER BY c.sort_order`,
       )
-      .all<OverviewCell>()
+      .all<OverviewCell & { reserved: number }>()
   ).results;
+  const cells: OverviewCell[] = rawCells.map(({ reserved, ...c }) => ({
+    ...c,
+    owned: Math.max(0, c.owned - reserved),
+  }));
 
   const progress = (
     await db

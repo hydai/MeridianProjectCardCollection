@@ -92,7 +92,8 @@ describe("computeTradeWithPending", () => {
     expect(adj.needs).toHaveLength(base.needs.length);
   });
 
-  it("a give line decrements spare and drops it when it hits zero", () => {
+  it("does NOT change surplus for give lines (handled upstream in getOverview now)", () => {
+    const base = computeTrade(m);
     const pending: PublicPendingTrade[] = [
       {
         id: 1,
@@ -111,13 +112,7 @@ describe("computeTradeWithPending", () => {
       },
     ];
     const adj = computeTradeWithPending(m, pending);
-    // MP 4TH/Mizuki R had spare 1 → now 0 → removed; NEW YEAR/Mizuki R (spare 2) stays.
-    expect(
-      adj.surplus.some((s) => s.si === 1 && s.ci === 0 && s.ri === 0),
-    ).toBe(false);
-    expect(
-      adj.surplus.find((s) => s.si === 0 && s.ci === 0 && s.ri === 0)?.spare,
-    ).toBe(2);
+    expect(adj.surplus).toEqual(base.surplus); // unchanged — give subtraction moved to getOverview
   });
 
   it("a receive line removes the matching need", () => {
