@@ -4,6 +4,7 @@ import type { AddCardInput, OpeningInput, Rarity } from "../../shared/types";
 import { postCards } from "../api";
 
 interface TallyEntry {
+  series: string;
   character: string;
   rarity: Rarity;
   qty: number;
@@ -23,26 +24,25 @@ export function AddCards() {
   const chars = charactersFor(series);
   const total = tally.reduce((n, e) => n + e.qty, 0);
 
-  const changeSeries = (s: string) => {
-    setSeries(s);
-    const valid = charactersFor(s);
-    setTally((t) => t.filter((e) => valid.includes(e.character)));
-  };
-
+  // Each tally row remembers the series it was tapped under, so switching the
+  // series selector only affects *new* taps — existing rows keep their series.
   const addCard = (character: string) =>
     setTally((t) => {
       const i = t.findIndex(
-        (e) => e.character === character && e.rarity === rarity,
+        (e) =>
+          e.series === series &&
+          e.character === character &&
+          e.rarity === rarity,
       );
-      if (i === -1) return [...t, { character, rarity, qty: 1 }];
+      if (i === -1) return [...t, { series, character, rarity, qty: 1 }];
       return t.map((e, j) => (j === i ? { ...e, qty: e.qty + 1 } : e));
     });
 
-  const removeOne = (character: string, r: Rarity) =>
+  const removeOne = (s: string, character: string, r: Rarity) =>
     setTally((t) =>
       t
         .map((e) =>
-          e.character === character && e.rarity === r
+          e.series === s && e.character === character && e.rarity === r
             ? { ...e, qty: e.qty - 1 }
             : e,
         )
@@ -56,14 +56,21 @@ export function AddCards() {
     try {
       const cards: AddCardInput[] = tally.flatMap((e) =>
         Array.from({ length: e.qty }, () => ({
-          series,
+          series: e.series,
           character: e.character,
           rarity: e.rarity,
         })),
       );
       let opening: OpeningInput | undefined;
       if (isOpening && openedAt) {
-        opening = { series, openedAt, cost: cost ? Number(cost) : undefined };
+        // Derive the opening's series from what was actually tallied: one
+        // distinct series → that series; a mixed batch → none (NULL).
+        const distinct = [...new Set(tally.map((e) => e.series))];
+        opening = {
+          series: distinct.length === 1 ? distinct[0] : undefined,
+          openedAt,
+          cost: cost ? Number(cost) : undefined,
+        };
       }
       const { ids } = await postCards(cards, opening);
       setToast(`已新增 ${ids.length} 張${opening ? "（已記為一次開箱）" : ""}`);
@@ -88,7 +95,7 @@ export function AddCards() {
               key={s}
               type="button"
               className={`opt${s === series ? " active" : ""}`}
-              onClick={() => changeSeries(s)}
+              onClick={() => setSeries(s)}
             >
               {s}
             </button>
@@ -133,7 +140,11 @@ export function AddCards() {
       {tally.length > 0 ? (
         <div className="tally">
           {tally.map((e) => (
-            <div className="tally-row" key={`${e.character}-${e.rarity}`}>
+            <div
+              className="tally-row"
+              key={`${e.series}-${e.character}-${e.rarity}`}
+            >
+              <span className="tally-series">{e.series}</span>
               <span className="tally-name">{e.character}</span>
               <span className={`pill ${e.rarity.toLowerCase()}`}>
                 {e.rarity}
@@ -142,8 +153,8 @@ export function AddCards() {
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                aria-label={`移除 ${e.character} ${e.rarity}`}
-                onClick={() => removeOne(e.character, e.rarity)}
+                aria-label={`移除 ${e.series} ${e.character} ${e.rarity}`}
+                onClick={() => removeOne(e.series, e.character, e.rarity)}
               >
                 –
               </button>

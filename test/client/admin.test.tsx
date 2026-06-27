@@ -74,15 +74,54 @@ describe("AddCards", () => {
     fireEvent.click(screen.getByRole("button", { name: "Rei" }));
     expect(screen.getByText("×2")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "移除 Rei SR" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "移除 NEW YEAR Rei SR" }),
+    );
     expect(screen.getByText("×1")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "移除 Rei SR" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "移除 NEW YEAR Rei SR" }),
+    );
     expect(screen.queryByText("×1")).toBeNull();
     expect(screen.getByText("點上方角色加入卡片")).toBeInTheDocument();
   });
 
-  it("drops tally entries whose character is absent from the newly selected series", () => {
+  it("submits each card under the series it was added in, not the last-selected series", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      json: async () => ({ ids: [1, 2] }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AddCards />);
+    // Tally a KILLER SSR, switch series, then tally a NEW YEAR SSR.
+    fireEvent.click(screen.getByRole("button", { name: "SSR" }));
+    fireEvent.click(screen.getByRole("button", { name: "KILLER" }));
+    fireEvent.click(screen.getByRole("button", { name: "Koyuki" }));
+    fireEvent.click(screen.getByRole("button", { name: "NEW YEAR" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hitomi" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "新增 2 張" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.cards).toContainEqual(
+      expect.objectContaining({
+        series: "KILLER",
+        character: "Koyuki",
+        rarity: "SSR",
+      }),
+    );
+    expect(body.cards).toContainEqual(
+      expect.objectContaining({
+        series: "NEW YEAR",
+        character: "Hitomi",
+        rarity: "SSR",
+      }),
+    );
+  });
+
+  it("keeps tally entries under their own series when the series selector changes", () => {
     render(<AddCards />);
     fireEvent.click(screen.getByRole("button", { name: "MP 4TH" }));
     fireEvent.click(screen.getByRole("button", { name: "KSP" }));
@@ -90,11 +129,62 @@ describe("AddCards", () => {
       screen.getByRole("button", { name: "新增 1 張" }),
     ).toBeInTheDocument();
 
+    // Switching the selector must NOT drop the MP 4TH-only KSP row; it stays
+    // tallied under MP 4TH even though NEW YEAR has no KSP.
     fireEvent.click(screen.getByRole("button", { name: "NEW YEAR" }));
-    expect(screen.queryByText("KSP")).toBeNull();
+    expect(screen.getByText("KSP")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "新增 0 張" }),
+      screen.getByRole("button", { name: "新增 1 張" }),
     ).toBeInTheDocument();
+  });
+
+  it("records a mixed-series opening with no series (NULL)", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      json: async () => ({ ids: [1, 2] }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AddCards />);
+    fireEvent.click(screen.getByRole("button", { name: "SSR" }));
+    fireEvent.click(screen.getByRole("button", { name: "KILLER" }));
+    fireEvent.click(screen.getByRole("button", { name: "Koyuki" }));
+    fireEvent.click(screen.getByRole("button", { name: "NEW YEAR" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hitomi" }));
+
+    fireEvent.click(screen.getByLabelText(/這是一次開箱/));
+    fireEvent.change(screen.getByLabelText("開箱日期"), {
+      target: { value: "2026-06-28" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "新增 2 張" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.opening.openedAt).toBe("2026-06-28");
+    expect(body.opening.series ?? null).toBeNull();
+  });
+
+  it("records a single-series opening under that series", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      json: async () => ({ ids: [1] }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AddCards />);
+    fireEvent.click(screen.getByRole("button", { name: "SSR" }));
+    fireEvent.click(screen.getByRole("button", { name: "KILLER" }));
+    fireEvent.click(screen.getByRole("button", { name: "Koyuki" }));
+
+    fireEvent.click(screen.getByLabelText(/這是一次開箱/));
+    fireEvent.change(screen.getByLabelText("開箱日期"), {
+      target: { value: "2026-06-28" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "新增 1 張" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.opening.series).toBe("KILLER");
   });
 });
 

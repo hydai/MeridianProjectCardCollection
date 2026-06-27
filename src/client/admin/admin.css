@@ -401,6 +401,12 @@
 .tally-row:last-child {
   border-bottom: none;
 }
+.tally-series {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
 .tally-name {
   color: var(--text);
   font-size: 14px;
