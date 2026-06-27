@@ -105,4 +105,144 @@ describe("completeReservation", () => {
       completeReservation(env.DB, id, "2026-06-28"),
     ).rejects.toThrow();
   });
+
+  it("never trades away a just-received card when give and receive share a catalog", async () => {
+    await addCards(env.DB, [
+      { series: "KILLER", character: "998", rarity: "R" },
+    ]);
+    const before = ownedOf(
+      (await getOverview(env.DB)).cells,
+      "KILLER",
+      "998",
+      "R",
+    );
+    const tradedBefore =
+      (
+        await env.DB.prepare(
+          `SELECT COUNT(*) AS n FROM cards k JOIN card_catalog c ON c.id=k.catalog_id
+       WHERE c.series='KILLER' AND c.character='998' AND c.rarity='R' AND k.status='traded'`,
+        ).first<{ n: number }>()
+      )?.n ?? 0;
+
+    const id = await createReservation(env.DB, {
+      reservedAt: "2026-06-27",
+      give: [{ series: "KILLER", character: "998", rarity: "R", qty: 1 }],
+      receive: [{ series: "KILLER", character: "998", rarity: "R", qty: 1 }],
+    });
+    await completeReservation(env.DB, id, "2026-06-28");
+
+    const after = ownedOf(
+      (await getOverview(env.DB)).cells,
+      "KILLER",
+      "998",
+      "R",
+    );
+    expect(after).toBe(before); // gave one, received one → active count unchanged
+    const tradedAfter =
+      (
+        await env.DB.prepare(
+          `SELECT COUNT(*) AS n FROM cards k JOIN card_catalog c ON c.id=k.catalog_id
+       WHERE c.series='KILLER' AND c.character='998' AND c.rarity='R' AND k.status='traded'`,
+        ).first<{ n: number }>()
+      )?.n ?? 0;
+    expect(tradedAfter).toBe(tradedBefore + 1); // exactly one pre-existing card was traded away
+  });
+
+  it("one-for-many: extra received cards enter holdings and are noted on the last transaction", async () => {
+    await addCards(env.DB, [
+      { series: "NEW YEAR", character: "Hiyori", rarity: "R" },
+    ]);
+    const iruniBefore = ownedOf(
+      (await getOverview(env.DB)).cells,
+      "BUNNY GIRL",
+      "Iruni",
+      "SR",
+    );
+    const itsukiBefore = ownedOf(
+      (await getOverview(env.DB)).cells,
+      "BUNNY GIRL",
+      "Itsuki",
+      "SSR",
+    );
+
+    const id = await createReservation(env.DB, {
+      counterparty: "Dee",
+      reservedAt: "2026-06-27",
+      give: [{ series: "NEW YEAR", character: "Hiyori", rarity: "R", qty: 1 }],
+      receive: [
+        { series: "BUNNY GIRL", character: "Iruni", rarity: "SR", qty: 1 },
+        { series: "BUNNY GIRL", character: "Itsuki", rarity: "SSR", qty: 1 },
+      ],
+    });
+    await completeReservation(env.DB, id, "2026-06-28");
+
+    expect(
+      ownedOf((await getOverview(env.DB)).cells, "BUNNY GIRL", "Iruni", "SR"),
+    ).toBe(iruniBefore + 1);
+    expect(
+      ownedOf((await getOverview(env.DB)).cells, "BUNNY GIRL", "Itsuki", "SSR"),
+    ).toBe(itsukiBefore + 1);
+    const dee = (await getTransactions(env.DB)).find(
+      (t) => t.counterparty === "Dee",
+    );
+    expect(dee?.note ?? "").toContain("額外換得");
+  });
+
+  it("insufficient holdings throws and writes nothing; reservation survives", async () => {
+    await addCards(env.DB, [
+      { series: "NEW YEAR", character: "Hitomi", rarity: "UR" },
+    ]);
+    const active = ownedOf(
+      (await getOverview(env.DB)).cells,
+      "NEW YEAR",
+      "Hitomi",
+      "UR",
+    );
+    const id = await createReservation(env.DB, {
+      reservedAt: "2026-06-27",
+      give: [
+        {
+          series: "NEW YEAR",
+          character: "Hitomi",
+          rarity: "UR",
+          qty: active + 1,
+        },
+      ],
+      receive: [{ series: "KILLER", character: "Koyuki", rarity: "R", qty: 1 }],
+    });
+    const cardsBefore =
+      (
+        await env.DB.prepare("SELECT COUNT(*) AS n FROM cards").first<{
+          n: number;
+        }>()
+      )?.n ?? 0;
+    const txnsBefore =
+      (
+        await env.DB.prepare("SELECT COUNT(*) AS n FROM transactions").first<{
+          n: number;
+        }>()
+      )?.n ?? 0;
+
+    await expect(
+      completeReservation(env.DB, id, "2026-06-28"),
+    ).rejects.toThrow();
+
+    expect(
+      (
+        await env.DB.prepare("SELECT COUNT(*) AS n FROM cards").first<{
+          n: number;
+        }>()
+      )?.n ?? 0,
+    ).toBe(cardsBefore);
+    expect(
+      (
+        await env.DB.prepare("SELECT COUNT(*) AS n FROM transactions").first<{
+          n: number;
+        }>()
+      )?.n ?? 0,
+    ).toBe(txnsBefore);
+    expect((await getAdminPendingTrades(env.DB)).some((r) => r.id === id)).toBe(
+      true,
+    );
+  });
 });
