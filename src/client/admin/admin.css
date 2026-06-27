@@ -337,3 +337,8 @@
 .line-row input[type="number"] {
   width: 72px;
 }
+
+.pill.reserved {
+  background: rgba(234, 179, 8, 0.15);
+  color: #a16207;
+}

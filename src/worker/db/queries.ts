@@ -343,7 +343,9 @@ export async function listCards(
     `SELECT k.id, c.series, c.character, c.rarity, k.status, k.source,
             k.asking_price AS askingPrice, k.want_in_return AS wantInReturn, k.note,
             (SELECT COUNT(*) FROM cards k2
-             WHERE k2.catalog_id = k.catalog_id AND k2.status IN ${ACTIVE}) AS activeCount
+             WHERE k2.catalog_id = k.catalog_id AND k2.status IN ${ACTIVE}) AS activeCount,
+            (SELECT COALESCE(SUM(qty), 0) FROM trade_reservation_lines l
+             WHERE l.catalog_id = k.catalog_id AND l.direction = 'give') AS reservedGive
      FROM cards k
      JOIN card_catalog c ON c.id = k.catalog_id
      ${where}
@@ -355,7 +357,7 @@ export async function listCards(
   ).results;
   return rows.map(({ activeCount, ...r }) => ({
     ...r,
-    duplicate: activeCount > 1,
+    duplicate: activeCount - r.reservedGive > 1,
   }));
 }
 

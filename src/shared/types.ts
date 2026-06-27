@@ -138,6 +138,7 @@ export interface CardRow {
   wantInReturn: string | null;
   note: string | null;
   duplicate: boolean;
+  reservedGive: number;
 }
 
 // ---- Pending trade reservations ----

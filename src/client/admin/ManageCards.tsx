@@ -293,6 +293,14 @@ export function ManageCards() {
                           重複
                         </span>
                       ) : null}
+                      {card.reservedGive > 0 ? (
+                        <span
+                          className="pill reserved"
+                          style={{ marginLeft: 6 }}
+                        >
+                          預約中 ×{card.reservedGive}
+                        </span>
+                      ) : null}
                       {card.status === "for_sale" &&
                       card.askingPrice != null ? (
                         <span className="mono" style={{ marginLeft: 8 }}>

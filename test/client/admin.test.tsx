@@ -61,6 +61,31 @@ describe("ManageCards", () => {
     expect(screen.getByText("價格 (TWD)")).toBeInTheDocument();
     expect(screen.getByText("對象")).toBeInTheDocument();
   });
+
+  it("shows a 預約中 badge for cards whose type has a pending give", async () => {
+    const rows = [
+      {
+        id: 1,
+        series: "KILLER",
+        character: "Iruni",
+        rarity: "SSR",
+        status: "owned",
+        source: "pull",
+        askingPrice: null,
+        wantInReturn: null,
+        note: null,
+        duplicate: false,
+        reservedGive: 1,
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => rows })),
+    );
+    render(<ManageCards />);
+    await waitFor(() => expect(screen.getByText("Iruni")).toBeInTheDocument());
+    expect(screen.getByText(/預約中/)).toBeInTheDocument();
+  });
 });
 
 // Overview where every type is missing except two duplicates we can give away.
