@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
 import { SERIES, buildCatalog, charactersFor } from "../../seed/catalog-def";
 import { type Matrix, buildMatrix } from "../../src/client/collection";
 import { Glance } from "../../src/client/views/Glance";
@@ -159,5 +159,55 @@ describe("Trade pending overlay", () => {
   it("omits the 暫定交換列表 when there are no pending trades", () => {
     render(<Trade m={m} pending={[]} />);
     expect(screen.queryByText("暫定交換列表")).toBeNull();
+  });
+});
+
+describe("Grid volume filter", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("renders a filter row per volume with a button per series", () => {
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    expect(filter).toBeTruthy();
+    expect(within(filter).getByText("Vol.1")).toBeInTheDocument();
+    expect(within(filter).getByText("Vol.2")).toBeInTheDocument();
+    expect(
+      within(filter).getByRole("button", { name: "NEW YEAR" }),
+    ).toBeInTheDocument();
+    expect(
+      within(filter).getByRole("button", { name: "MP 4TH" }),
+    ).toBeInTheDocument();
+    expect(container.querySelectorAll(".grid-series-head")).toHaveLength(
+      SERIES.length,
+    );
+  });
+
+  it("hides a series' columns when its button is toggled off", () => {
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    fireEvent.click(within(filter).getByRole("button", { name: "NEW YEAR" }));
+    expect(container.querySelectorAll(".grid-series-head")).toHaveLength(
+      SERIES.length - 1,
+    );
+  });
+
+  it("remembers hidden series across remounts via localStorage", () => {
+    const first = render(<Grid m={m} />);
+    const filter = first.container.querySelector(".grid-filter") as HTMLElement;
+    fireEvent.click(within(filter).getByRole("button", { name: "NEW YEAR" }));
+    first.unmount();
+    const second = render(<Grid m={m} />);
+    expect(second.container.querySelectorAll(".grid-series-head")).toHaveLength(
+      SERIES.length - 1,
+    );
+  });
+
+  it("shows an empty hint when all series are hidden", () => {
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    for (const name of SERIES)
+      fireEvent.click(within(filter).getByRole("button", { name }));
+    expect(screen.getByText("（未選擇任何系列）")).toBeInTheDocument();
+    expect(container.querySelector(".grid-table")).toBeNull();
   });
 });

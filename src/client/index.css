@@ -828,6 +828,53 @@ footer .accent-mark {
   font-weight: 500;
 }
 
+.grid-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 0 4px;
+}
+
+.grid-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.grid-filter-label {
+  font-family: "JetBrains Mono", "IBM Plex Sans TC", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  min-width: 42px;
+}
+
+.grid-filter-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* standalone toggles (not inside a .mode-toggle pill) get a faint outline so
+   the off state still reads as tappable. */
+.grid-filter .mode-btn {
+  border: 0.5px solid var(--border);
+}
+
+.grid-empty {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: 4px;
+  padding: 36px 16px;
+  margin-bottom: 16px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
 .grid-wrap {
   background: var(--surface);
   border: 0.5px solid var(--border);
