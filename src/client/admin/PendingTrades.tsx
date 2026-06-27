@@ -245,6 +245,7 @@ function PendingRowItem({
   const [completing, setCompleting] = useState(false);
   const [happenedAt, setHappenedAt] = useState(today());
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const summary = (lines: AdminPendingTrade["give"]) =>
     lines
       .map((l) => `${l.series} ${l.character} ${l.rarity}×${l.qty}`)
@@ -252,10 +253,12 @@ function PendingRowItem({
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
+    setErr(null);
     try {
       await fn();
       onChange();
-    } catch {
+    } catch (e) {
+      setErr(String(e));
       setBusy(false);
     }
   };
@@ -309,6 +312,11 @@ function PendingRowItem({
             </button>
           </div>
         )}
+        {err ? (
+          <div className="error-text" style={{ marginTop: 6 }}>
+            {err}
+          </div>
+        ) : null}
       </td>
     </tr>
   );

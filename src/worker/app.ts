@@ -107,6 +107,10 @@ admin.post("/pending-trades", async (c) => {
   if (!Array.isArray(body.give) || body.give.length === 0) {
     return c.json({ error: "at least one give line required" }, 400);
   }
+  const allLines = [...body.give, ...(body.receive ?? [])];
+  if (allLines.some((l) => !Number.isInteger(l.qty) || l.qty < 1)) {
+    return c.json({ error: "qty must be a positive integer" }, 400);
+  }
   const id = await createReservation(c.env.DB, body);
   return c.json({ id });
 });

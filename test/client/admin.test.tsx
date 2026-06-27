@@ -88,37 +88,36 @@ function stubFetchFor(pending: unknown[]) {
   });
 }
 
+const sampleReservation = {
+  id: 9,
+  reservedAt: "2026-06-27",
+  counterparty: "阿明",
+  note: "面交",
+  give: [
+    {
+      direction: "give",
+      catalogId: 5,
+      series: "MP 4TH",
+      character: "Mizuki",
+      rarity: "R",
+      qty: 1,
+    },
+  ],
+  receive: [
+    {
+      direction: "receive",
+      catalogId: 6,
+      series: "KILLER",
+      character: "Rei",
+      rarity: "SR",
+      qty: 1,
+    },
+  ],
+};
+
 describe("PendingTrades", () => {
   it("renders the form and an existing reservation with 完成/取消", async () => {
-    const pending = [
-      {
-        id: 9,
-        reservedAt: "2026-06-27",
-        counterparty: "阿明",
-        note: "面交",
-        give: [
-          {
-            direction: "give",
-            catalogId: 5,
-            series: "MP 4TH",
-            character: "Mizuki",
-            rarity: "R",
-            qty: 1,
-          },
-        ],
-        receive: [
-          {
-            direction: "receive",
-            catalogId: 6,
-            series: "KILLER",
-            character: "Rei",
-            rarity: "SR",
-            qty: 1,
-          },
-        ],
-      },
-    ];
-    vi.stubGlobal("fetch", stubFetchFor(pending));
+    vi.stubGlobal("fetch", stubFetchFor([sampleReservation]));
 
     render(<PendingTrades />);
     await waitFor(() =>
@@ -127,5 +126,74 @@ describe("PendingTrades", () => {
     expect(screen.getByText("阿明")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "完成" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
+  });
+
+  it("completing a reservation POSTs to /complete", async () => {
+    const fetchMock = stubFetchFor([sampleReservation]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PendingTrades />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "完成" })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "完成" }));
+    fireEvent.click(screen.getByRole("button", { name: "確認完成" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([u]) =>
+          u.endsWith("/api/admin/pending-trades/9/complete"),
+        ),
+      ).toBe(true),
+    );
+    const call = fetchMock.mock.calls.find(([u]) =>
+      u.endsWith("/api/admin/pending-trades/9/complete"),
+    );
+    expect(call?.[1]?.method).toBe("POST");
+  });
+
+  it("cancelling a reservation sends DELETE", async () => {
+    const fetchMock = stubFetchFor([sampleReservation]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PendingTrades />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([u]) =>
+          u.endsWith("/api/admin/pending-trades/9"),
+        ),
+      ).toBe(true),
+    );
+    const call = fetchMock.mock.calls.find(([u]) =>
+      u.endsWith("/api/admin/pending-trades/9"),
+    );
+    expect(call?.[1]?.method).toBe("DELETE");
+  });
+
+  it("surfaces a failed completion (Fix 1)", async () => {
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url === "/api/overview")
+        return { ok: true, json: async () => overviewJson() };
+      if (url === "/api/admin/pending-trades")
+        return { ok: true, json: async () => [sampleReservation] };
+      if (url.endsWith("/api/admin/pending-trades/9/complete"))
+        return { ok: false, status: 500, json: async () => ({}) };
+      return { ok: true, json: async () => ({ ok: true }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PendingTrades />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "完成" })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "完成" }));
+    fireEvent.click(screen.getByRole("button", { name: "確認完成" }));
+
+    expect(await screen.findByText(/500/)).toBeInTheDocument();
   });
 });

@@ -15,7 +15,6 @@ import type {
   RarityCount,
   RecordTxnInput,
   ReservationLine,
-  ReservationLineInput,
   SeriesProgress,
   StatsResponse,
   TradeDirection,
