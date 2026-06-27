@@ -471,3 +471,149 @@ export async function cancelReservation(
     .bind(id)
     .run();
 }
+
+const RARITY_RANK: Record<string, number> = { R: 0, SR: 1, SSR: 2, UR: 3 };
+
+export async function completeReservation(
+  db: D1Database,
+  id: number,
+  happenedAt: string,
+): Promise<void> {
+  const header = await db
+    .prepare("SELECT counterparty, note FROM trade_reservations WHERE id = ?")
+    .bind(id)
+    .first<{ counterparty: string | null; note: string | null }>();
+  if (!header) throw new Error(`reservation ${id} not found`);
+
+  const raw = (
+    await db
+      .prepare(
+        `SELECT l.direction, l.catalog_id AS catalogId, l.qty,
+                c.series, c.character, c.rarity
+         FROM trade_reservation_lines l
+         JOIN card_catalog c ON c.id = l.catalog_id
+         WHERE l.reservation_id = ?`,
+      )
+      .bind(id)
+      .all<{
+        direction: TradeDirection;
+        catalogId: number;
+        qty: number;
+        series: string;
+        character: string;
+        rarity: Rarity;
+      }>()
+  ).results;
+
+  // Expand qty into units; sort each side by rarity so same-rarity swaps line up.
+  const expand = (dir: TradeDirection) =>
+    raw
+      .filter((l) => l.direction === dir)
+      .flatMap((l) => Array.from({ length: l.qty }, () => l))
+      .sort((a, b) => RARITY_RANK[a.rarity] - RARITY_RANK[b.rarity]);
+  const gives = expand("give");
+  const receives = expand("receive");
+
+  if (gives.length === 0) {
+    throw new Error("a completed trade needs at least one give line");
+  }
+
+  // Pre-check holdings BEFORE any write so a shortfall leaves no half-done state.
+  const needByCatalog = new Map<number, number>();
+  for (const g of gives)
+    needByCatalog.set(g.catalogId, (needByCatalog.get(g.catalogId) ?? 0) + 1);
+  for (const [cid, need] of needByCatalog) {
+    const avail = await db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM cards
+         WHERE catalog_id = ? AND status IN ('owned','for_sale','for_trade')`,
+      )
+      .bind(cid)
+      .first<{ n: number }>();
+    if (!avail || avail.n < need) {
+      throw new Error(
+        `not enough holdings for catalog ${cid}: need ${need}, have ${avail?.n ?? 0}`,
+      );
+    }
+  }
+
+  // Add every received card to holdings; keep ids aligned to `receives` order.
+  const receivedCardIds: number[] = [];
+  for (const r of receives) {
+    const rc = await db
+      .prepare(
+        "INSERT INTO cards (catalog_id, status, source) VALUES (?, 'owned', 'trade_in') RETURNING id",
+      )
+      .bind(r.catalogId)
+      .first<{ id: number }>();
+    if (!rc) throw new Error("failed to add received card");
+    receivedCardIds.push(rc.id);
+  }
+
+  // Receives beyond the give count (一換多): note them on the last transaction.
+  const extra = receives.slice(gives.length);
+  const extraNote =
+    extra.length > 0
+      ? `額外換得：${extra.map((r) => `${r.series} ${r.character} ${r.rarity}`).join("、")}`
+      : "";
+
+  for (let i = 0; i < gives.length; i++) {
+    const g = gives[i];
+    // Consume one pre-existing holding of this catalog; never a card we just received.
+    const exclude = receivedCardIds.length
+      ? `AND id NOT IN (${receivedCardIds.map(() => "?").join(",")})`
+      : "";
+    const card = await db
+      .prepare(
+        `SELECT id FROM cards
+         WHERE catalog_id = ? AND status IN ('owned','for_sale','for_trade') ${exclude}
+         ORDER BY (status = 'owned') DESC, id
+         LIMIT 1`,
+      )
+      .bind(g.catalogId, ...receivedCardIds)
+      .first<{ id: number }>();
+    if (!card)
+      throw new Error(`no holding to consume for catalog ${g.catalogId}`);
+    await db
+      .prepare(
+        "UPDATE cards SET status = 'traded', updated_at = datetime('now') WHERE id = ?",
+      )
+      .bind(card.id)
+      .run();
+
+    const receivedCatalogId =
+      i < receives.length ? receives[i].catalogId : null;
+    const receivedCardId =
+      i < receivedCardIds.length ? receivedCardIds[i] : null;
+    const isLast = i === gives.length - 1;
+    const note =
+      [header.note, isLast ? extraNote : ""].filter(Boolean).join(" / ") ||
+      null;
+
+    await db
+      .prepare(
+        `INSERT INTO transactions
+           (card_id, type, counterparty, price, received_catalog_id, received_card_id, happened_at, note)
+         VALUES (?, 'trade', ?, NULL, ?, ?, ?, ?)`,
+      )
+      .bind(
+        card.id,
+        header.counterparty,
+        receivedCatalogId,
+        receivedCardId,
+        happenedAt,
+        note,
+      )
+      .run();
+  }
+
+  // Purge the reservation (header + lines) → clears counterparty/note from the pending layer.
+  await db
+    .prepare("DELETE FROM trade_reservation_lines WHERE reservation_id = ?")
+    .bind(id)
+    .run();
+  await db
+    .prepare("DELETE FROM trade_reservations WHERE id = ?")
+    .bind(id)
+    .run();
+}
