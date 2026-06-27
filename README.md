@@ -1,5 +1,7 @@
 # Meridian Project Card Collection
 
+**Live demo: [mpcards.oshi.tw](https://mpcards.oshi.tw/)**
+
 A self-hosted tracker for a Meridian Project VTuber gacha-card collection, running
 entirely on Cloudflare Workers + D1. The collection is **publicly viewable**
 (progress, stats, and a trade board), while **only the owner can edit** —
