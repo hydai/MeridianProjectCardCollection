@@ -27,6 +27,11 @@ const ACTIVE = "('owned','for_sale','for_trade')";
 const RARITY_ORDER: Rarity[] = ["R", "SR", "SSR", "UR"];
 
 export async function getOverview(db: D1Database): Promise<OverviewResponse> {
+  // Pending GIVE qty per catalog, subtracted from owned. trade_reservation_lines
+  // only ever holds PENDING lines (completeReservation/cancelReservation hard-delete
+  // on close), so no status filter is needed. The subquery is pre-aggregated (one row
+  // per catalog) so it can't inflate COUNT(k.id), and the bare g.reserved under
+  // GROUP BY c.id is therefore deterministic.
   const rawCells = (
     await db
       .prepare(

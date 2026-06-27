@@ -293,7 +293,7 @@ export function ManageCards() {
                           重複
                         </span>
                       ) : null}
-                      {card.reservedGive > 0 ? (
+                      {card.reservedGive > 0 && isActive ? (
                         <span
                           className="pill reserved"
                           style={{ marginLeft: 6 }}

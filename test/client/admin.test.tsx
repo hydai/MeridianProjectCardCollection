@@ -86,6 +86,31 @@ describe("ManageCards", () => {
     await waitFor(() => expect(screen.getByText("Iruni")).toBeInTheDocument());
     expect(screen.getByText(/預約中/)).toBeInTheDocument();
   });
+
+  it("hides the 預約中 badge on a sold/traded row even when its type is reserved", async () => {
+    const rows = [
+      {
+        id: 1,
+        series: "KILLER",
+        character: "Iruni",
+        rarity: "SSR",
+        status: "traded",
+        source: "pull",
+        askingPrice: null,
+        wantInReturn: null,
+        note: null,
+        duplicate: false,
+        reservedGive: 1,
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => rows })),
+    );
+    render(<ManageCards />);
+    await waitFor(() => expect(screen.getByText("Iruni")).toBeInTheDocument());
+    expect(screen.queryByText(/預約中/)).toBeNull();
+  });
 });
 
 // Overview where every type is missing except two duplicates we can give away.
