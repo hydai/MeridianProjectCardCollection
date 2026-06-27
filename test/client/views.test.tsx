@@ -210,4 +210,32 @@ describe("Grid volume filter", () => {
     expect(screen.getByText("（未選擇任何系列）")).toBeInTheDocument();
     expect(container.querySelector(".grid-table")).toBeNull();
   });
+
+  it("exposes aria-pressed on each series button reflecting its shown state", () => {
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    const btn = within(filter).getByRole("button", { name: "NEW YEAR" });
+    expect(btn).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(btn);
+    expect(btn).toHaveAttribute("aria-pressed", "false");
+    expect(container.querySelectorAll(".grid-series-head")).toHaveLength(
+      SERIES.length - 1,
+    );
+  });
+
+  it("ignores stale localStorage series names and self-heals the stored set", () => {
+    localStorage.setItem(
+      "mpc:grid:hiddenSeries",
+      JSON.stringify(["NEW YEAR", "OLD SERIES"]),
+    );
+    const { container } = render(<Grid m={m} />);
+    expect(container.querySelectorAll(".grid-series-head")).toHaveLength(
+      SERIES.length - 1,
+    );
+    const persisted = JSON.parse(
+      localStorage.getItem("mpc:grid:hiddenSeries") as string,
+    ) as string[];
+    expect(persisted).not.toContain("OLD SERIES");
+    for (const s of persisted) expect(SERIES).toContain(s);
+  });
 });

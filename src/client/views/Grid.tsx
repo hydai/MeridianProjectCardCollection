@@ -32,7 +32,10 @@ function saveHidden(hidden: Set<string>): void {
 
 export function Grid({ m }: { m: Matrix }) {
   const [mode, setMode] = useState<"check" | "count">("check");
-  const [hidden, setHidden] = useState<Set<string>>(loadHidden);
+  const [hidden, setHidden] = useState<Set<string>>(() => {
+    const stored = loadHidden();
+    return new Set([...stored].filter((s) => m.series.includes(s)));
+  });
   const isCount = mode === "count";
 
   useEffect(() => {
@@ -102,6 +105,7 @@ export function Grid({ m }: { m: Matrix }) {
                   type="button"
                   key={s}
                   className={`mode-btn ${!hidden.has(s) ? "active" : ""}`}
+                  aria-pressed={!hidden.has(s)}
                   onClick={() => toggle(s)}
                 >
                   {s}
