@@ -29,6 +29,10 @@ Not for: adding cards the owner pulled/bought (that's the `/admin` → 開箱新
    - New series: add an entry to `SERIES_CHARACTERS` **at the end**, e.g.
      `"MP 5TH": [...COMMON_CHARACTERS, "KSP"]` (omit `KSP` if it's not in that series).
    - New character: **append** it to that series's character list.
+   - New series: ALSO assign it to a 彈 in `VOLUMES` — append the series name to an
+     existing volume's `series`, or add a new `{ label: "Vol.N", series: [...] }`.
+     The grid's volume filter is built from this. A consistency test fails if a
+     catalog series isn't assigned to exactly one volume.
 2. **`npm run catalog:sync`** — writes the next migration `migrations/NNNN_sync_catalog.sql`. It is an idempotent UPSERT of the full catalog: inserts new types, corrects `sort_order`, touches nothing else. It does **not** overwrite `0002`/`0003`.
 3. **Apply + verify locally:**
    ```bash
@@ -60,3 +64,5 @@ Not for: adding cards the owner pulled/bought (that's the `/admin` → 開箱新
 - **Skipping `npm run deploy`.** The migration updates the public views but NOT the admin dropdowns (those are compiled from `catalog-def.ts`).
 - **Deploying before applying the remote migration.** Adding a card of the new type before its `card_catalog` row exists throws `unknown card type`. Migrate remote, then deploy.
 - **Editing `seed/cards.ts`.** A new series has zero owned cards by design — it should render as all-missing. Owned cards are added through `/admin`.
+- **Forgetting to add a new series to `VOLUMES`.** It falls into the grid's "其他"
+  filter row and `npm test` goes red (the consistency test). Assign it to a 彈.
