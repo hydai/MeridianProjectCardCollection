@@ -1,3 +1,4 @@
+import { VOLUMES } from "../../seed/catalog-def";
 import type {
   OverviewResponse,
   PublicPendingTrade,
@@ -43,6 +44,27 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
     characters.map((c) => map.get(`${s}|${c}`) ?? null),
   );
   return { series, characters, cards };
+}
+
+export interface VolumeRow {
+  label: string;
+  series: string[];
+}
+
+// Align the static VOLUMES map with the live series list: keep only series that
+// actually exist, drop emptied volumes, and sweep any series not assigned to a
+// volume into a trailing "其他" row so nothing silently vanishes from the grid.
+export function buildVolumeRows(allSeries: string[]): VolumeRow[] {
+  const assigned = new Set<string>();
+  const rows: VolumeRow[] = [];
+  for (const vol of VOLUMES) {
+    const series = vol.series.filter((s) => allSeries.includes(s));
+    for (const s of series) assigned.add(s);
+    if (series.length > 0) rows.push({ label: vol.label, series });
+  }
+  const orphans = allSeries.filter((s) => !assigned.has(s));
+  if (orphans.length > 0) rows.push({ label: "其他", series: orphans });
+  return rows;
 }
 
 export const cellOf = (m: Matrix, s: number, c: number): Counts | null =>

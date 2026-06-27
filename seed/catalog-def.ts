@@ -35,6 +35,15 @@ export const SERIES_CHARACTERS: Record<string, string[]> = {
 
 export const SERIES = Object.keys(SERIES_CHARACTERS);
 
+// 彈（Vol）→ 系列。純前端顯示用，驅動格表上方的篩選列；不進 D1。
+// 有序：陣列順序＝filter 列由上到下的顯示順序。
+// 新增系列時務必把它加進某一彈（見 manage-card-catalog 技能與一致性測試）。
+export const VOLUMES: { label: string; series: string[] }[] = [
+  { label: "Vol.1", series: ["NEW YEAR", "BUNNY GIRL", "KILLER"] },
+  { label: "Vol.2", series: ["MP 4TH"] },
+  // 第三彈 → 在此 append 一個 { label: "Vol.3", series: [...] }
+];
+
 export function charactersFor(series: string): string[] {
   return SERIES_CHARACTERS[series] ?? [];
 }
