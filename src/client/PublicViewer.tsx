@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { MarketListing } from "../shared/types";
-import { fetchMarket, fetchOverview } from "./api";
+import type { MarketListing, PublicPendingTrade } from "../shared/types";
+import { fetchMarket, fetchOverview, fetchPendingTrades } from "./api";
 import { type Matrix, buildMatrix } from "./collection";
 import { Glance } from "./views/Glance";
 import { Grid } from "./views/Grid";
@@ -28,11 +28,13 @@ function ActiveView({
   m,
   listings,
   marketError,
+  pending,
 }: {
   id: TabId;
   m: Matrix;
   listings: MarketListing[] | null;
   marketError: string | null;
+  pending: PublicPendingTrade[];
 }) {
   switch (id) {
     case "char":
@@ -48,7 +50,7 @@ function ActiveView({
     case "grid":
       return <Grid m={m} />;
     case "trade":
-      return <Trade m={m} />;
+      return <Trade m={m} pending={pending} />;
     case "market":
       return <MarketBoard listings={listings} error={marketError} />;
     default:
@@ -67,6 +69,7 @@ export default function PublicViewer() {
   const [tab, setTab] = useState<TabId>(initialTab);
   const [listings, setListings] = useState<MarketListing[] | null>(null);
   const [marketError, setMarketError] = useState<string | null>(null);
+  const [pending, setPending] = useState<PublicPendingTrade[]>([]);
 
   useEffect(() => {
     fetchOverview()
@@ -78,6 +81,14 @@ export default function PublicViewer() {
     fetchMarket()
       .then(setListings)
       .catch((e) => setMarketError(String(e)));
+  }, []);
+
+  useEffect(() => {
+    fetchPendingTrades()
+      .then(setPending)
+      .catch(() => {
+        // pending overlay is non-critical; the rest of the Trade tab still works.
+      });
   }, []);
 
   const selectTab = (id: TabId) => {
@@ -121,6 +132,7 @@ export default function PublicViewer() {
             m={matrix}
             listings={listings}
             marketError={marketError}
+            pending={pending}
           />
         ) : (
           <div className="state-msg">載入中…</div>

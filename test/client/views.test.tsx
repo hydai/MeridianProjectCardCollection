@@ -10,6 +10,7 @@ import { Wishlist } from "../../src/client/views/Wishlist";
 import { ByCharacter, ByRarity, BySeries } from "../../src/client/views/tables";
 import type { MarketListing } from "../../src/shared/types";
 import type { OverviewResponse } from "../../src/shared/types";
+import type { PublicPendingTrade } from "../../src/shared/types";
 
 // Full 180-type universe with a mix of missing (0), single, and duplicate (>=2)
 // counts so every view branch is exercised.
@@ -117,5 +118,46 @@ describe("MarketBoard", () => {
   it("shows an error message scoped to this view", () => {
     render(<MarketBoard listings={null} error="Error: /api/market → 500" />);
     expect(screen.getByText(/無法載入交易資料/)).toBeInTheDocument();
+  });
+});
+
+describe("Trade pending overlay", () => {
+  it("renders the 暫定交換列表 with card names but never the counterparty", () => {
+    const pending: PublicPendingTrade[] = [
+      {
+        id: 1,
+        reservedAt: "2026-06-27",
+        give: [
+          {
+            direction: "give",
+            catalogId: 1,
+            series: "MP 4TH",
+            character: "Mizuki",
+            rarity: "R",
+            qty: 1,
+          },
+        ],
+        receive: [
+          {
+            direction: "receive",
+            catalogId: 2,
+            series: "KILLER",
+            character: "Rei",
+            rarity: "SR",
+            qty: 1,
+          },
+        ],
+      },
+    ];
+    render(<Trade m={m} pending={pending} />);
+    expect(screen.getByText("暫定交換列表")).toBeInTheDocument();
+    expect(screen.getByText("2026-06-27")).toBeInTheDocument();
+    expect(screen.getByText(/MP 4TH Mizuki/)).toBeInTheDocument();
+    expect(screen.getByText(/KILLER Rei/)).toBeInTheDocument();
+  });
+
+  it("omits the 暫定交換列表 when there are no pending trades", () => {
+    render(<Trade m={m} pending={[]} />);
+    expect(screen.queryByText("暫定交換列表")).toBeNull();
   });
 });

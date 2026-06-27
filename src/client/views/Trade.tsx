@@ -1,11 +1,13 @@
 import { useState } from "react";
+import type { PublicPendingTrade, ReservationLine } from "../../shared/types";
 import {
   type Matrix,
   RARITIES,
   RARITY_KEYS,
   type TradeItem,
-  computeTrade,
+  computeTradeWithPending,
 } from "../collection";
+import { MissChip } from "./shared";
 
 type Filter = "all" | "r" | "sr" | "ssr" | "ur";
 const RK_NAME: Record<string, string> = {
@@ -15,9 +17,75 @@ const RK_NAME: Record<string, string> = {
   ur: "UR",
 };
 
-export function Trade({ m }: { m: Matrix }) {
+interface PendingRow {
+  rarity: (typeof RARITIES)[number];
+  give: string | null;
+  receive: string | null;
+}
+
+// Expand by qty and pair give/receive by rarity for a compact display table.
+function pendingRows(
+  give: ReservationLine[],
+  receive: ReservationLine[],
+): PendingRow[] {
+  const label = (l: ReservationLine) => `${l.series} ${l.character}`;
+  const expand = (lines: ReservationLine[]) =>
+    lines
+      .flatMap((l) => Array.from({ length: l.qty }, () => l))
+      .sort((a, b) => RARITIES.indexOf(a.rarity) - RARITIES.indexOf(b.rarity));
+  const g = expand(give);
+  const r = expand(receive);
+  const rows: PendingRow[] = [];
+  for (let i = 0; i < Math.max(g.length, r.length); i++) {
+    const gi = g[i];
+    const ri = r[i];
+    rows.push({
+      rarity: (gi ?? ri).rarity,
+      give: gi ? label(gi) : null,
+      receive: ri ? label(ri) : null,
+    });
+  }
+  return rows;
+}
+
+function PendingCard({ p }: { p: PublicPendingTrade }) {
+  const rows = pendingRows(p.give, p.receive);
+  return (
+    <div className="pending-card">
+      <div className="pending-date">{p.reservedAt}</div>
+      <table className="pending-table">
+        <thead>
+          <tr>
+            <th>稀有度</th>
+            <th>給出</th>
+            <th>換入</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={`${row.rarity}-${i}`}>
+              <td>
+                <MissChip
+                  ri={RARITIES.indexOf(row.rarity)}
+                  label={row.rarity}
+                />
+              </td>
+              <td>{row.give ?? "—"}</td>
+              <td>{row.receive ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function Trade({
+  m,
+  pending,
+}: { m: Matrix; pending?: PublicPendingTrade[] }) {
   const [filter, setFilter] = useState<Filter>("all");
-  const { surplus, needs } = computeTrade(m);
+  const { surplus, needs } = computeTradeWithPending(m, pending ?? []);
   const totalSpare = surplus.reduce((s, x) => s + x.spare, 0);
 
   const filterItems = (items: TradeItem[]) =>
@@ -162,6 +230,14 @@ export function Trade({ m }: { m: Matrix }) {
           {panelBody(needs, "needs")}
         </section>
       </div>
+      {pending && pending.length > 0 ? (
+        <section className="pending-list">
+          <h3 className="trade-panel-title">暫定交換列表</h3>
+          {pending.map((p) => (
+            <PendingCard key={p.id} p={p} />
+          ))}
+        </section>
+      ) : null}
     </section>
   );
 }
