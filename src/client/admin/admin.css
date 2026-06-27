@@ -315,3 +315,25 @@
     padding: 40px 16px 72px;
   }
 }
+
+.line-editor {
+  margin-top: 12px;
+}
+.line-editor-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.line-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.line-row select {
+  min-width: 220px;
+}
+.line-row input[type="number"] {
+  width: 72px;
+}

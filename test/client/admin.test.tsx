@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildCatalog } from "../../seed/catalog-def";
 import { AddCards } from "../../src/client/admin/AddCards";
 import { ManageCards } from "../../src/client/admin/ManageCards";
+import { PendingTrades } from "../../src/client/admin/PendingTrades";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -58,5 +60,72 @@ describe("ManageCards", () => {
     fireEvent.click(screen.getByRole("button", { name: "賣出" }));
     expect(screen.getByText("價格 (TWD)")).toBeInTheDocument();
     expect(screen.getByText("對象")).toBeInTheDocument();
+  });
+});
+
+// Overview where every type is missing except two duplicates we can give away.
+const overviewJson = () => ({
+  cells: buildCatalog().map((c, i) => ({
+    catalogId: i + 1,
+    series: c.series,
+    character: c.character,
+    rarity: c.rarity,
+    owned:
+      c.series === "MP 4TH" && c.character === "Mizuki" && c.rarity === "R"
+        ? 2
+        : 0,
+  })),
+  progress: [],
+});
+
+function stubFetchFor(pending: unknown[]) {
+  return vi.fn(async (url: string, _init?: RequestInit) => {
+    if (url === "/api/overview")
+      return { ok: true, json: async () => overviewJson() };
+    if (url === "/api/admin/pending-trades")
+      return { ok: true, json: async () => pending };
+    return { ok: true, json: async () => ({ ok: true }) };
+  });
+}
+
+describe("PendingTrades", () => {
+  it("renders the form and an existing reservation with 完成/取消", async () => {
+    const pending = [
+      {
+        id: 9,
+        reservedAt: "2026-06-27",
+        counterparty: "阿明",
+        note: "面交",
+        give: [
+          {
+            direction: "give",
+            catalogId: 5,
+            series: "MP 4TH",
+            character: "Mizuki",
+            rarity: "R",
+            qty: 1,
+          },
+        ],
+        receive: [
+          {
+            direction: "receive",
+            catalogId: 6,
+            series: "KILLER",
+            character: "Rei",
+            rarity: "SR",
+            qty: 1,
+          },
+        ],
+      },
+    ];
+    vi.stubGlobal("fetch", stubFetchFor(pending));
+
+    render(<PendingTrades />);
+    await waitFor(() =>
+      expect(screen.getByText("交換預約")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("阿明")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "完成" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
   });
 });
