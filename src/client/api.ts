@@ -1,11 +1,14 @@
 import type {
   AddCardInput,
+  AdminPendingTrade,
   CardRow,
+  CreateReservationInput,
   MarketListing,
   MissingEntry,
   OpeningInput,
   OpeningSummary,
   OverviewResponse,
+  PublicPendingTrade,
   RecordTxnInput,
   StatsResponse,
   TxnRecord,
@@ -61,3 +64,17 @@ export const postTransaction = (input: { cardId: number } & RecordTxnInput) =>
 export const fetchOpenings = () => get<OpeningSummary[]>("/api/admin/openings");
 export const fetchTransactions = () =>
   get<TxnRecord[]>("/api/admin/transactions");
+
+// ---- Pending trades ----
+export const fetchPendingTrades = () =>
+  get<PublicPendingTrade[]>("/api/pending-trades");
+export const fetchAdminPendingTrades = () =>
+  get<AdminPendingTrade[]>("/api/admin/pending-trades");
+export const postReservation = (input: CreateReservationInput) =>
+  send<{ id: number }>("POST", "/api/admin/pending-trades", input);
+export const completeReservation = (id: number, happenedAt: string) =>
+  send<{ ok: true }>("POST", `/api/admin/pending-trades/${id}/complete`, {
+    happenedAt,
+  });
+export const cancelReservation = (id: number) =>
+  send<{ ok: true }>("DELETE", `/api/admin/pending-trades/${id}`, {});

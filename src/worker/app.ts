@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import type {
   AddCardInput,
+  CompleteReservationInput,
+  CreateReservationInput,
   OpeningInput,
   RecordTxnInput,
   UpdateCardInput,
@@ -8,11 +10,16 @@ import type {
 import { accessGuard } from "./auth";
 import {
   addCards,
+  cancelReservation,
+  completeReservation,
   createOpening,
+  createReservation,
+  getAdminPendingTrades,
   getMarket,
   getMissing,
   getOpenings,
   getOverview,
+  getPublicPendingTrades,
   getStats,
   getTransactions,
   listCards,
@@ -27,6 +34,9 @@ export const app = new Hono<{ Bindings: Env }>();
 app.get("/api/overview", async (c) => c.json(await getOverview(c.env.DB)));
 app.get("/api/missing", async (c) => c.json(await getMissing(c.env.DB)));
 app.get("/api/market", async (c) => c.json(await getMarket(c.env.DB)));
+app.get("/api/pending-trades", async (c) =>
+  c.json(await getPublicPendingTrades(c.env.DB)),
+);
 app.get("/api/stats", async (c) => c.json(await getStats(c.env.DB)));
 
 // ---- Admin write API (gated by Cloudflare Access) ----
@@ -86,6 +96,36 @@ admin.post("/transactions", async (c) => {
 admin.get("/transactions", async (c) =>
   c.json(await getTransactions(c.env.DB)),
 );
+
+admin.get("/pending-trades", async (c) =>
+  c.json(await getAdminPendingTrades(c.env.DB)),
+);
+
+admin.post("/pending-trades", async (c) => {
+  const body = await c.req.json<CreateReservationInput>();
+  if (!body.reservedAt) return c.json({ error: "reservedAt required" }, 400);
+  if (!Array.isArray(body.give) || body.give.length === 0) {
+    return c.json({ error: "at least one give line required" }, 400);
+  }
+  const id = await createReservation(c.env.DB, body);
+  return c.json({ id });
+});
+
+admin.post("/pending-trades/:id/complete", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "bad id" }, 400);
+  const body = await c.req.json<CompleteReservationInput>();
+  if (!body.happenedAt) return c.json({ error: "happenedAt required" }, 400);
+  await completeReservation(c.env.DB, id, body.happenedAt);
+  return c.json({ ok: true });
+});
+
+admin.delete("/pending-trades/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "bad id" }, 400);
+  await cancelReservation(c.env.DB, id);
+  return c.json({ ok: true });
+});
 
 app.route("/api/admin", admin);
 
