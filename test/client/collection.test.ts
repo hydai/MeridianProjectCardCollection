@@ -7,6 +7,7 @@ import {
   exists,
   getN,
   grandTotalByRarity,
+  ownedReceivable,
 } from "../../src/client/collection";
 import type {
   OverviewResponse,
@@ -142,5 +143,35 @@ describe("computeTradeWithPending", () => {
       ),
     ).toBe(false);
     expect(adj.needs).toHaveLength(base.needs.length - 1);
+  });
+});
+
+describe("ownedReceivable", () => {
+  const m = buildMatrix(overview);
+  // overview owned≥1 cells: NEW YEAR/Mizuki R=3, NEW YEAR/Mizuki SR=1,
+  // MP 4TH/Mizuki R=2, MP 4TH/KSP R=1  → 4 items. (NEW YEAR/KSP is a null cell.)
+
+  it("returns every existing cell the owner holds at least one of", () => {
+    expect(ownedReceivable(m)).toHaveLength(4);
+  });
+
+  it("carries the current holding count in spare", () => {
+    const items = ownedReceivable(m);
+    // NEW YEAR(si0)/Mizuki(ci0)/R(ri0) owned 3
+    expect(
+      items.find((x) => x.si === 0 && x.ci === 0 && x.ri === 0)?.spare,
+    ).toBe(3);
+    // MP 4TH(si1)/Mizuki(ci0)/R(ri0) owned 2
+    expect(
+      items.find((x) => x.si === 1 && x.ci === 0 && x.ri === 0)?.spare,
+    ).toBe(2);
+  });
+
+  it("excludes owned-0 cells (disjoint from needs) and null cells", () => {
+    const items = ownedReceivable(m);
+    // every item is actually held
+    expect(items.every((x) => getN(m, x.si, x.ci, x.ri) >= 1)).toBe(true);
+    // NEW YEAR/KSP (si0,ci1) does not exist → never present
+    expect(items.some((x) => x.si === 0 && x.ci === 1)).toBe(false);
   });
 });
