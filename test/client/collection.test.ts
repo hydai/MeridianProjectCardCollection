@@ -8,6 +8,7 @@ import {
   getN,
   grandTotalByRarity,
   ownedReceivable,
+  pendingReceiveByCoord,
 } from "../../src/client/collection";
 import type {
   OverviewResponse,
@@ -173,5 +174,57 @@ describe("ownedReceivable", () => {
     expect(items.every((x) => getN(m, x.si, x.ci, x.ri) >= 1)).toBe(true);
     // NEW YEAR/KSP (si0,ci1) does not exist → never present
     expect(items.some((x) => x.si === 0 && x.ci === 1)).toBe(false);
+  });
+});
+
+describe("pendingReceiveByCoord", () => {
+  const m = buildMatrix(overview);
+
+  it("sums pending receive qty per coordinate and skips unknown cards", () => {
+    const pending: PublicPendingTrade[] = [
+      {
+        id: 1,
+        reservedAt: "2026-06-29",
+        give: [],
+        receive: [
+          {
+            direction: "receive",
+            catalogId: 3,
+            series: "NEW YEAR",
+            character: "Mizuki",
+            rarity: "SSR",
+            qty: 1,
+          },
+        ],
+      },
+      {
+        id: 2,
+        reservedAt: "2026-06-29",
+        give: [],
+        receive: [
+          {
+            direction: "receive",
+            catalogId: 3,
+            series: "NEW YEAR",
+            character: "Mizuki",
+            rarity: "SSR",
+            qty: 2,
+          },
+          {
+            direction: "receive",
+            catalogId: 999,
+            series: "ZZZ",
+            character: "Nobody",
+            rarity: "R",
+            qty: 5,
+          },
+        ],
+      },
+    ];
+    const map = pendingReceiveByCoord(m, pending);
+    // NEW YEAR(si0)/Mizuki(ci0)/SSR(ri2): 1 + 2 = 3
+    expect(map.get("0|0|2")).toBe(3);
+    // unknown series ZZZ is skipped (not in the matrix)
+    expect(map.size).toBe(1);
   });
 });

@@ -16,8 +16,9 @@ import {
   RARITIES,
   type TradeItem,
   buildMatrix,
-  computeTradeWithPending,
+  computeTrade,
   ownedReceivable,
+  pendingReceiveByCoord,
 } from "../collection";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -364,10 +365,18 @@ export function PendingTrades() {
         recvOpts: [] as Opt[],
         recvOwnedOpts: [] as Opt[],
       };
-    const { surplus, needs } = computeTradeWithPending(m, pending);
+    // Needs come from the base trade view, NOT the pending-adjusted one: a card
+    // another reservation already plans to receive must stay selectable here
+    // (you can line up two trades for the same card). pendingReceiveByCoord only
+    // adds a heads-up so you can tell it is already spoken for.
+    const { surplus, needs } = computeTrade(m);
+    const incoming = pendingReceiveByCoord(m, pending);
     return {
       giveOpts: surplus.map((t) => toOpt(m, t, t.spare)),
-      recvOpts: needs.map((t) => toOpt(m, t, 1)),
+      recvOpts: needs.map((t) => {
+        const n = incoming.get(`${t.si}|${t.ci}|${t.ri}`) ?? 0;
+        return toOpt(m, t, 1, n > 0 ? `缺・已預定換入 ${n}` : "缺");
+      }),
       recvOwnedOpts: ownedReceivable(m).map((t) =>
         toOpt(m, t, RECEIVE_QTY_CAP, `持有 ${t.spare}`),
       ),

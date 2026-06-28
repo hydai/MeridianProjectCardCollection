@@ -461,4 +461,23 @@ describe("PendingTrades", () => {
       }),
     );
   });
+
+  it("keeps a missing card selectable even when another pending trade already receives it", async () => {
+    // sampleReservation receives KILLER Rei SR (owned 0). It must stay in the
+    // 缺卡 dropdown — flagged as already-reserved — not vanish into the gap
+    // between 缺卡 (pending-receive dedup) and 已持有 (owned 0).
+    vi.stubGlobal("fetch", stubFetchFor([sampleReservation]));
+
+    render(<PendingTrades />);
+    await waitFor(() =>
+      expect(screen.getByText("交換預約")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "＋ 新增換入（缺卡）" }),
+    );
+    expect(
+      screen.getByText("KILLER Rei SR（缺・已預定換入 1）"),
+    ).toBeInTheDocument();
+  });
 });

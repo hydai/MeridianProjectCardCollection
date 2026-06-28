@@ -164,3 +164,25 @@ export function ownedReceivable(m: Matrix): TradeItem[] {
   );
   return items;
 }
+
+// Sum of pending RECEIVE qty per matrix coordinate "si|ci|ri". Lets the
+// reservation form flag a missing card that another pending trade already
+// brings in, so it stays selectable (with a heads-up) instead of vanishing
+// from the needs list. Cards not in this matrix are skipped.
+export function pendingReceiveByCoord(
+  m: Matrix,
+  pending: PublicPendingTrade[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const p of pending) {
+    for (const r of p.receive) {
+      const si = m.series.indexOf(r.series);
+      const ci = m.characters.indexOf(r.character);
+      const ri = RARITIES.indexOf(r.rarity);
+      if (si < 0 || ci < 0 || ri < 0) continue;
+      const k = `${si}|${ci}|${ri}`;
+      out.set(k, (out.get(k) ?? 0) + r.qty);
+    }
+  }
+  return out;
+}
