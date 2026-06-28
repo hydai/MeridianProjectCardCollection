@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SERIES, buildCatalog, charactersFor } from "../../seed/catalog-def";
 import { type Matrix, buildMatrix } from "../../src/client/collection";
 import { Glance } from "../../src/client/views/Glance";
@@ -372,5 +372,66 @@ describe("Grid rarity filter", () => {
     expect(container.querySelectorAll(".grid-rarity-head")).toHaveLength(
       (SERIES.length - 1) * 3,
     );
+  });
+});
+
+describe("Trade copy buttons", () => {
+  const card = (
+    character: string,
+    rarity: "R" | "SR" | "SSR" | "UR",
+    owned: number,
+    id: number,
+  ) => ({ catalogId: id, series: "MP 4TH", character, rarity, owned });
+
+  // all owned = 1 → no duplicates, nothing missing → both panels empty
+  const singles: OverviewResponse = {
+    cells: [
+      card("Kirari", "R", 1, 1),
+      card("Kirari", "SR", 1, 2),
+      card("Kirari", "SSR", 1, 3),
+      card("Kirari", "UR", 1, 4),
+    ],
+    progress: [],
+  };
+  // Kirari UR owned 2 → exactly one surplus line; nothing missing
+  const oneSurplus: OverviewResponse = {
+    cells: [
+      card("Kirari", "R", 1, 1),
+      card("Kirari", "SR", 1, 2),
+      card("Kirari", "SSR", 1, 3),
+      card("Kirari", "UR", 2, 4),
+    ],
+    progress: [],
+  };
+
+  it("renders a copy button on each panel", () => {
+    render(<Trade m={buildMatrix(oneSurplus)} />);
+    expect(
+      screen.getByRole("button", { name: "複製可換出清單" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "複製想換入清單" }),
+    ).toBeInTheDocument();
+  });
+
+  it("disables a panel's copy button when it has nothing to copy", () => {
+    render(<Trade m={buildMatrix(singles)} />);
+    expect(
+      screen.getByRole("button", { name: "複製可換出清單" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "複製想換入清單" }),
+    ).toBeDisabled();
+  });
+
+  it("copies the visible surplus list in `角色, 系列, 數量` format", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    render(<Trade m={buildMatrix(oneSurplus)} />);
+    fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
+    expect(writeText).toHaveBeenCalledWith("UR\nKirari, MP 4TH, 1");
   });
 });

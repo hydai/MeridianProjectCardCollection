@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { PublicPendingTrade, ReservationLine } from "../../shared/types";
 import {
   type Matrix,
@@ -6,6 +6,7 @@ import {
   RARITY_KEYS,
   type TradeItem,
   computeTradeWithPending,
+  formatTradeList,
 } from "../collection";
 import { MissChip } from "./shared";
 
@@ -80,6 +81,67 @@ function PendingCard({ p }: { p: PublicPendingTrade }) {
   );
 }
 
+const ICON = {
+  width: 15,
+  height: 15,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+} as const;
+
+function CopyIcon() {
+  return (
+    <svg {...ICON} aria-hidden="true">
+      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg {...ICON} aria-hidden="true">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function CopyButton({
+  text,
+  label,
+  disabled,
+}: { text: string; label: string; disabled: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onClick = () => {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(true);
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {
+        /* clipboard unavailable (insecure context) — skip feedback */
+      });
+  };
+  return (
+    <button
+      type="button"
+      className={`trade-copy-btn ${copied ? "copied" : ""}`}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={copied ? "已複製" : label}
+      title={label}
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+    </button>
+  );
+}
+
 export function Trade({
   m,
   pending,
@@ -92,6 +154,9 @@ export function Trade({
     filter === "all"
       ? items
       : items.filter((x) => RARITY_KEYS[x.ri] === filter);
+
+  const fSurplus = filterItems(surplus);
+  const fNeeds = filterItems(needs);
 
   const summaryCards: {
     key: Filter;
@@ -162,8 +227,7 @@ export function Trade({
       );
     });
 
-  const panelBody = (items: TradeItem[], kind: "surplus" | "needs") => {
-    const filtered = filterItems(items);
+  const panelBody = (filtered: TradeItem[], kind: "surplus" | "needs") => {
     if (filtered.length === 0) {
       const rname = filter === "all" ? "" : `${RK_NAME[filter]} `;
       return (
@@ -177,8 +241,8 @@ export function Trade({
     return groupedList(filtered, kind);
   };
 
-  const surplusSub = `多餘 ${filterItems(surplus).reduce((s, x) => s + x.spare, 0)} 張`;
-  const needsSub = `缺 ${filterItems(needs).length} 種`;
+  const surplusSub = `多餘 ${fSurplus.reduce((s, x) => s + x.spare, 0)} 張`;
+  const needsSub = `缺 ${fNeeds.length} 種`;
 
   const urNeed = needs.filter((x) => x.ri === 3).length;
   const urSpare = surplus.filter((x) => x.ri === 3).length;
@@ -219,15 +283,31 @@ export function Trade({
       <div className="trade-grid">
         <section className="trade-panel">
           <h3 className="trade-panel-title">
-            可換出<span className="trade-panel-sub">{surplusSub}</span>
+            <span className="trade-panel-titletext">
+              可換出
+              <CopyButton
+                text={formatTradeList(fSurplus, m, "surplus")}
+                label="複製可換出清單"
+                disabled={fSurplus.length === 0}
+              />
+            </span>
+            <span className="trade-panel-sub">{surplusSub}</span>
           </h3>
-          {panelBody(surplus, "surplus")}
+          {panelBody(fSurplus, "surplus")}
         </section>
         <section className="trade-panel">
           <h3 className="trade-panel-title">
-            想換入<span className="trade-panel-sub">{needsSub}</span>
+            <span className="trade-panel-titletext">
+              想換入
+              <CopyButton
+                text={formatTradeList(fNeeds, m, "needs")}
+                label="複製想換入清單"
+                disabled={fNeeds.length === 0}
+              />
+            </span>
+            <span className="trade-panel-sub">{needsSub}</span>
           </h3>
-          {panelBody(needs, "needs")}
+          {panelBody(fNeeds, "needs")}
         </section>
       </div>
       {pending && pending.length > 0 ? (

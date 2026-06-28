@@ -1189,6 +1189,34 @@ footer .accent-mark {
   letter-spacing: 0.06em;
   font-weight: 400;
 }
+.trade-panel-titletext {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.trade-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.trade-copy-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-elevated);
+}
+.trade-copy-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.trade-copy-btn.copied {
+  color: var(--text);
+}
 
 /* Market board (交易看板) — public listing view */
 .trade-grid-single {
