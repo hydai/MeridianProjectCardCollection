@@ -146,56 +146,6 @@
     }
   }
 
-  /* ------------- STATS ------------- */
-
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    margin: 56px 0 0;
-    border-top: 0.5px solid var(--border);
-    border-bottom: 0.5px solid var(--border);
-    animation: rise 0.7s ease 0.2s both;
-  }
-
-  .stat {
-    padding: 22px 8px;
-    text-align: center;
-    border-right: 0.5px solid var(--border);
-  }
-  .stat:last-child {
-    border-right: none;
-  }
-
-  .stat-value {
-    font-family: "JetBrains Mono", monospace;
-    font-size: 28px;
-    font-weight: 400;
-    line-height: 1;
-    margin-bottom: 8px;
-    color: var(--text);
-  }
-
-  .stat-value.is-r {
-    color: var(--text);
-  }
-  .stat-value.is-sr {
-    color: var(--sr-color);
-  }
-  .stat-value.is-ssr {
-    color: var(--ssr-color);
-  }
-  .stat-value.is-ur {
-    color: var(--ur-color);
-  }
-
-  .stat-label {
-    font-size: 10px;
-    letter-spacing: 0.25em;
-    text-transform: uppercase;
-    color: var(--text-tertiary);
-    font-weight: 400;
-  }
-
   /* ------------- VIEWS ------------- */
 
   main {
@@ -1167,13 +1117,6 @@
   /* ------------- RESPONSIVE ------------- */
 
   @media (max-width: 540px) {
-    .stat-value {
-      font-size: 22px;
-    }
-    .stat-label {
-      font-size: 9px;
-      letter-spacing: 0.15em;
-    }
     .card {
       padding: 18px 16px;
     }
