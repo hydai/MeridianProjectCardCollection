@@ -8,23 +8,31 @@ import {
   getN,
 } from "../collection";
 
-const STORAGE_KEY = "mpc:grid:hiddenSeries";
+const SERIES_STORAGE_KEY = "mpc:grid:hiddenSeries";
+const RARITY_STORAGE_KEY = "mpc:grid:hiddenRarities";
 
-function loadHidden(): Set<string> {
+// Load a persisted "hidden" set, keeping only values still present in `valid`
+// (drops stale entries — a removed series, or an unknown rarity). Returns an
+// empty set if storage is unavailable or malformed.
+function loadHiddenSet(key: string, valid: readonly string[]): Set<string> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     const arr = raw ? JSON.parse(raw) : [];
     return Array.isArray(arr)
-      ? new Set(arr.filter((x): x is string => typeof x === "string"))
+      ? new Set(
+          arr.filter(
+            (x): x is string => typeof x === "string" && valid.includes(x),
+          ),
+        )
       : new Set();
   } catch {
     return new Set();
   }
 }
 
-function saveHidden(hidden: Set<string>): void {
+function saveHiddenSet(key: string, hidden: Set<string>): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...hidden]));
+    localStorage.setItem(key, JSON.stringify([...hidden]));
   } catch {
     // localStorage unavailable (private mode / sandboxed iframe) — skip persisting.
   }
@@ -32,21 +40,35 @@ function saveHidden(hidden: Set<string>): void {
 
 export function Grid({ m }: { m: Matrix }) {
   const [mode, setMode] = useState<"check" | "count">("check");
-  const [hidden, setHidden] = useState<Set<string>>(() => {
-    const stored = loadHidden();
-    return new Set([...stored].filter((s) => m.series.includes(s)));
-  });
+  const [hidden, setHidden] = useState<Set<string>>(() =>
+    loadHiddenSet(SERIES_STORAGE_KEY, m.series),
+  );
+  const [hiddenR, setHiddenR] = useState<Set<string>>(() =>
+    loadHiddenSet(RARITY_STORAGE_KEY, RARITIES),
+  );
   const isCount = mode === "count";
 
   useEffect(() => {
-    saveHidden(hidden);
+    saveHiddenSet(SERIES_STORAGE_KEY, hidden);
   }, [hidden]);
+
+  useEffect(() => {
+    saveHiddenSet(RARITY_STORAGE_KEY, hiddenR);
+  }, [hiddenR]);
 
   const toggle = (s: string) =>
     setHidden((prev) => {
       const next = new Set(prev);
       if (next.has(s)) next.delete(s);
       else next.add(s);
+      return next;
+    });
+
+  const toggleRarity = (r: string) =>
+    setHiddenR((prev) => {
+      const next = new Set(prev);
+      if (next.has(r)) next.delete(r);
+      else next.add(r);
       return next;
     });
 
@@ -96,6 +118,22 @@ export function Grid({ m }: { m: Matrix }) {
       </div>
 
       <div className="grid-filter">
+        <div className="grid-filter-row">
+          <span className="grid-filter-label">稀有度</span>
+          <div className="grid-filter-btns">
+            {RARITIES.map((rarity) => (
+              <button
+                type="button"
+                key={rarity}
+                className={`mode-btn ${!hiddenR.has(rarity) ? "active" : ""}`}
+                aria-pressed={!hiddenR.has(rarity)}
+                onClick={() => toggleRarity(rarity)}
+              >
+                {rarity}
+              </button>
+            ))}
+          </div>
+        </div>
         {volumeRows.map((row) => (
           <div key={row.label} className="grid-filter-row">
             <span className="grid-filter-label">{row.label}</span>

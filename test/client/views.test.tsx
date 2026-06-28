@@ -239,3 +239,62 @@ describe("Grid volume filter", () => {
     for (const s of persisted) expect(SERIES).toContain(s);
   });
 });
+
+describe("Grid rarity filter", () => {
+  beforeEach(() => localStorage.clear());
+
+  const RARITY_NAMES = ["R", "SR", "SSR", "UR"];
+
+  it("renders a 稀有度 row with a button per rarity, all pressed by default", () => {
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    expect(within(filter).getByText("稀有度")).toBeInTheDocument();
+    for (const name of RARITY_NAMES) {
+      expect(within(filter).getByRole("button", { name })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    }
+  });
+
+  it("toggles a rarity button's aria-pressed on click", () => {
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    const ur = within(filter).getByRole("button", { name: "UR" });
+    expect(ur).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(ur);
+    expect(ur).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(ur);
+    expect(ur).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("remembers hidden rarities across remounts via localStorage", () => {
+    const first = render(<Grid m={m} />);
+    const f1 = first.container.querySelector(".grid-filter") as HTMLElement;
+    fireEvent.click(within(f1).getByRole("button", { name: "UR" }));
+    first.unmount();
+    const second = render(<Grid m={m} />);
+    const f2 = second.container.querySelector(".grid-filter") as HTMLElement;
+    expect(within(f2).getByRole("button", { name: "UR" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("ignores unknown stored rarity values and self-heals the stored set", () => {
+    localStorage.setItem(
+      "mpc:grid:hiddenRarities",
+      JSON.stringify(["UR", "BOGUS"]),
+    );
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    expect(within(filter).getByRole("button", { name: "UR" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    const persisted = JSON.parse(
+      localStorage.getItem("mpc:grid:hiddenRarities") as string,
+    ) as string[];
+    expect(persisted).toEqual(["UR"]);
+  });
+});
