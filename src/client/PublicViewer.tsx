@@ -1,3 +1,4 @@
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import type { MarketListing, PublicPendingTrade } from "../shared/types";
@@ -151,7 +152,9 @@ export default function PublicViewer() {
 
       <main>
         {error ? (
-          <div className="state-msg">無法載入資料：{error}</div>
+          <p className="py-12 text-center font-accent italic tracking-[0.1em] text-muted-foreground">
+            無法載入資料：{error}
+          </p>
         ) : matrix ? (
           <ActiveView
             id={tab}
@@ -161,7 +164,11 @@ export default function PublicViewer() {
             pending={pending}
           />
         ) : (
-          <div className="state-msg">載入中…</div>
+          <div className="flex flex-col gap-3 py-12">
+            <Skeleton className="mx-auto h-6 w-40" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
         )}
       </main>
 

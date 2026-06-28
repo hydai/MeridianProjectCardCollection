@@ -273,17 +273,6 @@
     color: var(--text);
   }
 
-  /* ------------- LOADING / ERROR ------------- */
-
-  .state-msg {
-    text-align: center;
-    color: var(--text-tertiary);
-    font-family: "Cormorant Garamond", serif;
-    font-style: italic;
-    letter-spacing: 0.1em;
-    padding: 48px 0;
-  }
-
   /* ------------- WISHLIST VIEW ------------- */
 
   .overall {
