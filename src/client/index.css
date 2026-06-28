@@ -1,9 +1,11 @@
+/* Declare the layer order BEFORE importing Tailwind so `legacy` is registered
+   below `utilities` (a @layer statement is allowed before @import). Declaring
+   it AFTER the tailwind import appends legacy *after* utilities, so legacy would
+   win and migrated utilities (e.g. text-rarity-* cell colours) would lose. */
+@layer theme, base, components, legacy, utilities;
+
 @import "tailwindcss";
 @import "tw-animate-css";
-
-/* Legacy bespoke CSS lives in its own layer below `utilities`, so Tailwind and
-   shadcn utilities always win, while legacy still beats preflight (base). */
-@layer theme, base, components, legacy, utilities;
 
 /* Design system ported from the meridian-cards artifact. */
 
@@ -312,29 +314,6 @@
     padding: 8px 6px 10px;
     text-align: center;
   }
-  th.col-name {
-    text-align: left;
-    padding-left: 2px;
-  }
-  th.col-total {
-    text-align: right;
-    padding-right: 2px;
-    border-left: 0.5px solid var(--border);
-  }
-
-  th.th-r {
-    color: var(--r-color);
-  }
-  th.th-sr {
-    color: var(--sr-color);
-  }
-  th.th-ssr {
-    color: var(--ssr-color);
-  }
-  th.th-ur {
-    color: var(--ur-color);
-  }
-
   td {
     padding: 10px 6px;
     text-align: center;
@@ -342,71 +321,6 @@
     font-family: "JetBrains Mono", monospace;
     font-size: 14px;
     color: var(--text);
-  }
-
-  td.col-name {
-    text-align: left;
-    padding-left: 2px;
-    font-family: "IBM Plex Sans TC", sans-serif;
-    font-size: 14px;
-    color: var(--text-secondary);
-    font-weight: 400;
-  }
-
-  td.col-total {
-    font-weight: 500;
-    text-align: right;
-    padding-right: 2px;
-    color: var(--text);
-    border-left: 0.5px solid var(--border);
-  }
-
-  td.zero {
-    color: var(--text-quaternary);
-  }
-  td.na {
-    color: var(--text-quaternary);
-    font-family: "JetBrains Mono", monospace;
-    opacity: 0.5;
-  }
-  td.num-sr {
-    color: var(--sr-color);
-  }
-  td.num-ssr {
-    color: var(--ssr-color);
-  }
-  td.num-ur {
-    color: var(--ur-color);
-    font-weight: 500;
-  }
-
-  tr.subtotal td {
-    border-top: 0.5px solid var(--border-strong);
-    font-weight: 500;
-    color: var(--text-secondary);
-    background: rgba(255, 255, 255, 0.015);
-  }
-  tr.subtotal td.col-name {
-    text-align: right;
-    padding-right: 8px;
-    font-family: "IBM Plex Sans TC", sans-serif;
-    font-size: 12px;
-    color: var(--text-tertiary);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    font-weight: 400;
-  }
-
-  .view-char th.col-name,
-  .view-char td.col-name,
-  .view-series th.col-name,
-  .view-series td.col-name {
-    width: 36%;
-  }
-
-  .view-rarity th.col-name,
-  .view-rarity td.col-name {
-    width: 26%;
   }
 
   /* ------------- LOADING / ERROR ------------- */
@@ -1281,9 +1195,6 @@
     }
     td {
       padding: 9px 4px;
-      font-size: 13px;
-    }
-    td.col-name {
       font-size: 13px;
     }
     .miss-grid {
