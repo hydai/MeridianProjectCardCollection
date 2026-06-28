@@ -234,9 +234,6 @@
   .opening-fields {
     grid-template-columns: 1fr;
   }
-  .admin {
-    padding: 40px 16px 72px;
-  }
 }
 
 .line-editor {
