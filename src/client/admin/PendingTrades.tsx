@@ -17,8 +17,8 @@ import {
   type TradeItem,
   buildMatrix,
   computeTrade,
-  ownedReceivable,
   pendingReceiveByCoord,
+  receivableCards,
 } from "../collection";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -131,12 +131,10 @@ function LineEditor({
 function ReservationForm({
   giveOpts,
   recvOpts,
-  recvOwnedOpts,
   onDone,
 }: {
   giveOpts: Opt[];
   recvOpts: Opt[];
-  recvOwnedOpts: Opt[];
   onDone: () => void;
 }) {
   const [counterparty, setCounterparty] = useState("");
@@ -144,7 +142,6 @@ function ReservationForm({
   const [note, setNote] = useState("");
   const [gives, setGives] = useState<LineDraft[]>([]);
   const [receives, setReceives] = useState<LineDraft[]>([]);
-  const [receivesOwned, setReceivesOwned] = useState<LineDraft[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -177,14 +174,10 @@ function ReservationForm({
         reservedAt,
         note: note || undefined,
         give,
-        receive: [
-          ...toInputs(receives, recvOpts),
-          ...toInputs(receivesOwned, recvOwnedOpts),
-        ],
+        receive: toInputs(receives, recvOpts),
       });
       setGives([]);
       setReceives([]);
-      setReceivesOwned([]);
       setCounterparty("");
       setNote("");
       onDone();
@@ -225,16 +218,10 @@ function ReservationForm({
         setDrafts={setGives}
       />
       <LineEditor
-        title="換入（缺卡）"
+        title="換入"
         opts={recvOpts}
         drafts={receives}
         setDrafts={setReceives}
-      />
-      <LineEditor
-        title="換入（我已有的卡）"
-        opts={recvOwnedOpts}
-        drafts={receivesOwned}
-        setDrafts={setReceivesOwned}
       />
       <div className="inline-fields">
         <button
@@ -358,28 +345,25 @@ export function PendingTrades() {
   }, []);
   useEffect(() => reload(), [reload]);
 
-  const { giveOpts, recvOpts, recvOwnedOpts } = useMemo(() => {
-    if (!m || !pending)
-      return {
-        giveOpts: [] as Opt[],
-        recvOpts: [] as Opt[],
-        recvOwnedOpts: [] as Opt[],
-      };
-    // Needs come from the base trade view, NOT the pending-adjusted one: a card
-    // another reservation already plans to receive must stay selectable here
-    // (you can line up two trades for the same card). pendingReceiveByCoord only
-    // adds a heads-up so you can tell it is already spoken for.
-    const { surplus, needs } = computeTrade(m);
+  const { giveOpts, recvOpts } = useMemo(() => {
+    if (!m || !pending) return { giveOpts: [] as Opt[], recvOpts: [] as Opt[] };
+    const { surplus } = computeTrade(m);
     const incoming = pendingReceiveByCoord(m, pending);
     return {
       giveOpts: surplus.map((t) => toOpt(m, t, t.spare)),
-      recvOpts: needs.map((t) => {
-        const n = incoming.get(`${t.si}|${t.ci}|${t.ri}`) ?? 0;
-        return toOpt(m, t, 1, n > 0 ? `缺・已預定換入 ${n}` : "缺");
+      // One unified 換入 list over the whole catalog: 持有 N for cards you hold,
+      // 缺 for missing ones, plus ・已預定換入 M when another pending trade is
+      // already bringing it in (so a card never hides between two sub-lists).
+      recvOpts: receivableCards(m).map((t) => {
+        const p = incoming.get(`${t.si}|${t.ci}|${t.ri}`) ?? 0;
+        const base = t.spare >= 1 ? `持有 ${t.spare}` : "缺";
+        return toOpt(
+          m,
+          t,
+          RECEIVE_QTY_CAP,
+          p > 0 ? `${base}・已預定換入 ${p}` : base,
+        );
       }),
-      recvOwnedOpts: ownedReceivable(m).map((t) =>
-        toOpt(m, t, RECEIVE_QTY_CAP, `持有 ${t.spare}`),
-      ),
     };
   }, [m, pending]);
 
@@ -394,7 +378,6 @@ export function PendingTrades() {
           <ReservationForm
             giveOpts={giveOpts}
             recvOpts={recvOpts}
-            recvOwnedOpts={recvOwnedOpts}
             onDone={reload}
           />
           {pending.length === 0 ? (

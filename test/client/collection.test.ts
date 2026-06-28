@@ -7,8 +7,8 @@ import {
   exists,
   getN,
   grandTotalByRarity,
-  ownedReceivable,
   pendingReceiveByCoord,
+  receivableCards,
 } from "../../src/client/collection";
 import type {
   OverviewResponse,
@@ -147,33 +147,28 @@ describe("computeTradeWithPending", () => {
   });
 });
 
-describe("ownedReceivable", () => {
+describe("receivableCards", () => {
   const m = buildMatrix(overview);
-  // overview owned≥1 cells: NEW YEAR/Mizuki R=3, NEW YEAR/Mizuki SR=1,
-  // MP 4TH/Mizuki R=2, MP 4TH/KSP R=1  → 4 items. (NEW YEAR/KSP is a null cell.)
+  // overview existing cells = 12 (2 series × 2 chars × 4 rarities = 16, minus
+  // the 4 null NEW YEAR/KSP cells). The unified 換入 list spans the whole catalog.
 
-  it("returns every existing cell the owner holds at least one of", () => {
-    expect(ownedReceivable(m)).toHaveLength(4);
-  });
-
-  it("carries the current holding count in spare", () => {
-    const items = ownedReceivable(m);
+  it("returns every existing cell with its owned count as spare", () => {
+    const items = receivableCards(m);
+    expect(items).toHaveLength(12);
     // NEW YEAR(si0)/Mizuki(ci0)/R(ri0) owned 3
     expect(
       items.find((x) => x.si === 0 && x.ci === 0 && x.ri === 0)?.spare,
     ).toBe(3);
-    // MP 4TH(si1)/Mizuki(ci0)/R(ri0) owned 2
+    // NEW YEAR(si0)/Mizuki(ci0)/SSR(ri2) owned 0 → still listed, spare 0
     expect(
-      items.find((x) => x.si === 1 && x.ci === 0 && x.ri === 0)?.spare,
-    ).toBe(2);
+      items.find((x) => x.si === 0 && x.ci === 0 && x.ri === 2)?.spare,
+    ).toBe(0);
   });
 
-  it("excludes owned-0 cells (disjoint from needs) and null cells", () => {
-    const items = ownedReceivable(m);
-    // every item is actually held
-    expect(items.every((x) => getN(m, x.si, x.ci, x.ri) >= 1)).toBe(true);
-    // NEW YEAR/KSP (si0,ci1) does not exist → never present
-    expect(items.some((x) => x.si === 0 && x.ci === 1)).toBe(false);
+  it("excludes null cells (NEW YEAR/KSP never exists)", () => {
+    expect(receivableCards(m).some((x) => x.si === 0 && x.ci === 1)).toBe(
+      false,
+    );
   });
 });
 

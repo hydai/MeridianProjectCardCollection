@@ -403,26 +403,31 @@ describe("PendingTrades", () => {
     expect(await screen.findByText(/500/)).toBeInTheDocument();
   });
 
-  it("offers an already-owned card on the receive side (持有 hint, give keeps 餘)", async () => {
-    vi.stubGlobal("fetch", stubFetchFor([]));
+  it("lists the whole catalog in one 換入 section with 持有/缺/已預定 hints", async () => {
+    // sampleReservation receives KILLER Rei SR (owned 0, pending-incoming).
+    vi.stubGlobal("fetch", stubFetchFor([sampleReservation]));
 
     render(<PendingTrades />);
     await waitFor(() =>
       expect(screen.getByText("交換預約")).toBeInTheDocument(),
     );
 
-    // Give side still shows 餘 (backward-compatible hint).
+    // Give side unchanged: surplus only, 餘 hint.
     fireEvent.click(screen.getByRole("button", { name: "＋ 新增給出" }));
     expect(screen.getByText("MP 4TH Mizuki R（餘 1）")).toBeInTheDocument();
 
-    // The new owned-receive section shows the same card as 持有 2.
-    fireEvent.click(
-      screen.getByRole("button", { name: "＋ 新增換入（我已有的卡）" }),
-    );
+    // One unified 換入 list: owned, plain-missing, and already-incoming together.
+    fireEvent.click(screen.getByRole("button", { name: "＋ 新增換入" }));
     expect(screen.getByText("MP 4TH Mizuki R（持有 2）")).toBeInTheDocument();
+    expect(
+      screen.getByText("KILLER Rei SR（缺・已預定換入 1）"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/（缺）$/, { selector: "option" }).length,
+    ).toBeGreaterThan(0);
   });
 
-  it("merges an owned-receive line into the posted receive array", async () => {
+  it("can receive an already-owned card through the unified 換入 list", async () => {
     const fetchMock = stubFetchFor([]);
     vi.stubGlobal("fetch", fetchMock);
 
@@ -431,12 +436,17 @@ describe("PendingTrades", () => {
       expect(screen.getByText("交換預約")).toBeInTheDocument(),
     );
 
-    // ≥1 give line is required; add the only surplus (MP 4TH Mizuki R).
     fireEvent.click(screen.getByRole("button", { name: "＋ 新增給出" }));
-    // Add an owned card on the receive side (defaults to MP 4TH Mizuki R).
-    fireEvent.click(
-      screen.getByRole("button", { name: "＋ 新增換入（我已有的卡）" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "＋ 新增換入" }));
+
+    // Pick the owned card MP 4TH Mizuki R (持有 2) in the 換入 dropdown.
+    const owned = screen.getByText("MP 4TH Mizuki R（持有 2）");
+    const select = owned.closest("select");
+    if (select) {
+      fireEvent.change(select, {
+        target: { value: owned.getAttribute("value") ?? "" },
+      });
+    }
     fireEvent.click(screen.getByRole("button", { name: "新增預約" }));
 
     await waitFor(() =>
@@ -460,24 +470,5 @@ describe("PendingTrades", () => {
         qty: 1,
       }),
     );
-  });
-
-  it("keeps a missing card selectable even when another pending trade already receives it", async () => {
-    // sampleReservation receives KILLER Rei SR (owned 0). It must stay in the
-    // 缺卡 dropdown — flagged as already-reserved — not vanish into the gap
-    // between 缺卡 (pending-receive dedup) and 已持有 (owned 0).
-    vi.stubGlobal("fetch", stubFetchFor([sampleReservation]));
-
-    render(<PendingTrades />);
-    await waitFor(() =>
-      expect(screen.getByText("交換預約")).toBeInTheDocument(),
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "＋ 新增換入（缺卡）" }),
-    );
-    expect(
-      screen.getByText("KILLER Rei SR（缺・已預定換入 1）"),
-    ).toBeInTheDocument();
   });
 });

@@ -145,20 +145,17 @@ export function computeTradeWithPending(
   return { surplus, needs: adjustedNeeds };
 }
 
-// Cards the owner currently holds at least one of (owned ≥ 1), as candidates
-// for "receive a card I already have". spare carries the current holding count
-// for display. Excludes null cells and owned-0 cells (the latter are needs).
-// Independent of pending: give-side reservations are already deducted in the
-// matrix by getOverview, and receiving an owned card does not interact with the
-// needs-clearing in computeTradeWithPending.
-export function ownedReceivable(m: Matrix): TradeItem[] {
+// Every existing catalog card, as receive candidates for the unified 換入 list.
+// spare carries the current holding count (0 = missing) so the form can render
+// 持有 N / 缺 inline. Excludes null cells. Give-side reservations are already
+// deducted in the matrix by getOverview, so spare reflects effective holdings.
+export function receivableCards(m: Matrix): TradeItem[] {
   const items: TradeItem[] = [];
   m.series.forEach((_s, si) =>
     m.characters.forEach((_c, ci) => {
       if (!exists(m, si, ci)) return;
       RARITIES.forEach((_r, ri) => {
-        const n = getN(m, si, ci, ri);
-        if (n >= 1) items.push({ ri, si, ci, spare: n });
+        items.push({ ri, si, ci, spare: getN(m, si, ci, ri) });
       });
     }),
   );
