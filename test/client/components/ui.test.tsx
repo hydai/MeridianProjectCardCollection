@@ -1,5 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -34,5 +42,26 @@ describe("Card", () => {
     );
     expect(screen.getByText("面板")).toBeInTheDocument();
     expect(screen.getByText("內容")).toBeInTheDocument();
+  });
+});
+
+describe("Table", () => {
+  it("renders headers and cells", () => {
+    render(
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>系列</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell>NEW YEAR</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+    expect(screen.getByText("系列")).toBeInTheDocument();
+    expect(screen.getByText("NEW YEAR")).toBeInTheDocument();
   });
 });
