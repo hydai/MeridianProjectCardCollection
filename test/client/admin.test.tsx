@@ -402,4 +402,63 @@ describe("PendingTrades", () => {
 
     expect(await screen.findByText(/500/)).toBeInTheDocument();
   });
+
+  it("offers an already-owned card on the receive side (持有 hint, give keeps 餘)", async () => {
+    vi.stubGlobal("fetch", stubFetchFor([]));
+
+    render(<PendingTrades />);
+    await waitFor(() =>
+      expect(screen.getByText("交換預約")).toBeInTheDocument(),
+    );
+
+    // Give side still shows 餘 (backward-compatible hint).
+    fireEvent.click(screen.getByRole("button", { name: "＋ 新增給出" }));
+    expect(screen.getByText("MP 4TH Mizuki R（餘 1）")).toBeInTheDocument();
+
+    // The new owned-receive section shows the same card as 持有 2.
+    fireEvent.click(
+      screen.getByRole("button", { name: "＋ 新增換入（我已有的卡）" }),
+    );
+    expect(screen.getByText("MP 4TH Mizuki R（持有 2）")).toBeInTheDocument();
+  });
+
+  it("merges an owned-receive line into the posted receive array", async () => {
+    const fetchMock = stubFetchFor([]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PendingTrades />);
+    await waitFor(() =>
+      expect(screen.getByText("交換預約")).toBeInTheDocument(),
+    );
+
+    // ≥1 give line is required; add the only surplus (MP 4TH Mizuki R).
+    fireEvent.click(screen.getByRole("button", { name: "＋ 新增給出" }));
+    // Add an owned card on the receive side (defaults to MP 4TH Mizuki R).
+    fireEvent.click(
+      screen.getByRole("button", { name: "＋ 新增換入（我已有的卡）" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "新增預約" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([u, init]) =>
+            u === "/api/admin/pending-trades" && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+    const call = fetchMock.mock.calls.find(
+      ([u, init]) =>
+        u === "/api/admin/pending-trades" && init?.method === "POST",
+    );
+    const body = JSON.parse(call?.[1]?.body as string);
+    expect(body.receive).toContainEqual(
+      expect.objectContaining({
+        series: "MP 4TH",
+        character: "Mizuki",
+        rarity: "R",
+        qty: 1,
+      }),
+    );
+  });
 });

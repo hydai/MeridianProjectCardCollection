@@ -17,9 +17,13 @@ import {
   type TradeItem,
   buildMatrix,
   computeTradeWithPending,
+  ownedReceivable,
 } from "../collection";
 
 const today = () => new Date().toISOString().slice(0, 10);
+
+// Already-owned cards have no natural receive cap; clamp the number input here.
+const RECEIVE_QTY_CAP = 99;
 
 interface Opt {
   value: string; // "si|ci|ri"
@@ -28,9 +32,10 @@ interface Opt {
   character: string;
   rarity: Rarity;
   max: number;
+  hint: string; // parenthetical shown in the dropdown, e.g. "餘 3" or "持有 2"
 }
 
-function toOpt(m: Matrix, t: TradeItem, max: number): Opt {
+function toOpt(m: Matrix, t: TradeItem, max: number, hint?: string): Opt {
   const series = m.series[t.si];
   const character = m.characters[t.ci];
   const rarity = RARITIES[t.ri];
@@ -41,6 +46,7 @@ function toOpt(m: Matrix, t: TradeItem, max: number): Opt {
     character,
     rarity,
     max,
+    hint: hint ?? `餘 ${max}`,
   };
 }
 
@@ -92,7 +98,7 @@ function LineEditor({
             >
               {opts.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.label}（餘 {o.max}）
+                  {o.label}（{o.hint}）
                 </option>
               ))}
             </select>
@@ -124,10 +130,12 @@ function LineEditor({
 function ReservationForm({
   giveOpts,
   recvOpts,
+  recvOwnedOpts,
   onDone,
 }: {
   giveOpts: Opt[];
   recvOpts: Opt[];
+  recvOwnedOpts: Opt[];
   onDone: () => void;
 }) {
   const [counterparty, setCounterparty] = useState("");
@@ -135,6 +143,7 @@ function ReservationForm({
   const [note, setNote] = useState("");
   const [gives, setGives] = useState<LineDraft[]>([]);
   const [receives, setReceives] = useState<LineDraft[]>([]);
+  const [receivesOwned, setReceivesOwned] = useState<LineDraft[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -167,10 +176,14 @@ function ReservationForm({
         reservedAt,
         note: note || undefined,
         give,
-        receive: toInputs(receives, recvOpts),
+        receive: [
+          ...toInputs(receives, recvOpts),
+          ...toInputs(receivesOwned, recvOwnedOpts),
+        ],
       });
       setGives([]);
       setReceives([]);
+      setReceivesOwned([]);
       setCounterparty("");
       setNote("");
       onDone();
@@ -211,10 +224,16 @@ function ReservationForm({
         setDrafts={setGives}
       />
       <LineEditor
-        title="換入"
+        title="換入（缺卡）"
         opts={recvOpts}
         drafts={receives}
         setDrafts={setReceives}
+      />
+      <LineEditor
+        title="換入（我已有的卡）"
+        opts={recvOwnedOpts}
+        drafts={receivesOwned}
+        setDrafts={setReceivesOwned}
       />
       <div className="inline-fields">
         <button
@@ -338,12 +357,20 @@ export function PendingTrades() {
   }, []);
   useEffect(() => reload(), [reload]);
 
-  const { giveOpts, recvOpts } = useMemo(() => {
-    if (!m || !pending) return { giveOpts: [] as Opt[], recvOpts: [] as Opt[] };
+  const { giveOpts, recvOpts, recvOwnedOpts } = useMemo(() => {
+    if (!m || !pending)
+      return {
+        giveOpts: [] as Opt[],
+        recvOpts: [] as Opt[],
+        recvOwnedOpts: [] as Opt[],
+      };
     const { surplus, needs } = computeTradeWithPending(m, pending);
     return {
       giveOpts: surplus.map((t) => toOpt(m, t, t.spare)),
       recvOpts: needs.map((t) => toOpt(m, t, 1)),
+      recvOwnedOpts: ownedReceivable(m).map((t) =>
+        toOpt(m, t, RECEIVE_QTY_CAP, `持有 ${t.spare}`),
+      ),
     };
   }, [m, pending]);
 
@@ -358,6 +385,7 @@ export function PendingTrades() {
           <ReservationForm
             giveOpts={giveOpts}
             recvOpts={recvOpts}
+            recvOwnedOpts={recvOwnedOpts}
             onDone={reload}
           />
           {pending.length === 0 ? (
