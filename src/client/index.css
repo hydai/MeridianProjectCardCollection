@@ -190,68 +190,6 @@ body {
   font-weight: 400;
 }
 
-/* ------------- TABS ------------- */
-
-.tabs {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 0;
-  margin: 64px 0 48px;
-  border-bottom: 0.5px solid var(--border);
-  animation: rise 0.7s ease 0.35s both;
-}
-
-.tab {
-  background: none;
-  border: none;
-  padding: 18px 28px 16px;
-  color: var(--text-tertiary);
-  font-family: "IBM Plex Sans TC", sans-serif;
-  font-size: 14px;
-  font-weight: 400;
-  letter-spacing: 0.15em;
-  cursor: pointer;
-  position: relative;
-  transition: color 0.25s ease;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.tab:hover {
-  color: var(--text-secondary);
-}
-
-.tab .tab-en {
-  font-family: "Cormorant Garamond", serif;
-  font-style: italic;
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  opacity: 0.6;
-  font-weight: 400;
-}
-
-.tab.active {
-  color: var(--primary);
-}
-.tab.active .tab-en {
-  opacity: 0.9;
-}
-
-.tab.active::after {
-  content: "";
-  position: absolute;
-  bottom: -0.5px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100%;
-  height: 1px;
-  background: var(--primary);
-}
-
 /* ------------- VIEWS ------------- */
 
 main {
@@ -1317,13 +1255,6 @@ tr.subtotal td.col-name {
   .stat-label {
     font-size: 9px;
     letter-spacing: 0.15em;
-  }
-  .tab {
-    padding: 14px 14px 12px;
-    font-size: 13px;
-  }
-  .tab .tab-en {
-    font-size: 10px;
   }
   .card {
     padding: 18px 16px;

@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import type { MarketListing, PublicPendingTrade } from "../shared/types";
 import { fetchMarket, fetchOverview, fetchPendingTrades } from "./api";
@@ -116,16 +117,34 @@ export default function PublicViewer() {
         {matrix ? <StatsBar m={matrix} /> : null}
       </header>
 
-      <nav className="tabs">
+      <nav
+        role="tablist"
+        className="mt-16 mb-12 flex flex-wrap justify-center border-b border-border animate-[rise_0.7s_ease_0.35s_both]"
+      >
         {TABS.map((t) => (
           <button
-            type="button"
             key={t.id}
-            className={`tab ${tab === t.id ? "active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
             onClick={() => selectTab(t.id)}
+            className={cn(
+              "relative flex cursor-pointer flex-col items-center gap-1 border-0 bg-transparent px-7 pt-[18px] pb-4 font-sans text-sm tracking-[0.15em] text-muted-foreground transition-colors hover:text-foreground max-sm:px-3.5 max-sm:text-[13px]",
+              "after:absolute after:bottom-[-0.5px] after:left-1/2 after:h-px after:w-full after:-translate-x-1/2 after:bg-primary after:transition-opacity",
+              tab === t.id
+                ? "text-primary after:opacity-100"
+                : "after:opacity-0",
+            )}
           >
             {t.zh}
-            <span className="tab-en">{t.en}</span>
+            <span
+              className={cn(
+                "font-accent text-[11px] italic uppercase tracking-[0.18em] transition-opacity max-sm:text-[10px]",
+                tab === t.id ? "opacity-90" : "opacity-60",
+              )}
+            >
+              {t.en}
+            </span>
           </button>
         ))}
       </nav>
