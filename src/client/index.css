@@ -98,11 +98,10 @@
   --radius-2xl: calc(var(--radius) * 1.8);
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+/* The universal margin/padding/box-sizing reset is provided by Tailwind's
+   preflight (@layer base), which utility classes correctly override. A bespoke
+   unlayered `* {}` reset here would beat layered utilities (mx-auto, px-*) and
+   break the migrated Tailwind layouts. */
 
 html {
   scroll-behavior: smooth;
