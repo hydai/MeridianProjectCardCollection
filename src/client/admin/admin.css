@@ -29,7 +29,7 @@
   text-decoration: none;
 }
 .admin-back:hover {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .admin-nav {
@@ -55,7 +55,7 @@
   color: var(--text-secondary);
 }
 .admin-tab.active {
-  color: var(--accent);
+  color: var(--primary);
 }
 .admin-tab.active::after {
   content: "";
@@ -64,7 +64,7 @@
   left: 0;
   right: 0;
   height: 1px;
-  background: var(--accent);
+  background: var(--primary);
 }
 
 .panel {
@@ -112,7 +112,7 @@
 .admin select:focus,
 .admin textarea:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--primary);
 }
 .admin input[type="checkbox"] {
   width: auto;
@@ -127,7 +127,7 @@
   transition: filter 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 .btn-primary {
-  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  background: linear-gradient(90deg, var(--primary-dim), var(--primary));
   color: #1a1612;
   border: none;
   padding: 11px 26px;
@@ -149,8 +149,8 @@
   font-size: 12px;
 }
 .btn-ghost:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .btn-sm {
   padding: 4px 10px;
@@ -178,7 +178,7 @@
 }
 
 .toast {
-  color: var(--accent);
+  color: var(--primary);
   font-family: "Cormorant Garamond", serif;
   font-style: italic;
   font-size: 14px;
@@ -244,7 +244,7 @@
   color: var(--ur-color);
 }
 .pill.dup {
-  color: var(--accent);
+  color: var(--primary);
   border-color: rgba(201, 161, 74, 0.4);
   background: rgba(201, 161, 74, 0.08);
 }
@@ -354,12 +354,12 @@
   transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
 }
 .opt:hover {
-  border-color: var(--accent);
+  border-color: var(--primary);
   color: var(--text);
 }
 .opt.active {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--primary);
+  color: var(--primary);
   background: rgba(201, 161, 74, 0.08);
 }
 /* A selected rarity takes its own colour. */

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 /* Design system ported from the meridian-cards artifact. */
 
@@ -14,8 +15,8 @@
   --text-secondary: #a39e93;
   --text-tertiary: #6a6660;
   --text-quaternary: #46433e;
-  --accent: #c9a14a;
-  --accent-dim: #8a7438;
+  --primary: #c9a14a;
+  --primary-dim: #8a7438;
 
   --r-color: #9a958b;
   --sr-color: #d4a857;
@@ -26,6 +27,75 @@
   --sr-soft: rgba(212, 168, 87, 0.08);
   --ssr-soft: rgba(214, 138, 163, 0.08);
   --ur-soft: rgba(224, 113, 113, 0.1);
+
+  /* ---- shadcn semantic token bridge (dark-only) ---- */
+  /* Semantic tokens alias the legacy brand tokens above: single source of
+     truth, no value duplication. Dark values live on :root (no .dark). */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface-elevated);
+  --popover-foreground: var(--text);
+  /* --primary is the legacy gold (renamed above) */
+  --primary-foreground: var(--bg);
+  --secondary: var(--surface-elevated);
+  --secondary-foreground: var(--text);
+  --muted: var(--bg-subtle);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--surface-elevated);
+  --accent-foreground: var(--text);
+  --destructive: var(--ur-color);
+  /* --border is the legacy dark border (shared, #2a2520) */
+  --input: var(--border);
+  --ring: var(--primary);
+  --radius: 0.5rem;
+
+  /* brand extension: rarity palette */
+  --rarity-r: var(--r-color);
+  --rarity-sr: var(--sr-color);
+  --rarity-ssr: var(--ssr-color);
+  --rarity-ur: var(--ur-color);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* brand: rarity colours → bg-rarity-r / text-rarity-ur / border-rarity-sr … */
+  --color-rarity-r: var(--rarity-r);
+  --color-rarity-sr: var(--rarity-sr);
+  --color-rarity-ssr: var(--rarity-ssr);
+  --color-rarity-ur: var(--rarity-ur);
+
+  /* brand: fonts → font-sans / font-serif / font-accent / font-mono */
+  --font-sans: "IBM Plex Sans TC", "IBM Plex Sans", -apple-system,
+    BlinkMacSystemFont, sans-serif;
+  --font-serif: "Noto Serif TC", serif;
+  --font-accent: "Cormorant Garamond", serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
 }
 
 * {
@@ -86,7 +156,7 @@ body {
   font-style: italic;
   font-size: 14px;
   letter-spacing: 0.35em;
-  color: var(--accent);
+  color: var(--primary);
   text-transform: uppercase;
   margin-bottom: 28px;
   opacity: 0.85;
@@ -215,7 +285,7 @@ body {
 }
 
 .tab.active {
-  color: var(--accent);
+  color: var(--primary);
 }
 .tab.active .tab-en {
   opacity: 0.9;
@@ -229,7 +299,7 @@ body {
   transform: translateX(-50%);
   width: 100%;
   height: 1px;
-  background: var(--accent);
+  background: var(--primary);
 }
 
 /* ------------- VIEWS ------------- */
@@ -329,7 +399,7 @@ main {
 }
 
 .card-count.is-complete {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 /* ------------- TABLE ------------- */
@@ -466,7 +536,7 @@ footer .divider {
 
 footer .accent-mark {
   display: inline-block;
-  color: var(--accent);
+  color: var(--primary);
   margin: 0 2px;
   font-family: "Cormorant Garamond", serif;
   font-style: italic;
@@ -537,7 +607,7 @@ footer .accent-mark {
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  background: linear-gradient(90deg, var(--primary-dim), var(--primary));
   border-radius: 999px;
   transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -607,7 +677,7 @@ footer .accent-mark {
   font-family: "Cormorant Garamond", serif;
   font-style: italic;
   font-size: 15px;
-  color: var(--accent);
+  color: var(--primary);
   letter-spacing: 0.08em;
   text-align: center;
   padding: 4px 0;
@@ -715,7 +785,7 @@ footer .accent-mark {
 .glance-table .g-char .complete-mark {
   display: inline-block;
   margin-left: 6px;
-  color: var(--accent);
+  color: var(--primary);
   font-family: "Cormorant Garamond", serif;
   font-style: italic;
   font-size: 12px;
@@ -738,7 +808,7 @@ footer .accent-mark {
   font-size: 10px;
   font-weight: 400;
   letter-spacing: 0.12em;
-  color: var(--accent);
+  color: var(--primary);
   border: 0.5px solid rgba(201, 161, 74, 0.35);
   background: rgba(201, 161, 74, 0.08);
   white-space: nowrap;
@@ -788,7 +858,7 @@ footer .accent-mark {
 
 .mode-btn.active {
   background: var(--surface-elevated);
-  color: var(--accent);
+  color: var(--primary);
   box-shadow: inset 0 0 0 0.5px rgba(201, 161, 74, 0.25);
 }
 
@@ -976,7 +1046,7 @@ footer .accent-mark {
 
 .gc-have {
   background: rgba(201, 161, 74, 0.16);
-  color: var(--accent);
+  color: var(--primary);
   font-weight: 600;
 }
 .gc-miss {
@@ -996,7 +1066,7 @@ footer .accent-mark {
 .gc-count {
   font-family: "JetBrains Mono", monospace;
   font-weight: 500;
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .grid-series-start {
@@ -1039,7 +1109,7 @@ footer .accent-mark {
 }
 .grid-legend .sw-have {
   background: rgba(201, 161, 74, 0.16);
-  color: var(--accent);
+  color: var(--primary);
 }
 .grid-legend .sw-miss {
   background: transparent;
@@ -1089,7 +1159,7 @@ footer .accent-mark {
   background: var(--ur-soft);
 }
 .trade-sum-card.active {
-  border-color: var(--accent);
+  border-color: var(--primary);
   background: var(--surface-elevated);
   box-shadow: inset 0 0 0 0.5px rgba(201, 161, 74, 0.45);
 }
@@ -1309,7 +1379,7 @@ footer .accent-mark {
 .trade-x {
   font-family: "JetBrains Mono", monospace;
   font-size: 10px;
-  color: var(--accent);
+  color: var(--primary);
   margin-left: 2px;
 }
 
@@ -1515,4 +1585,16 @@ footer .accent-mark {
 .pending-table td {
   text-align: left;
   padding: 4px 8px;
+}
+
+/* shadcn base layer: themed defaults for shadcn components. Layered (low
+   priority), so the unlayered legacy CSS above keeps winning during the
+   incremental migration. */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }
