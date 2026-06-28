@@ -183,3 +183,34 @@ export function pendingReceiveByCoord(
   }
   return out;
 }
+
+// Serialize a trade list to `角色, 系列, 數量` lines, grouped by rarity
+// (UR→R) with a blank line between groups. surplus uses spare as the quantity;
+// needs is always 1. Ordering mirrors the on-screen groupedList in Trade.
+export function formatTradeList(
+  items: TradeItem[],
+  m: Matrix,
+  kind: "surplus" | "needs",
+): string {
+  const ordered = [...items].sort(
+    (a, b) => b.ri - a.ri || a.si - b.si || a.ci - b.ci,
+  );
+  const groups: string[] = [];
+  let curRi = -1;
+  let lines: string[] = [];
+  const flush = () => {
+    if (lines.length) groups.push(lines.join("\n"));
+    lines = [];
+  };
+  for (const it of ordered) {
+    if (it.ri !== curRi) {
+      flush();
+      curRi = it.ri;
+      lines.push(RARITIES[it.ri]);
+    }
+    const qty = kind === "surplus" ? it.spare : 1;
+    lines.push(`${m.characters[it.ci]}, ${m.series[it.si]}, ${qty}`);
+  }
+  flush();
+  return groups.join("\n\n");
+}

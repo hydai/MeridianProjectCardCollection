@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  type Matrix,
   RARITIES,
+  type TradeItem,
   buildMatrix,
   computeTrade,
   computeTradeWithPending,
   exists,
+  formatTradeList,
   getN,
   grandTotalByRarity,
   pendingReceiveByCoord,
@@ -221,5 +224,50 @@ describe("pendingReceiveByCoord", () => {
     expect(map.get("0|0|2")).toBe(3);
     // unknown series ZZZ is skipped (not in the matrix)
     expect(map.size).toBe(1);
+  });
+});
+
+describe("formatTradeList", () => {
+  // formatTradeList only reads m.series / m.characters, not cards
+  const m: Matrix = {
+    series: ["MP 4TH", "MP 5TH"],
+    characters: ["Kirari", "Mococo", "Fuwawa"],
+    cards: [],
+  };
+
+  it("groups surplus by rarity (UR→R) as `角色, 系列, 數量`", () => {
+    const items: TradeItem[] = [
+      { ri: 2, si: 0, ci: 1, spare: 3 }, // SSR Mococo MP 4TH
+      { ri: 3, si: 1, ci: 2, spare: 1 }, // UR  Fuwawa MP 5TH
+      { ri: 3, si: 0, ci: 0, spare: 2 }, // UR  Kirari MP 4TH
+    ];
+    expect(formatTradeList(items, m, "surplus")).toBe(
+      "UR\nKirari, MP 4TH, 2\nFuwawa, MP 5TH, 1\n\nSSR\nMococo, MP 4TH, 3",
+    );
+  });
+
+  it("uses quantity 1 for every needs line regardless of spare", () => {
+    const items: TradeItem[] = [
+      { ri: 3, si: 0, ci: 0, spare: 0 }, // UR Kirari MP 4TH
+      { ri: 0, si: 1, ci: 1, spare: 0 }, // R  Mococo MP 5TH
+    ];
+    expect(formatTradeList(items, m, "needs")).toBe(
+      "UR\nKirari, MP 4TH, 1\n\nR\nMococo, MP 5TH, 1",
+    );
+  });
+
+  it("orders within a rarity by series then character", () => {
+    const items: TradeItem[] = [
+      { ri: 3, si: 1, ci: 0, spare: 1 }, // UR Kirari MP 5TH
+      { ri: 3, si: 0, ci: 2, spare: 1 }, // UR Fuwawa MP 4TH
+      { ri: 3, si: 0, ci: 0, spare: 1 }, // UR Kirari MP 4TH
+    ];
+    expect(formatTradeList(items, m, "surplus")).toBe(
+      "UR\nKirari, MP 4TH, 1\nFuwawa, MP 4TH, 1\nKirari, MP 5TH, 1",
+    );
+  });
+
+  it("returns an empty string for no items", () => {
+    expect(formatTradeList([], m, "surplus")).toBe("");
   });
 });
