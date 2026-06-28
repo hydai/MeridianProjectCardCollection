@@ -101,11 +101,18 @@ export default function PublicViewer() {
   };
 
   return (
-    <div className="container">
-      <header className="hero">
-        <p className="kicker">A Living Archive · 永久收藏</p>
-        <h1 className="title">子午計畫</h1>
-        <p className="subtitle">Meridian Project · Card Collection</p>
+    <div className="mx-auto max-w-[820px] px-7 pt-20 pb-24 max-sm:px-[18px] max-sm:pt-14 max-sm:pb-[72px]">
+      <header className="mb-16 text-center animate-[rise_0.7s_ease_0.05s_both]">
+        <p className="mb-7 font-accent text-sm italic uppercase tracking-[0.35em] text-primary opacity-85">
+          <span className="opacity-60">—</span> A Living Archive · 永久收藏{" "}
+          <span className="opacity-60">—</span>
+        </p>
+        <h1 className="mb-[18px] font-serif text-[clamp(52px,9vw,84px)] font-medium leading-none tracking-[0.12em] text-foreground max-sm:tracking-[0.08em]">
+          子午計畫
+        </h1>
+        <p className="font-accent text-[19px] italic tracking-[0.04em] text-muted-foreground max-sm:text-base">
+          Meridian Project · Card Collection
+        </p>
         {matrix ? <StatsBar m={matrix} /> : null}
       </header>
 
@@ -139,11 +146,13 @@ export default function PublicViewer() {
         )}
       </main>
 
-      <footer>
+      <footer className="mt-[72px] border-t border-border pt-7 text-center text-xs tracking-[0.12em] text-muted-foreground">
         <span>子午計畫 · Meridian Project</span>
-        <span className="divider">·</span>
-        <span className="accent-mark">⌘</span>
-        <span className="divider">·</span>
+        <span className="mx-3 opacity-50">·</span>
+        <span className="mx-0.5 inline-block font-accent italic text-primary">
+          ⌘
+        </span>
+        <span className="mx-3 opacity-50">·</span>
         <span>Curated by hydai</span>
       </footer>
     </div>

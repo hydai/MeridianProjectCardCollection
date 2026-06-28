@@ -126,20 +126,9 @@ body {
   background-attachment: fixed;
 }
 
-.container {
-  max-width: 820px;
-  margin: 0 auto;
-  padding: 80px 28px 96px;
-}
+/* ------------- SHARED ANIMATION ------------- */
 
-/* ------------- HERO ------------- */
-
-.hero {
-  text-align: center;
-  margin-bottom: 64px;
-  animation: rise 0.7s ease 0.05s both;
-}
-
+/* Entrance animation shared by hero, stats, nav, and main across phases. */
 @keyframes rise {
   from {
     opacity: 0;
@@ -149,45 +138,6 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-.kicker {
-  font-family: "Cormorant Garamond", serif;
-  font-style: italic;
-  font-size: 14px;
-  letter-spacing: 0.35em;
-  color: var(--primary);
-  text-transform: uppercase;
-  margin-bottom: 28px;
-  opacity: 0.85;
-}
-
-.kicker::before,
-.kicker::after {
-  content: "— ";
-  opacity: 0.6;
-}
-.kicker::after {
-  content: " —";
-}
-
-.title {
-  font-family: "Noto Serif TC", serif;
-  font-weight: 500;
-  font-size: clamp(52px, 9vw, 84px);
-  letter-spacing: 0.12em;
-  line-height: 1;
-  margin-bottom: 18px;
-  color: var(--text);
-}
-
-.subtitle {
-  font-family: "Cormorant Garamond", serif;
-  font-style: italic;
-  font-weight: 400;
-  font-size: 19px;
-  color: var(--text-secondary);
-  letter-spacing: 0.04em;
 }
 
 /* ------------- STATS ------------- */
@@ -515,31 +465,6 @@ tr.subtotal td.col-name {
 .view-rarity th.col-name,
 .view-rarity td.col-name {
   width: 26%;
-}
-
-/* ------------- FOOTER ------------- */
-
-footer {
-  margin-top: 72px;
-  padding-top: 28px;
-  border-top: 0.5px solid var(--border);
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  letter-spacing: 0.12em;
-}
-
-footer .divider {
-  margin: 0 12px;
-  opacity: 0.5;
-}
-
-footer .accent-mark {
-  display: inline-block;
-  color: var(--primary);
-  margin: 0 2px;
-  font-family: "Cormorant Garamond", serif;
-  font-style: italic;
 }
 
 /* ------------- LOADING / ERROR ------------- */
@@ -1386,15 +1311,6 @@ footer .accent-mark {
 /* ------------- RESPONSIVE ------------- */
 
 @media (max-width: 540px) {
-  .container {
-    padding: 56px 18px 72px;
-  }
-  .title {
-    letter-spacing: 0.08em;
-  }
-  .subtitle {
-    font-size: 16px;
-  }
   .stat-value {
     font-size: 22px;
   }
