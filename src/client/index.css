@@ -273,6 +273,17 @@
     color: var(--text);
   }
 
+  /* LOADING / ERROR — interim: still used by Market + admin panels
+     (Market → Phase 3b, admin → Phase 4); remove once those migrate. */
+  .state-msg {
+    text-align: center;
+    color: var(--text-tertiary);
+    font-family: "Cormorant Garamond", serif;
+    font-style: italic;
+    letter-spacing: 0.1em;
+    padding: 48px 0;
+  }
+
   /* ------------- WISHLIST VIEW ------------- */
 
   .overall {
