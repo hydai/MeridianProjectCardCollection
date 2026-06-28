@@ -297,4 +297,80 @@ describe("Grid rarity filter", () => {
     ) as string[];
     expect(persisted).toEqual(["UR"]);
   });
+
+  it("hides a rarity's column in every series when toggled off", () => {
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    expect(container.querySelectorAll(".grid-rarity-head")).toHaveLength(
+      SERIES.length * 4,
+    );
+    expect(container.querySelectorAll(".grid-rarity-head.gr-ur")).toHaveLength(
+      SERIES.length,
+    );
+    fireEvent.click(within(filter).getByRole("button", { name: "UR" }));
+    expect(container.querySelectorAll(".grid-rarity-head")).toHaveLength(
+      SERIES.length * 3,
+    );
+    expect(container.querySelectorAll(".grid-rarity-head.gr-ur")).toHaveLength(
+      0,
+    );
+  });
+
+  it("shrinks each series header's colSpan to the visible rarity count", () => {
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    const firstHead = () =>
+      container.querySelector(".grid-series-head") as HTMLTableCellElement;
+    expect(firstHead().colSpan).toBe(4);
+    fireEvent.click(within(filter).getByRole("button", { name: "UR" }));
+    expect(firstHead().colSpan).toBe(3);
+  });
+
+  it("moves the group left border to the first visible rarity when R is hidden", () => {
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    fireEvent.click(within(filter).getByRole("button", { name: "R" }));
+    const starts = container.querySelectorAll(
+      ".grid-rarity-head.grid-series-start",
+    );
+    expect(starts).toHaveLength(SERIES.length);
+    for (const th of starts) expect(th.classList.contains("gr-sr")).toBe(true);
+  });
+
+  it("shrinks the progress denominator when a rarity is hidden", () => {
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    const denom = () => {
+      const txt =
+        (container.querySelector(".grid-progress") as HTMLElement)
+          .textContent ?? "";
+      const match = txt.match(/\/\s*(\d+)/);
+      return match ? Number(match[1]) : Number.NaN;
+    };
+    const before = denom();
+    fireEvent.click(within(filter).getByRole("button", { name: "UR" }));
+    expect(denom()).toBeLessThan(before);
+  });
+
+  it("shows a rarity-specific empty hint when all rarities are hidden", () => {
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    for (const name of ["R", "SR", "SSR", "UR"])
+      fireEvent.click(within(filter).getByRole("button", { name }));
+    expect(screen.getByText("（未選擇任何稀有度）")).toBeInTheDocument();
+    expect(container.querySelector(".grid-table")).toBeNull();
+  });
+
+  it("applies series and rarity filters independently", () => {
+    const { container } = render(<Grid m={m} />);
+    const filter = container.querySelector(".grid-filter") as HTMLElement;
+    fireEvent.click(within(filter).getByRole("button", { name: "NEW YEAR" }));
+    fireEvent.click(within(filter).getByRole("button", { name: "UR" }));
+    expect(container.querySelectorAll(".grid-series-head")).toHaveLength(
+      SERIES.length - 1,
+    );
+    expect(container.querySelectorAll(".grid-rarity-head")).toHaveLength(
+      (SERIES.length - 1) * 3,
+    );
+  });
 });

@@ -76,16 +76,19 @@ export function Grid({ m }: { m: Matrix }) {
   const shown = m.series
     .map((s, si) => ({ s, si }))
     .filter(({ s }) => !hidden.has(s));
+  const shownRarities = RARITIES.map((rarity, ri) => ({ rarity, ri })).filter(
+    ({ rarity }) => !hiddenR.has(rarity),
+  );
 
   let totalHave = 0;
   let totalSlots = 0;
   for (const { si } of shown) {
     m.characters.forEach((_c, ci) => {
       if (!exists(m, si, ci)) return;
-      RARITIES.forEach((_r, ri) => {
+      for (const { ri } of shownRarities) {
         totalSlots++;
         if (getN(m, si, ci, ri) > 0) totalHave++;
-      });
+      }
     });
   }
   const pct = totalSlots ? Math.round((totalHave / totalSlots) * 100) : 0;
@@ -154,8 +157,10 @@ export function Grid({ m }: { m: Matrix }) {
         ))}
       </div>
 
-      {shown.length === 0 ? (
-        <div className="grid-empty">（未選擇任何系列）</div>
+      {shown.length === 0 || shownRarities.length === 0 ? (
+        <div className="grid-empty">
+          {shown.length === 0 ? "（未選擇任何系列）" : "（未選擇任何稀有度）"}
+        </div>
       ) : (
         <div className="grid-wrap">
           <table className="grid-table">
@@ -167,7 +172,7 @@ export function Grid({ m }: { m: Matrix }) {
                 {shown.map(({ s }) => (
                   <th
                     key={s}
-                    colSpan={4}
+                    colSpan={shownRarities.length}
                     className="grid-series-head grid-series-start"
                   >
                     {s}
@@ -176,11 +181,11 @@ export function Grid({ m }: { m: Matrix }) {
               </tr>
               <tr>
                 {shown.map(({ s }) =>
-                  RARITIES.map((rarity, ri) => (
+                  shownRarities.map(({ rarity, ri }, localRi) => (
                     <th
                       key={`${s}-${rarity}`}
                       className={`grid-rarity-head gr-${RARITY_KEYS[ri]} ${
-                        ri === 0 ? "grid-series-start" : ""
+                        localRi === 0 ? "grid-series-start" : ""
                       }`}
                     >
                       {rarity}
@@ -194,8 +199,8 @@ export function Grid({ m }: { m: Matrix }) {
                 <tr key={charName}>
                   <td className="grid-name">{charName}</td>
                   {shown.map(({ s, si }) =>
-                    RARITIES.map((rarity, ri) => {
-                      const startCls = ri === 0 ? "grid-series-start" : "";
+                    shownRarities.map(({ rarity, ri }, localRi) => {
+                      const startCls = localRi === 0 ? "grid-series-start" : "";
                       const cellKey = `${s}-${rarity}`;
                       if (!exists(m, si, ci)) {
                         return (
