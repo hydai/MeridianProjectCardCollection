@@ -372,38 +372,6 @@
     gap: 6px;
   }
 
-  .miss-chip {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 11px;
-    border-radius: 999px;
-    font-family: "JetBrains Mono", monospace;
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.12em;
-    border: 0.5px solid;
-  }
-  .miss-chip.r {
-    color: var(--r-color);
-    border-color: rgba(154, 149, 139, 0.35);
-    background: var(--r-soft);
-  }
-  .miss-chip.sr {
-    color: var(--sr-color);
-    border-color: rgba(212, 168, 87, 0.4);
-    background: var(--sr-soft);
-  }
-  .miss-chip.ssr {
-    color: var(--ssr-color);
-    border-color: rgba(214, 138, 163, 0.4);
-    background: var(--ssr-soft);
-  }
-  .miss-chip.ur {
-    color: var(--ur-color);
-    border-color: rgba(224, 113, 113, 0.45);
-    background: var(--ur-soft);
-  }
-
   .miss-complete {
     font-family: "Cormorant Garamond", serif;
     font-style: italic;
@@ -523,12 +491,6 @@
     letter-spacing: 0.1em;
   }
 
-  .glance-table .miss-chip {
-    margin: 2px 3px 2px 0;
-    font-size: 10px;
-    padding: 2px 8px;
-  }
-
   .glance-complete-badge {
     display: inline-flex;
     align-items: center;
@@ -551,13 +513,6 @@
     font-size: 13px;
     opacity: 0.45;
     user-select: none;
-  }
-
-  .own-count {
-    margin-left: 3px;
-    font-size: 9px;
-    font-weight: 400;
-    opacity: 0.7;
   }
 
   /* shared pill toggle (glance + grid) */
@@ -1148,10 +1103,6 @@
       font-size: 11px;
       letter-spacing: 0.1em;
     }
-    .miss-chip {
-      font-size: 10px;
-      padding: 3px 8px;
-    }
     .overall {
       padding: 22px 18px 20px;
     }
@@ -1244,12 +1195,6 @@
     }
     .glance-table .g-char {
       font-size: 13px;
-    }
-    .glance-table .miss-chip {
-      font-size: 9px;
-      padding: 2px 6px;
-      margin: 1px 2px 1px 0;
-      letter-spacing: 0.08em;
     }
     .glance-table .glance-complete-badge {
       font-size: 9px;
