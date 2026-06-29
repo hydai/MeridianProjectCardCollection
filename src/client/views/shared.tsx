@@ -52,7 +52,7 @@ export function MissChip({
     <Badge
       variant="outline"
       className={cn(
-        "gap-1 rounded-full font-mono text-[11px] font-medium tracking-[0.12em]",
+        "gap-1 rounded-full border-[0.5px] font-mono text-[11px] font-medium tracking-[0.12em]",
         RARITY_CHIP[ri],
       )}
     >
