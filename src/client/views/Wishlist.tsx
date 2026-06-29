@@ -1,6 +1,14 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { Fragment } from "react";
 import { type Matrix, RARITIES, exists, getN } from "../collection";
-import { MissChip } from "./shared";
+import {
+  CARD_COUNT,
+  CARD_HEADER,
+  CARD_SHELL,
+  CARD_TITLE,
+  MissChip,
+} from "./shared";
 
 export function Wishlist({ m }: { m: Matrix }) {
   const charMissing = m.characters.map((charName, ci) => {
@@ -63,38 +71,44 @@ export function Wishlist({ m }: { m: Matrix }) {
       {charMissing.map((c) => {
         const isComplete = c.totalMissing === 0;
         return (
-          <article className="card" key={c.charName}>
-            <header className="card-header">
-              <h2 className="card-title">{c.charName}</h2>
-              <span className={`card-count ${isComplete ? "is-complete" : ""}`}>
+          <Card className={CARD_SHELL} key={c.charName}>
+            <CardHeader className={CARD_HEADER}>
+              <CardTitle className={CARD_TITLE}>{c.charName}</CardTitle>
+              <span className={cn(CARD_COUNT, isComplete && "text-primary")}>
                 {isComplete ? (
                   `${c.totalSlots} / ${c.totalSlots} · ✓ 集齊`
                 ) : (
                   <>
-                    缺 <strong>{c.totalMissing}</strong> / {c.totalSlots} 張
+                    缺{" "}
+                    <strong className="font-medium text-foreground">
+                      {c.totalMissing}
+                    </strong>{" "}
+                    / {c.totalSlots} 張
                   </>
                 )}
               </span>
-            </header>
-            {isComplete ? (
-              <div className="miss-complete">✓ Complete · 此角色全集齊</div>
-            ) : (
-              <div className="miss-grid">
-                {c.missingBySeries
-                  .filter((s) => s.missing.length > 0)
-                  .map((s) => (
-                    <Fragment key={s.seriesName}>
-                      <div className="miss-series">{s.seriesName}</div>
-                      <div className="miss-chips">
-                        {s.missing.map((r) => (
-                          <MissChip key={r.name} ri={r.ri} label={r.name} />
-                        ))}
-                      </div>
-                    </Fragment>
-                  ))}
-              </div>
-            )}
-          </article>
+            </CardHeader>
+            <CardContent className="px-0">
+              {isComplete ? (
+                <div className="miss-complete">✓ Complete · 此角色全集齊</div>
+              ) : (
+                <div className="miss-grid">
+                  {c.missingBySeries
+                    .filter((s) => s.missing.length > 0)
+                    .map((s) => (
+                      <Fragment key={s.seriesName}>
+                        <div className="miss-series">{s.seriesName}</div>
+                        <div className="miss-chips">
+                          {s.missing.map((r) => (
+                            <MissChip key={r.name} ri={r.ri} label={r.name} />
+                          ))}
+                        </div>
+                      </Fragment>
+                    ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         );
       })}
     </section>

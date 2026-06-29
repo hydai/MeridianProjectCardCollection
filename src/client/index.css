@@ -167,85 +167,6 @@
     }
   }
 
-  /* ------------- CARD ------------- */
-
-  .card {
-    background: var(--surface);
-    border: 0.5px solid var(--border);
-    border-radius: 4px;
-    padding: 24px 26px;
-    margin-bottom: 18px;
-    transition: border-color 0.2s ease;
-  }
-
-  .card:hover {
-    border-color: var(--border-strong);
-  }
-
-  .card-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin-bottom: 16px;
-    padding-bottom: 14px;
-    border-bottom: 0.5px solid var(--border);
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .card-title {
-    font-family: "Noto Serif TC", serif;
-    font-weight: 500;
-    font-size: 22px;
-    letter-spacing: 0.04em;
-    color: var(--text);
-  }
-
-  .card-title.is-series {
-    font-family: "Cormorant Garamond", serif;
-    font-style: italic;
-    font-weight: 500;
-    font-size: 26px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .card-title.is-rarity {
-    font-family: "JetBrains Mono", monospace;
-    font-size: 24px;
-    font-weight: 500;
-    letter-spacing: 0.1em;
-  }
-  .card-title.is-rarity.r {
-    color: var(--text);
-  }
-  .card-title.is-rarity.sr {
-    color: var(--sr-color);
-  }
-  .card-title.is-rarity.ssr {
-    color: var(--ssr-color);
-  }
-  .card-title.is-rarity.ur {
-    color: var(--ur-color);
-  }
-
-  .card-count {
-    font-family: "JetBrains Mono", monospace;
-    font-size: 11px;
-    color: var(--text-tertiary);
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-  }
-
-  .card-count strong {
-    color: var(--text);
-    font-weight: 500;
-  }
-
-  .card-count.is-complete {
-    color: var(--primary);
-  }
-
   /* ------------- TABLE ------------- */
 
   table {
@@ -1072,18 +993,6 @@
   /* ------------- RESPONSIVE ------------- */
 
   @media (max-width: 540px) {
-    .card {
-      padding: 18px 16px;
-    }
-    .card-title {
-      font-size: 19px;
-    }
-    .card-title.is-series {
-      font-size: 22px;
-    }
-    .card-title.is-rarity {
-      font-size: 22px;
-    }
     table {
       font-size: 13px;
     }
