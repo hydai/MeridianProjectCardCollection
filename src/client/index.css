@@ -205,104 +205,6 @@
     padding: 48px 0;
   }
 
-  /* ------------- WISHLIST VIEW ------------- */
-
-  .overall {
-    background: var(--surface);
-    border: 0.5px solid var(--border);
-    border-radius: 4px;
-    padding: 30px 32px 28px;
-    margin-bottom: 28px;
-    text-align: center;
-  }
-
-  .overall-stat {
-    display: flex;
-    justify-content: center;
-    align-items: baseline;
-    gap: 6px;
-  }
-
-  .overall-num {
-    font-family: "JetBrains Mono", monospace;
-    font-size: 40px;
-    font-weight: 400;
-    color: var(--text);
-    line-height: 1;
-  }
-
-  .overall-denom {
-    font-family: "JetBrains Mono", monospace;
-    font-size: 18px;
-    color: var(--text-tertiary);
-  }
-
-  .overall-label {
-    font-family: "Cormorant Garamond", serif;
-    font-style: italic;
-    font-size: 13px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--text-tertiary);
-    margin-top: 10px;
-  }
-
-  .progress-bar {
-    height: 3px;
-    background: var(--bg-subtle);
-    border: 0.5px solid var(--border);
-    border-radius: 999px;
-    overflow: hidden;
-    margin: 22px auto 0;
-    max-width: 340px;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--primary-dim), var(--primary));
-    border-radius: 999px;
-    transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .overall-detail {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-top: 14px;
-    letter-spacing: 0.08em;
-  }
-
-  .miss-grid {
-    display: grid;
-    grid-template-columns: 110px 1fr;
-    gap: 14px 18px;
-    align-items: center;
-  }
-
-  .miss-series {
-    font-family: "Cormorant Garamond", serif;
-    font-style: italic;
-    font-size: 13px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text-tertiary);
-  }
-
-  .miss-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .miss-complete {
-    font-family: "Cormorant Garamond", serif;
-    font-style: italic;
-    font-size: 15px;
-    color: var(--primary);
-    letter-spacing: 0.08em;
-    text-align: center;
-    padding: 4px 0;
-  }
-
   /* ------------- GLANCE (matrix) VIEW ------------- */
 
   .glance-header {
@@ -1003,23 +905,6 @@
     td {
       padding: 9px 4px;
       font-size: 13px;
-    }
-    .miss-grid {
-      grid-template-columns: 88px 1fr;
-      gap: 10px 12px;
-    }
-    .miss-series {
-      font-size: 11px;
-      letter-spacing: 0.1em;
-    }
-    .overall {
-      padding: 22px 18px 20px;
-    }
-    .overall-num {
-      font-size: 30px;
-    }
-    .overall-denom {
-      font-size: 15px;
     }
     .mode-btn {
       padding: 5px 12px;

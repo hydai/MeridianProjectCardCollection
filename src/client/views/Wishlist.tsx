@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { Fragment } from "react";
 import { type Matrix, RARITIES, exists, getN } from "../collection";
@@ -54,19 +55,26 @@ export function Wishlist({ m }: { m: Matrix }) {
 
   return (
     <section className="view view-wishlist">
-      <div className="overall">
-        <div className="overall-stat">
-          <span className="overall-num">{totalCollected}</span>
-          <span className="overall-denom">/ {totalSlots}</span>
+      <Card className="mb-7 gap-0 rounded-[4px] border-[0.5px] border-border px-8 pt-[30px] pb-7 text-center ring-0 max-sm:px-[18px] max-sm:pt-[22px] max-sm:pb-5">
+        <div className="flex items-baseline justify-center gap-1.5">
+          <span className="font-mono text-[40px] leading-none text-foreground max-sm:text-[30px]">
+            {totalCollected}
+          </span>
+          <span className="font-mono text-[18px] text-muted-foreground max-sm:text-[15px]">
+            / {totalSlots}
+          </span>
         </div>
-        <div className="overall-label">Unique cards collected</div>
-        <div className="progress-bar">
-          <div className="progress-fill" style={{ width: `${pct}%` }} />
+        <div className="mt-2.5 font-accent text-[13px] uppercase italic tracking-[0.2em] text-muted-foreground">
+          Unique cards collected
         </div>
-        <div className="overall-detail">
+        <Progress
+          value={pct}
+          className="mx-auto mt-[22px] h-[3px] max-w-[340px] border-[0.5px] border-border [&_[data-slot=progress-indicator]]:[background-image:linear-gradient(90deg,var(--primary-dim),var(--primary))]"
+        />
+        <div className="mt-3.5 text-xs tracking-[0.08em] text-muted-foreground">
           {pct}% 完成 · 尚缺 {totalMissing} 張 &nbsp;·&nbsp; {breakdownText}
         </div>
-      </div>
+      </Card>
 
       {charMissing.map((c) => {
         const isComplete = c.totalMissing === 0;
@@ -90,15 +98,19 @@ export function Wishlist({ m }: { m: Matrix }) {
             </CardHeader>
             <CardContent className="px-0">
               {isComplete ? (
-                <div className="miss-complete">✓ Complete · 此角色全集齊</div>
+                <div className="py-1 text-center font-accent text-[15px] italic tracking-[0.08em] text-primary">
+                  ✓ Complete · 此角色全集齊
+                </div>
               ) : (
-                <div className="miss-grid">
+                <div className="grid grid-cols-[110px_1fr] items-center gap-x-[18px] gap-y-3.5 max-sm:grid-cols-[88px_1fr] max-sm:gap-x-3 max-sm:gap-y-2.5">
                   {c.missingBySeries
                     .filter((s) => s.missing.length > 0)
                     .map((s) => (
                       <Fragment key={s.seriesName}>
-                        <div className="miss-series">{s.seriesName}</div>
-                        <div className="miss-chips">
+                        <div className="font-accent text-[13px] uppercase italic tracking-[0.12em] text-muted-foreground max-sm:text-[11px] max-sm:tracking-[0.1em]">
+                          {s.seriesName}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
                           {s.missing.map((r) => (
                             <MissChip key={r.name} ri={r.ri} label={r.name} />
                           ))}
