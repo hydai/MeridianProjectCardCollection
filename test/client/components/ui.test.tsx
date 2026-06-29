@@ -89,4 +89,10 @@ describe("Progress", () => {
       "100",
     );
   });
+  it("scales value and ARIA to a custom max", () => {
+    render(<Progress value={3} max={6} />);
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "3");
+    expect(bar).toHaveAttribute("aria-valuemax", "6");
+  });
 });
