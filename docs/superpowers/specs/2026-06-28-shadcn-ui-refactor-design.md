@@ -179,7 +179,7 @@ Tailwind v4 採 CSS-first。在 `index.css`：
 | **2 公開資料視圖** | tables.tsx（角色/系列/稀有度）→ `Table` + 稀有度 `Badge`；`StatsBar`；載入/錯誤 → `Skeleton`。 | STATS、TABLE、LOADING/ERROR |
 | **3 特化視圖** | Wishlist、Glance、Trade、Market；Grid（Tailwind 化、保留客製表）。 | WISHLIST、GLANCE、TRADE、GRID、CARD、VIEWS、RESPONSIVE |
 | **4 後台** | AddCards（tap-to-tally→Toggle）、ManageCards（Table/Dialog/Input/Select）、PendingTrades、Openings、History；toast→Sonner；pill→Badge。 | 整個 `admin.css` |
-| **5 收尾** | 刪殘餘 CSS；移除 autoprefixer/postcss（v4 不需）；RWD 與視覺 QA 總驗收；更新 README/DEPLOY 註記。 | 殘餘 |
+| **5 收尾** | 刪殘餘 CSS；移除 autoprefixer/postcss（v4 不需）；RWD 與視覺 QA 總驗收；**ARIA tabs a11y 補強**：roving tabindex + 方向鍵焦點導航（Arrow/Home/End，公開與後台兩個 tablist；單獨加 `tabIndex` 而無方向鍵會使非作用 tab 無法鍵盤抵達，故整批一起做）；更新 README/DEPLOY 註記。 | 殘餘 |
 
 > 並存期特異性策略：Tailwind 的 reset 在 `@layer base`（低特異性），舊 `index.css` 為無 layer（高特異性），故並存期間舊樣式「贏」，確保逐 view 替換安全、不會一次崩。
 

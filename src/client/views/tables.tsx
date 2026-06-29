@@ -1,5 +1,19 @@
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { type Matrix, RARITIES, exists, getN, sumRow } from "../collection";
 import { NumCell } from "./shared";
+
+// Editorial column-header style: tight, uppercase, letter-spaced, dim.
+const TH = "h-auto py-2.5 text-[10px] font-normal uppercase tracking-[0.2em]";
+const NAME_CELL = "text-left font-sans";
+const TOTAL_CELL = "border-l border-border text-right font-mono";
 
 export function ByCharacter({ m }: { m: Matrix }) {
   return (
@@ -20,46 +34,65 @@ export function ByCharacter({ m }: { m: Matrix }) {
                 Total · <strong>{charTotal}</strong> 張
               </span>
             </header>
-            <table>
-              <thead>
-                <tr>
-                  <th className="col-name">系列</th>
-                  <th className="th-r">R</th>
-                  <th className="th-sr">SR</th>
-                  <th className="th-ssr">SSR</th>
-                  <th className="th-ur">UR</th>
-                  <th className="col-total">合計</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className={cn(TH, "text-left")}>系列</TableHead>
+                  <TableHead className={cn(TH, "text-center text-rarity-r")}>
+                    R
+                  </TableHead>
+                  <TableHead className={cn(TH, "text-center text-rarity-sr")}>
+                    SR
+                  </TableHead>
+                  <TableHead className={cn(TH, "text-center text-rarity-ssr")}>
+                    SSR
+                  </TableHead>
+                  <TableHead className={cn(TH, "text-center text-rarity-ur")}>
+                    UR
+                  </TableHead>
+                  <TableHead
+                    className={cn(TH, "border-l border-border text-right")}
+                  >
+                    合計
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {seriesIdxs.map((si) => {
                   const rowTotal = RARITIES.reduce(
                     (sum, _r, ri) => sum + getN(m, si, ci, ri),
                     0,
                   );
                   return (
-                    <tr key={m.series[si]}>
-                      <td className="col-name">{m.series[si]}</td>
+                    <TableRow key={m.series[si]}>
+                      <TableCell className={NAME_CELL}>
+                        {m.series[si]}
+                      </TableCell>
                       {RARITIES.map((rarity, ri) => (
                         <NumCell key={rarity} n={getN(m, si, ci, ri)} ri={ri} />
                       ))}
-                      <td
-                        className={`col-total ${rowTotal === 0 ? "zero" : ""}`}
+                      <TableCell
+                        className={cn(
+                          TOTAL_CELL,
+                          rowTotal === 0 && "text-muted-foreground/40",
+                        )}
                       >
                         {rowTotal}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-                <tr className="subtotal">
-                  <td className="col-name">小計</td>
+                <TableRow className="border-t border-border bg-foreground/[0.02] hover:bg-foreground/[0.02]">
+                  <TableCell className={cn(NAME_CELL, "text-muted-foreground")}>
+                    小計
+                  </TableCell>
                   {RARITIES.map((rarity, ri) => (
                     <NumCell key={rarity} n={totalsByRarity[ri]} ri={ri} />
                   ))}
-                  <td className="col-total">{charTotal}</td>
-                </tr>
-              </tbody>
-            </table>
+                  <TableCell className={TOTAL_CELL}>{charTotal}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           </article>
         );
       })}
@@ -86,46 +119,65 @@ export function BySeries({ m }: { m: Matrix }) {
                 Total · <strong>{seriesTotal}</strong> 張
               </span>
             </header>
-            <table>
-              <thead>
-                <tr>
-                  <th className="col-name">角色</th>
-                  <th className="th-r">R</th>
-                  <th className="th-sr">SR</th>
-                  <th className="th-ssr">SSR</th>
-                  <th className="th-ur">UR</th>
-                  <th className="col-total">合計</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className={cn(TH, "text-left")}>角色</TableHead>
+                  <TableHead className={cn(TH, "text-center text-rarity-r")}>
+                    R
+                  </TableHead>
+                  <TableHead className={cn(TH, "text-center text-rarity-sr")}>
+                    SR
+                  </TableHead>
+                  <TableHead className={cn(TH, "text-center text-rarity-ssr")}>
+                    SSR
+                  </TableHead>
+                  <TableHead className={cn(TH, "text-center text-rarity-ur")}>
+                    UR
+                  </TableHead>
+                  <TableHead
+                    className={cn(TH, "border-l border-border text-right")}
+                  >
+                    合計
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {charIdxs.map((ci) => {
                   const rowTotal = RARITIES.reduce(
                     (sum, _r, ri) => sum + getN(m, si, ci, ri),
                     0,
                   );
                   return (
-                    <tr key={m.characters[ci]}>
-                      <td className="col-name">{m.characters[ci]}</td>
+                    <TableRow key={m.characters[ci]}>
+                      <TableCell className={NAME_CELL}>
+                        {m.characters[ci]}
+                      </TableCell>
                       {RARITIES.map((rarity, ri) => (
                         <NumCell key={rarity} n={getN(m, si, ci, ri)} ri={ri} />
                       ))}
-                      <td
-                        className={`col-total ${rowTotal === 0 ? "zero" : ""}`}
+                      <TableCell
+                        className={cn(
+                          TOTAL_CELL,
+                          rowTotal === 0 && "text-muted-foreground/40",
+                        )}
                       >
                         {rowTotal}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-                <tr className="subtotal">
-                  <td className="col-name">小計</td>
+                <TableRow className="border-t border-border bg-foreground/[0.02] hover:bg-foreground/[0.02]">
+                  <TableCell className={cn(NAME_CELL, "text-muted-foreground")}>
+                    小計
+                  </TableCell>
                   {RARITIES.map((rarity, ri) => (
                     <NumCell key={rarity} n={totalsByRarity[ri]} ri={ri} />
                   ))}
-                  <td className="col-total">{seriesTotal}</td>
-                </tr>
-              </tbody>
-            </table>
+                  <TableCell className={TOTAL_CELL}>{seriesTotal}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           </article>
         );
       })}
@@ -152,51 +204,65 @@ export function ByRarity({ m }: { m: Matrix }) {
                 {RARITY_LABELS[ri]} · <strong>{rarityTotal}</strong> 張
               </span>
             </header>
-            <table>
-              <thead>
-                <tr>
-                  <th className="col-name">角色</th>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className={cn(TH, "text-left")}>角色</TableHead>
                   {m.series.map((s) => (
-                    <th key={s}>{s}</th>
+                    <TableHead key={s} className={cn(TH, "text-center")}>
+                      {s}
+                    </TableHead>
                   ))}
-                  <th className="col-total">合計</th>
-                </tr>
-              </thead>
-              <tbody>
+                  <TableHead
+                    className={cn(TH, "border-l border-border text-right")}
+                  >
+                    合計
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {m.characters.map((charName, ci) => {
                   const rowTotal = m.series.reduce(
                     (sum, _s, si) => sum + getN(m, si, ci, ri),
                     0,
                   );
                   return (
-                    <tr key={charName}>
-                      <td className="col-name">{charName}</td>
+                    <TableRow key={charName}>
+                      <TableCell className={NAME_CELL}>{charName}</TableCell>
                       {m.series.map((s, si) =>
                         exists(m, si, ci) ? (
                           <NumCell key={s} n={getN(m, si, ci, ri)} ri={ri} />
                         ) : (
-                          <td className="na" key={s}>
+                          <TableCell
+                            key={s}
+                            className="text-center text-muted-foreground/40"
+                          >
                             —
-                          </td>
+                          </TableCell>
                         ),
                       )}
-                      <td
-                        className={`col-total ${rowTotal === 0 ? "zero" : ""}`}
+                      <TableCell
+                        className={cn(
+                          TOTAL_CELL,
+                          rowTotal === 0 && "text-muted-foreground/40",
+                        )}
                       >
                         {rowTotal}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-                <tr className="subtotal">
-                  <td className="col-name">小計</td>
+                <TableRow className="border-t border-border bg-foreground/[0.02] hover:bg-foreground/[0.02]">
+                  <TableCell className={cn(NAME_CELL, "text-muted-foreground")}>
+                    小計
+                  </TableCell>
                   {m.series.map((s, si) => (
                     <NumCell key={s} n={totalsBySeries[si]} ri={ri} />
                   ))}
-                  <td className="col-total">{rarityTotal}</td>
-                </tr>
-              </tbody>
-            </table>
+                  <TableCell className={TOTAL_CELL}>{rarityTotal}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           </article>
         );
       })}

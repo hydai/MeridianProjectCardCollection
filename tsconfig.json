@@ -13,7 +13,9 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "moduleDetection": "force",
-    "noUnusedLocals": false
+    "noUnusedLocals": false,
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/client/*"] }
   },
   "include": ["src/client", "src/shared", "test/client"]
 }
