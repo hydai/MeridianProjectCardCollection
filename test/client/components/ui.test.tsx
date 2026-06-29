@@ -76,8 +76,17 @@ describe("Badge", () => {
 });
 
 describe("Progress", () => {
-  it("renders with a value", () => {
+  it("reflects its value in ARIA", () => {
     render(<Progress value={42} />);
-    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toBeInTheDocument();
+    expect(bar).toHaveAttribute("aria-valuenow", "42");
+  });
+  it("clamps an out-of-range value to 0–100", () => {
+    render(<Progress value={150} />);
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "100",
+    );
   });
 });
