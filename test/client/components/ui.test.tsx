@@ -1,5 +1,7 @@
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import {
   Table,
   TableBody,
@@ -63,5 +65,34 @@ describe("Table", () => {
     );
     expect(screen.getByText("系列")).toBeInTheDocument();
     expect(screen.getByText("NEW YEAR")).toBeInTheDocument();
+  });
+});
+
+describe("Badge", () => {
+  it("renders its label", () => {
+    render(<Badge>SR</Badge>);
+    expect(screen.getByText("SR")).toBeInTheDocument();
+  });
+});
+
+describe("Progress", () => {
+  it("reflects its value in ARIA", () => {
+    render(<Progress value={42} />);
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toBeInTheDocument();
+    expect(bar).toHaveAttribute("aria-valuenow", "42");
+  });
+  it("clamps an out-of-range value to 0–100", () => {
+    render(<Progress value={150} />);
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "100",
+    );
+  });
+  it("scales value and ARIA to a custom max", () => {
+    render(<Progress value={3} max={6} />);
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "3");
+    expect(bar).toHaveAttribute("aria-valuemax", "6");
   });
 });
