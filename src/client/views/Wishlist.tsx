@@ -81,7 +81,9 @@ export function Wishlist({ m }: { m: Matrix }) {
         return (
           <Card className={CARD_SHELL} key={c.charName}>
             <CardHeader className={CARD_HEADER}>
-              <CardTitle className={CARD_TITLE}>{c.charName}</CardTitle>
+              <CardTitle asChild className={CARD_TITLE}>
+                <h2>{c.charName}</h2>
+              </CardTitle>
               <span className={cn(CARD_COUNT, isComplete && "text-primary")}>
                 {isComplete ? (
                   `${c.totalSlots} / ${c.totalSlots} · ✓ 集齊`

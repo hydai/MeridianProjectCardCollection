@@ -47,7 +47,9 @@ export function ByCharacter({ m }: { m: Matrix }) {
         return (
           <Card className={CARD_SHELL} key={charName}>
             <CardHeader className={CARD_HEADER}>
-              <CardTitle className={CARD_TITLE}>{charName}</CardTitle>
+              <CardTitle asChild className={CARD_TITLE}>
+                <h2>{charName}</h2>
+              </CardTitle>
               <span className={CARD_COUNT}>
                 Total ·{" "}
                 <strong className="font-medium text-foreground">
@@ -146,7 +148,9 @@ export function BySeries({ m }: { m: Matrix }) {
         return (
           <Card className={CARD_SHELL} key={seriesName}>
             <CardHeader className={CARD_HEADER}>
-              <CardTitle className={CARD_TITLE_SERIES}>{seriesName}</CardTitle>
+              <CardTitle asChild className={CARD_TITLE_SERIES}>
+                <h2>{seriesName}</h2>
+              </CardTitle>
               <span className={CARD_COUNT}>
                 Total ·{" "}
                 <strong className="font-medium text-foreground">
@@ -244,8 +248,11 @@ export function ByRarity({ m }: { m: Matrix }) {
         return (
           <Card className={CARD_SHELL} key={rarityName}>
             <CardHeader className={CARD_HEADER}>
-              <CardTitle className={cn(CARD_TITLE_RARITY, RARITY_TITLE[ri])}>
-                {rarityName}
+              <CardTitle
+                asChild
+                className={cn(CARD_TITLE_RARITY, RARITY_TITLE[ri])}
+              >
+                <h2>{rarityName}</h2>
               </CardTitle>
               <span className={CARD_COUNT}>
                 {RARITY_LABELS[ri]} ·{" "}
