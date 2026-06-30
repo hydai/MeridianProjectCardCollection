@@ -1,3 +1,6 @@
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AdminPendingTrade,
@@ -20,6 +23,25 @@ import {
   pendingReceiveByCoord,
   receivableCards,
 } from "../collection";
+import {
+  ACTION_FORM,
+  BTN_GHOST_SM,
+  BTN_PRIMARY_SM,
+  CONTROL,
+  ERROR_TEXT,
+  FIELD,
+  FIELD_LABEL,
+  INLINE_FIELDS,
+  LINE_EDITOR,
+  LINE_EDITOR_HEAD,
+  LINE_ROW,
+  PANEL,
+  PANEL_TITLE,
+  ROW_ACTIONS,
+  TABLE,
+  TD,
+  TH,
+} from "./ui";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -76,24 +98,26 @@ function LineEditor({
   const remove = (i: number) => setDrafts(drafts.filter((_, j) => j !== i));
 
   return (
-    <div className="line-editor">
-      <div className="line-editor-head">
-        <span className="field-label">{title}</span>
-        <button
+    <div className={LINE_EDITOR}>
+      <div className={LINE_EDITOR_HEAD}>
+        <span className={FIELD_LABEL}>{title}</span>
+        <Button
           type="button"
-          className="btn btn-ghost btn-sm"
+          variant="outline"
+          className={BTN_GHOST_SM}
           onClick={add}
           disabled={opts.length === 0}
         >
           ＋ 新增{title}
-        </button>
+        </Button>
       </div>
       {drafts.map((d, i) => {
         const opt = opts.find((o) => o.value === d.value);
         const max = opt?.max ?? 1;
         return (
-          <div className="line-row" key={`${title}-${d.value}-${i}`}>
+          <div className={LINE_ROW} key={`${title}-${d.value}-${i}`}>
             <select
+              className={cn(CONTROL, "min-w-[220px]")}
               value={d.value}
               onChange={(e) => update(i, { value: e.target.value, qty: 1 })}
             >
@@ -103,10 +127,11 @@ function LineEditor({
                 </option>
               ))}
             </select>
-            <input
+            <Input
               type="number"
               min={1}
               max={max}
+              className={cn(CONTROL, "w-[72px]")}
               value={d.qty}
               onChange={(e) =>
                 update(i, {
@@ -114,13 +139,14 @@ function LineEditor({
                 })
               }
             />
-            <button
+            <Button
               type="button"
-              className="btn btn-ghost btn-sm"
+              variant="outline"
+              className={BTN_GHOST_SM}
               onClick={() => remove(i)}
             >
               移除
-            </button>
+            </Button>
           </div>
         );
       })}
@@ -189,26 +215,32 @@ function ReservationForm({
   };
 
   return (
-    <div className="action-form">
-      <div className="inline-fields">
-        <label className="field">
-          <span className="field-label">對象</span>
-          <input
+    <div className={ACTION_FORM}>
+      <div className={INLINE_FIELDS}>
+        <label className={FIELD}>
+          <span className={FIELD_LABEL}>對象</span>
+          <Input
+            className={CONTROL}
             value={counterparty}
             onChange={(e) => setCounterparty(e.target.value)}
           />
         </label>
-        <label className="field">
-          <span className="field-label">日期</span>
-          <input
+        <label className={FIELD}>
+          <span className={FIELD_LABEL}>日期</span>
+          <Input
             type="date"
+            className={CONTROL}
             value={reservedAt}
             onChange={(e) => setReservedAt(e.target.value)}
           />
         </label>
-        <label className="field">
-          <span className="field-label">備註</span>
-          <input value={note} onChange={(e) => setNote(e.target.value)} />
+        <label className={FIELD}>
+          <span className={FIELD_LABEL}>備註</span>
+          <Input
+            className={CONTROL}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
         </label>
       </div>
       <LineEditor
@@ -223,21 +255,17 @@ function ReservationForm({
         drafts={receives}
         setDrafts={setReceives}
       />
-      <div className="inline-fields">
-        <button
+      <div className={INLINE_FIELDS}>
+        <Button
           type="button"
-          className="btn btn-primary btn-sm"
+          className={BTN_PRIMARY_SM}
           onClick={submit}
           disabled={busy}
         >
           {busy ? "處理中…" : "新增預約"}
-        </button>
+        </Button>
       </div>
-      {err ? (
-        <div className="error-text" style={{ marginTop: 8 }}>
-          {err}
-        </div>
-      ) : null}
+      {err ? <div className={cn(ERROR_TEXT, "mt-2")}>{err}</div> : null}
     </div>
   );
 }
@@ -272,58 +300,58 @@ function PendingRowItem({
 
   return (
     <tr>
-      <td>{p.reservedAt}</td>
-      <td>{p.counterparty ?? "—"}</td>
-      <td>{summary(p.give)}</td>
-      <td>{summary(p.receive)}</td>
-      <td>
+      <td className={TD}>{p.reservedAt}</td>
+      <td className={TD}>{p.counterparty ?? "—"}</td>
+      <td className={TD}>{summary(p.give)}</td>
+      <td className={TD}>{summary(p.receive)}</td>
+      <td className={TD}>
         {completing ? (
-          <div className="inline-fields">
-            <input
+          <div className={INLINE_FIELDS}>
+            <Input
               type="date"
+              className={CONTROL}
               value={happenedAt}
               onChange={(e) => setHappenedAt(e.target.value)}
             />
-            <button
+            <Button
               type="button"
-              className="btn btn-primary btn-sm"
+              className={BTN_PRIMARY_SM}
               disabled={busy}
               onClick={() => run(() => completeReservation(p.id, happenedAt))}
             >
               確認完成
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn btn-ghost btn-sm"
+              variant="outline"
+              className={BTN_GHOST_SM}
               onClick={() => setCompleting(false)}
             >
               返回
-            </button>
+            </Button>
           </div>
         ) : (
-          <div className="row-actions">
-            <button
+          <div className={ROW_ACTIONS}>
+            <Button
               type="button"
-              className="btn btn-ghost btn-sm"
+              variant="outline"
+              className={BTN_GHOST_SM}
               onClick={() => setCompleting(true)}
             >
               完成
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn btn-ghost btn-sm"
+              variant="outline"
+              className={BTN_GHOST_SM}
               disabled={busy}
               onClick={() => run(() => cancelReservation(p.id))}
             >
               取消
-            </button>
+            </Button>
           </div>
         )}
-        {err ? (
-          <div className="error-text" style={{ marginTop: 6 }}>
-            {err}
-          </div>
-        ) : null}
+        {err ? <div className={cn(ERROR_TEXT, "mt-1.5")}>{err}</div> : null}
       </td>
     </tr>
   );
@@ -368,9 +396,9 @@ export function PendingTrades() {
   }, [m, pending]);
 
   return (
-    <section className="panel">
-      <h2 className="panel-title">交換預約</h2>
-      {error ? <div className="error-text">{error}</div> : null}
+    <section className={PANEL}>
+      <h2 className={PANEL_TITLE}>交換預約</h2>
+      {error ? <div className={ERROR_TEXT}>{error}</div> : null}
       {!m || !pending ? (
         <div className="state-msg">載入中…</div>
       ) : (
@@ -383,14 +411,14 @@ export function PendingTrades() {
           {pending.length === 0 ? (
             <div className="trade-empty">目前沒有暫定交換。</div>
           ) : (
-            <table className="admin-table" style={{ marginTop: 16 }}>
+            <table className={cn(TABLE, "mt-4")}>
               <thead>
                 <tr>
-                  <th>日期</th>
-                  <th>對象</th>
-                  <th>給出</th>
-                  <th>換入</th>
-                  <th>操作</th>
+                  <th className={TH}>日期</th>
+                  <th className={TH}>對象</th>
+                  <th className={TH}>給出</th>
+                  <th className={TH}>換入</th>
+                  <th className={TH}>操作</th>
                 </tr>
               </thead>
               <tbody>

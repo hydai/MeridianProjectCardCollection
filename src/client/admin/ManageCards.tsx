@@ -1,7 +1,32 @@
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { RARITIES, SERIES, charactersFor } from "../../../seed/catalog-def";
 import type { CardRow, Rarity } from "../../shared/types";
 import { listCards, patchCard, postTransaction } from "../api";
+import {
+  ACTION_FORM,
+  BTN_GHOST_SM,
+  BTN_PRIMARY_SM,
+  CONTROL,
+  ERROR_TEXT,
+  FIELD,
+  FIELD_LABEL,
+  FILTERS,
+  INLINE_FIELDS,
+  PANEL,
+  PANEL_TITLE,
+  PILL_BASE,
+  PILL_DUP,
+  PILL_RARITY,
+  PILL_RESERVED,
+  PILL_STATUS,
+  ROW_ACTIONS,
+  TABLE,
+  TD,
+  TH,
+} from "./ui";
 
 type ActionKind = "list_sale" | "list_trade" | "sale" | "trade";
 
@@ -78,22 +103,24 @@ function ActionForm({
   };
 
   return (
-    <div className="action-form">
-      <div className="inline-fields">
+    <div className={ACTION_FORM}>
+      <div className={INLINE_FIELDS}>
         {kind === "list_sale" || kind === "sale" ? (
-          <label className="field">
-            <span className="field-label">價格 (TWD)</span>
-            <input
+          <label className={FIELD}>
+            <span className={FIELD_LABEL}>價格 (TWD)</span>
+            <Input
               type="number"
+              className={CONTROL}
               value={price}
               onChange={(e) => setPrice(e.target.value)}
             />
           </label>
         ) : null}
         {kind === "list_trade" ? (
-          <label className="field">
-            <span className="field-label">想換的卡 / 條件</span>
-            <input
+          <label className={FIELD}>
+            <span className={FIELD_LABEL}>想換的卡 / 條件</span>
+            <Input
+              className={CONTROL}
               value={want}
               onChange={(e) => setWant(e.target.value)}
               placeholder="例如 KILLER Kirari UR"
@@ -102,17 +129,19 @@ function ActionForm({
         ) : null}
         {kind === "sale" || kind === "trade" ? (
           <>
-            <label className="field">
-              <span className="field-label">對象</span>
-              <input
+            <label className={FIELD}>
+              <span className={FIELD_LABEL}>對象</span>
+              <Input
+                className={CONTROL}
                 value={counterparty}
                 onChange={(e) => setCounterparty(e.target.value)}
               />
             </label>
-            <label className="field">
-              <span className="field-label">日期</span>
-              <input
+            <label className={FIELD}>
+              <span className={FIELD_LABEL}>日期</span>
+              <Input
                 type="date"
+                className={CONTROL}
                 value={happenedAt}
                 onChange={(e) => setHappenedAt(e.target.value)}
               />
@@ -121,9 +150,10 @@ function ActionForm({
         ) : null}
         {kind === "trade" ? (
           <>
-            <label className="field">
-              <span className="field-label">換得系列</span>
+            <label className={FIELD}>
+              <span className={FIELD_LABEL}>換得系列</span>
               <select
+                className={CONTROL}
                 value={rSeries}
                 onChange={(e) => {
                   setRSeries(e.target.value);
@@ -137,9 +167,13 @@ function ActionForm({
                 ))}
               </select>
             </label>
-            <label className="field">
-              <span className="field-label">換得角色</span>
-              <select value={rChar} onChange={(e) => setRChar(e.target.value)}>
+            <label className={FIELD}>
+              <span className={FIELD_LABEL}>換得角色</span>
+              <select
+                className={CONTROL}
+                value={rChar}
+                onChange={(e) => setRChar(e.target.value)}
+              >
                 {rChars.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -147,9 +181,10 @@ function ActionForm({
                 ))}
               </select>
             </label>
-            <label className="field">
-              <span className="field-label">稀有度</span>
+            <label className={FIELD}>
+              <span className={FIELD_LABEL}>稀有度</span>
               <select
+                className={CONTROL}
                 value={rRarity}
                 onChange={(e) => setRRarity(e.target.value as Rarity)}
               >
@@ -162,27 +197,24 @@ function ActionForm({
             </label>
           </>
         ) : null}
-        <button
+        <Button
           type="button"
-          className="btn btn-primary btn-sm"
+          className={BTN_PRIMARY_SM}
           onClick={submit}
           disabled={busy}
         >
           {busy ? "處理中…" : "確認"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="btn btn-ghost btn-sm"
+          variant="outline"
+          className={BTN_GHOST_SM}
           onClick={onCancel}
         >
           取消
-        </button>
+        </Button>
       </div>
-      {err ? (
-        <div className="error-text" style={{ marginTop: 8 }}>
-          {err}
-        </div>
-      ) : null}
+      {err ? <div className={cn(ERROR_TEXT, "mt-2")}>{err}</div> : null}
     </div>
   );
 }
@@ -218,12 +250,13 @@ export function ManageCards() {
   };
 
   return (
-    <section className="panel">
-      <h2 className="panel-title">卡片管理</h2>
-      <div className="filters">
-        <label className="field">
-          <span className="field-label">系列</span>
+    <section className={PANEL}>
+      <h2 className={PANEL_TITLE}>卡片管理</h2>
+      <div className={FILTERS}>
+        <label className={cn(FIELD, "min-w-[150px]")}>
+          <span className={FIELD_LABEL}>系列</span>
           <select
+            className={CONTROL}
             value={filterSeries}
             onChange={(e) => setFilterSeries(e.target.value)}
           >
@@ -235,9 +268,10 @@ export function ManageCards() {
             ))}
           </select>
         </label>
-        <label className="field">
-          <span className="field-label">狀態</span>
+        <label className={cn(FIELD, "min-w-[150px]")}>
+          <span className={FIELD_LABEL}>狀態</span>
           <select
+            className={CONTROL}
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
           >
@@ -251,20 +285,20 @@ export function ManageCards() {
         </label>
       </div>
 
-      {error ? <div className="error-text">{error}</div> : null}
+      {error ? <div className={ERROR_TEXT}>{error}</div> : null}
       {rows === null ? (
         <div className="state-msg">載入中…</div>
       ) : rows.length === 0 ? (
         <div className="trade-empty">沒有符合的卡片。</div>
       ) : (
-        <table className="admin-table">
+        <table className={TABLE}>
           <thead>
             <tr>
-              <th>系列</th>
-              <th>角色</th>
-              <th>稀有度</th>
-              <th>狀態</th>
-              <th>操作</th>
+              <th className={TH}>系列</th>
+              <th className={TH}>角色</th>
+              <th className={TH}>稀有度</th>
+              <th className={TH}>狀態</th>
+              <th className={TH}>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -277,90 +311,87 @@ export function ManageCards() {
               return (
                 <Fragment key={card.id}>
                   <tr>
-                    <td>{card.series}</td>
-                    <td>{card.character}</td>
-                    <td>
-                      <span className={`pill ${card.rarity.toLowerCase()}`}>
+                    <td className={TD}>{card.series}</td>
+                    <td className={TD}>{card.character}</td>
+                    <td className={TD}>
+                      <span className={cn(PILL_BASE, PILL_RARITY[card.rarity])}>
                         {card.rarity}
                       </span>
                     </td>
-                    <td>
-                      <span className={`pill ${card.status}`}>
+                    <td className={TD}>
+                      <span className={cn(PILL_BASE, PILL_STATUS[card.status])}>
                         {STATUS_LABEL[card.status]}
                       </span>
                       {card.duplicate && isActive ? (
-                        <span className="pill dup" style={{ marginLeft: 6 }}>
+                        <span className={cn(PILL_BASE, PILL_DUP, "ml-1.5")}>
                           重複
                         </span>
                       ) : null}
                       {card.reservedGive > 0 && isActive ? (
                         <span
-                          className="pill reserved"
-                          style={{ marginLeft: 6 }}
+                          className={cn(PILL_BASE, PILL_RESERVED, "ml-1.5")}
                         >
                           預約中 ×{card.reservedGive}
                         </span>
                       ) : null}
                       {card.status === "for_sale" &&
                       card.askingPrice != null ? (
-                        <span className="mono" style={{ marginLeft: 8 }}>
-                          {card.askingPrice} 元
-                        </span>
+                        <span className="ml-2">{card.askingPrice} 元</span>
                       ) : null}
                       {card.status === "for_trade" && card.wantInReturn ? (
-                        <span
-                          style={{
-                            marginLeft: 8,
-                            color: "var(--text-tertiary)",
-                          }}
-                        >
+                        <span className="ml-2 text-[var(--text-tertiary)]">
                           想換：{card.wantInReturn}
                         </span>
                       ) : null}
                     </td>
-                    <td>
+                    <td className={TD}>
                       {isActive ? (
-                        <div className="row-actions">
-                          <button
+                        <div className={ROW_ACTIONS}>
+                          <Button
                             type="button"
-                            className="btn btn-ghost btn-sm"
+                            variant="outline"
+                            className={BTN_GHOST_SM}
                             onClick={() =>
                               setAction({ cardId: card.id, kind: "list_sale" })
                             }
                           >
                             待售
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
-                            className="btn btn-ghost btn-sm"
+                            variant="outline"
+                            className={BTN_GHOST_SM}
                             onClick={() =>
                               setAction({ cardId: card.id, kind: "list_trade" })
                             }
                           >
                             待換
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
-                            className="btn btn-ghost btn-sm"
+                            variant="outline"
+                            className={BTN_GHOST_SM}
                             onClick={() =>
                               setAction({ cardId: card.id, kind: "sale" })
                             }
                           >
                             賣出
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
-                            className="btn btn-ghost btn-sm"
+                            variant="outline"
+                            className={BTN_GHOST_SM}
                             onClick={() =>
                               setAction({ cardId: card.id, kind: "trade" })
                             }
                           >
                             交換
-                          </button>
+                          </Button>
                           {card.status !== "owned" ? (
-                            <button
+                            <Button
                               type="button"
-                              className="btn btn-ghost btn-sm"
+                              variant="outline"
+                              className={BTN_GHOST_SM}
                               onClick={() => {
                                 patchCard(card.id, { status: "owned" })
                                   .then(reload)
@@ -368,19 +399,17 @@ export function ManageCards() {
                               }}
                             >
                               取消上架
-                            </button>
+                            </Button>
                           ) : null}
                         </div>
                       ) : (
-                        <span style={{ color: "var(--text-quaternary)" }}>
-                          —
-                        </span>
+                        <span className="text-[var(--text-quaternary)]">—</span>
                       )}
                     </td>
                   </tr>
                   {open && action ? (
                     <tr>
-                      <td colSpan={5}>
+                      <td className={TD} colSpan={5}>
                         <ActionForm
                           card={card}
                           kind={action.kind}
