@@ -1,7 +1,39 @@
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Toggle } from "@/components/ui/toggle";
+import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { RARITIES, SERIES, charactersFor } from "../../../seed/catalog-def";
 import type { AddCardInput, OpeningInput, Rarity } from "../../shared/types";
 import { postCards } from "../api";
+import {
+  ADD_ACTIONS,
+  BTN_GHOST_SM,
+  BTN_PRIMARY,
+  CHECKBOX,
+  CHECKBOX_ROW,
+  CONTROL,
+  ERROR_TEXT,
+  FIELD,
+  FIELD_LABEL,
+  OPENING_FIELDS,
+  OPT_BASE,
+  OPT_CHIP,
+  OPT_GROUP,
+  OPT_RARITY,
+  OPT_TOGGLE,
+  PANEL,
+  PANEL_TITLE,
+  PILL_BASE,
+  PILL_RARITY,
+  TALLY,
+  TALLY_EMPTY,
+  TALLY_NAME,
+  TALLY_QTY,
+  TALLY_ROW,
+  TALLY_SERIES,
+  TOAST,
+} from "./ui";
 
 interface TallyEntry {
   series: string;
@@ -84,100 +116,91 @@ export function AddCards() {
   };
 
   return (
-    <section className="panel">
-      <h2 className="panel-title">開箱新增</h2>
+    <section className={PANEL}>
+      <h2 className={PANEL_TITLE}>開箱新增</h2>
 
-      <div className="field">
-        <span className="field-label">系列</span>
-        <div className="opt-group">
+      <div className={FIELD}>
+        <span className={FIELD_LABEL}>系列</span>
+        <div className={OPT_GROUP}>
           {SERIES.map((s) => (
-            <button
+            <Toggle
               key={s}
-              type="button"
-              className={`opt${s === series ? " active" : ""}`}
-              onClick={() => setSeries(s)}
+              pressed={s === series}
+              onPressedChange={() => setSeries(s)}
+              className={OPT_TOGGLE}
             >
               {s}
-            </button>
+            </Toggle>
           ))}
         </div>
       </div>
 
-      <div className="field" style={{ marginTop: 16 }}>
-        <span className="field-label">稀有度</span>
-        <div className="opt-group">
+      <div className={cn(FIELD, "mt-4")}>
+        <span className={FIELD_LABEL}>稀有度</span>
+        <div className={OPT_GROUP}>
           {RARITIES.map((rr) => (
-            <button
+            <Toggle
               key={rr}
-              type="button"
-              className={`opt rarity ${rr.toLowerCase()}${
-                rr === rarity ? " active" : ""
-              }`}
-              onClick={() => setRarity(rr)}
+              pressed={rr === rarity}
+              onPressedChange={() => setRarity(rr)}
+              className={cn(OPT_BASE, OPT_RARITY[rr])}
             >
               {rr}
-            </button>
+            </Toggle>
           ))}
         </div>
       </div>
 
-      <div className="field" style={{ marginTop: 16 }}>
-        <span className="field-label">角色（點一下 = 加一張）</span>
-        <div className="opt-group">
+      <div className={cn(FIELD, "mt-4")}>
+        <span className={FIELD_LABEL}>角色（點一下 = 加一張）</span>
+        <div className={OPT_GROUP}>
           {chars.map((c) => (
-            <button
+            <Button
               key={c}
               type="button"
-              className="opt"
+              variant="ghost"
+              className={OPT_CHIP}
               onClick={() => addCard(c)}
             >
               {c}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
 
       {tally.length > 0 ? (
-        <div className="tally">
+        <div className={TALLY}>
           {tally.map((e) => (
             <div
-              className="tally-row"
+              className={TALLY_ROW}
               key={`${e.series}-${e.character}-${e.rarity}`}
             >
-              <span className="tally-series">{e.series}</span>
-              <span className="tally-name">{e.character}</span>
-              <span className={`pill ${e.rarity.toLowerCase()}`}>
+              <span className={TALLY_SERIES}>{e.series}</span>
+              <span className={TALLY_NAME}>{e.character}</span>
+              <span className={cn(PILL_BASE, PILL_RARITY[e.rarity])}>
                 {e.rarity}
               </span>
-              <span className="tally-qty">×{e.qty}</span>
-              <button
+              <span className={TALLY_QTY}>×{e.qty}</span>
+              <Button
                 type="button"
-                className="btn btn-ghost btn-sm"
+                variant="outline"
+                className={BTN_GHOST_SM}
                 aria-label={`移除 ${e.series} ${e.character} ${e.rarity}`}
                 onClick={() => removeOne(e.series, e.character, e.rarity)}
               >
                 –
-              </button>
+              </Button>
             </div>
           ))}
         </div>
       ) : (
-        <p className="tally-empty">點上方角色加入卡片</p>
+        <p className={TALLY_EMPTY}>點上方角色加入卡片</p>
       )}
 
-      <label
-        style={{
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          margin: "20px 0 0",
-          fontSize: 14,
-          color: "var(--text-secondary)",
-          cursor: "pointer",
-        }}
-      >
+      <label className={CHECKBOX_ROW}>
         <input
           type="checkbox"
+          className={CHECKBOX}
           checked={isOpening}
           onChange={(e) => setIsOpening(e.target.checked)}
         />
@@ -185,20 +208,22 @@ export function AddCards() {
       </label>
 
       {isOpening ? (
-        <div className="opening-fields">
-          <label className="field">
-            <span className="field-label">開箱日期</span>
-            <input
+        <div className={OPENING_FIELDS}>
+          <label className={FIELD}>
+            <span className={FIELD_LABEL}>開箱日期</span>
+            <Input
               type="date"
+              className={CONTROL}
               value={openedAt}
               onChange={(e) => setOpenedAt(e.target.value)}
             />
           </label>
-          <label className="field">
-            <span className="field-label">總花費 (TWD)</span>
-            <input
+          <label className={FIELD}>
+            <span className={FIELD_LABEL}>總花費 (TWD)</span>
+            <Input
               type="number"
               inputMode="numeric"
+              className={CONTROL}
               value={cost}
               onChange={(e) => setCost(e.target.value)}
               placeholder="例如 600"
@@ -207,17 +232,20 @@ export function AddCards() {
         </div>
       ) : null}
 
-      <div className="add-actions">
-        <button
+      <div className={ADD_ACTIONS}>
+        <Button
           type="button"
-          className="btn btn-primary"
+          className={BTN_PRIMARY}
           onClick={submit}
-          disabled={busy || total === 0}
+          disabled={busy || total === 0 || (isOpening && !openedAt)}
         >
           {busy ? "新增中…" : `新增 ${total} 張`}
-        </button>
-        {toast ? <span className="toast">{toast}</span> : null}
-        {error ? <span className="error-text">{error}</span> : null}
+        </Button>
+        {isOpening && !openedAt ? (
+          <span className={ERROR_TEXT}>開箱日期為必填</span>
+        ) : null}
+        {toast ? <span className={TOAST}>{toast}</span> : null}
+        {error ? <span className={ERROR_TEXT}>{error}</span> : null}
       </div>
     </section>
   );
