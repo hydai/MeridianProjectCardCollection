@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { MarketListing } from "../../shared/types";
 import { RARITIES } from "../collection";
-import { MissChip, Panel } from "./shared";
+import { EMPTY_MSG, MissChip, PANEL_GRID, Panel } from "./shared";
 
 function ListingRow({ item }: { item: MarketListing }) {
   const ri = RARITIES.indexOf(item.rarity);
@@ -54,9 +54,7 @@ export function MarketBoard({
   if (error) {
     return (
       <section className="view view-market">
-        <div className="px-0.5 py-3 text-[13px] tracking-[0.04em] text-[var(--text-tertiary)]">
-          無法載入交易資料：{error}
-        </div>
+        <div className={EMPTY_MSG}>無法載入交易資料：{error}</div>
       </section>
     );
   }
@@ -76,9 +74,7 @@ export function MarketBoard({
   if (forSale.length === 0 && forTrade.length === 0) {
     return (
       <section className="view view-market">
-        <div className="px-0.5 py-3 text-[13px] tracking-[0.04em] text-[var(--text-tertiary)]">
-          目前沒有上架中的卡片。
-        </div>
+        <div className={EMPTY_MSG}>目前沒有上架中的卡片。</div>
       </section>
     );
   }
@@ -97,7 +93,7 @@ export function MarketBoard({
     <section className="view view-market">
       <div
         className={cn(
-          "grid grid-cols-2 gap-5 max-sm:grid-cols-1 max-sm:gap-4",
+          PANEL_GRID,
           panels.length === 1 && "max-w-[520px] grid-cols-1",
         )}
       >

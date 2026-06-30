@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TableCell } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-const RARITY_TEXT = [
+export const RARITY_TEXT = [
   "text-rarity-r",
   "text-rarity-sr",
   "text-rarity-ssr",
@@ -34,14 +34,22 @@ export const CARD_COUNT =
 // Editorial sub-panel (shared by Trade + Market): the legacy `.trade-panel`
 // rebuilt on shadcn Card — 0.5px border, 4px radius, serif title with a mono
 // sub on the right and a 0.5px header divider. Smaller than CARD_SHELL.
-export const PANEL_SHELL =
+const PANEL_SHELL =
   "gap-0 overflow-visible rounded-[4px] border-[0.5px] border-border bg-card px-[22px] py-5 ring-0 max-sm:px-4 max-sm:py-4";
-export const PANEL_HEADER =
+const PANEL_HEADER =
   "flex flex-row items-baseline justify-between gap-3 border-b-[0.5px] border-border px-0 pb-3 mb-4";
 export const PANEL_TITLE =
   "font-serif text-base font-medium tracking-[0.04em] text-foreground";
-export const PANEL_SUB =
+const PANEL_SUB =
   "font-mono text-[11px] font-normal tracking-[0.06em] text-[var(--text-tertiary)]";
+
+// Two-column panel board (Trade + Market), collapsing to one column on mobile.
+export const PANEL_GRID =
+  "grid grid-cols-2 gap-5 max-sm:grid-cols-1 max-sm:gap-4";
+
+// Empty/error state line (legacy `.trade-empty`), shared by Trade + Market.
+export const EMPTY_MSG =
+  "px-0.5 py-3 text-[13px] tracking-[0.04em] text-[var(--text-tertiary)]";
 
 export function Panel({
   title,

@@ -18,19 +18,21 @@ import {
   type Matrix,
   RARITIES,
   RARITY_KEYS,
+  type RarityKey,
   type TradeItem,
   computeTradeWithPending,
   formatTradeList,
 } from "../collection";
-import { MissChip, PANEL_TITLE, Panel } from "./shared";
+import {
+  EMPTY_MSG,
+  MissChip,
+  PANEL_GRID,
+  PANEL_TITLE,
+  Panel,
+  RARITY_TEXT,
+} from "./shared";
 
-type Filter = "all" | "r" | "sr" | "ssr" | "ur";
-const RK_NAME: Record<string, string> = {
-  r: "R",
-  sr: "SR",
-  ssr: "SSR",
-  ur: "UR",
-};
+type Filter = "all" | RarityKey;
 
 interface PendingRow {
   rarity: (typeof RARITIES)[number];
@@ -179,12 +181,7 @@ export function Trade({
       return {
         key: RARITY_KEYS[ri] as Filter,
         label: rarity,
-        cls: [
-          "text-rarity-r",
-          "text-rarity-sr",
-          "text-rarity-ssr",
-          "text-rarity-ur",
-        ][ri],
+        cls: RARITY_TEXT[ri],
         need,
         spare,
         shortfall: need > spare,
@@ -205,12 +202,7 @@ export function Trade({
           <div
             className={cn(
               "mb-2 font-mono text-xs font-medium tracking-[0.08em]",
-              [
-                "text-rarity-r",
-                "text-rarity-sr",
-                "text-rarity-ssr",
-                "text-rarity-ur",
-              ][ri],
+              RARITY_TEXT[ri],
             )}
           >
             {RARITIES[ri]}
@@ -253,9 +245,10 @@ export function Trade({
 
   const panelBody = (filtered: TradeItem[], kind: "surplus" | "needs") => {
     if (filtered.length === 0) {
-      const rname = filter === "all" ? "" : `${RK_NAME[filter]} `;
+      const rname =
+        filter === "all" ? "" : `${RARITIES[RARITY_KEYS.indexOf(filter)]} `;
       return (
-        <div className="px-0.5 py-3 text-[13px] tracking-[0.04em] text-[var(--text-tertiary)]">
+        <div className={EMPTY_MSG}>
           {kind === "surplus"
             ? `目前沒有多餘的 ${rname}卡可換出。`
             : `${rname}已全部收集 ✓`}
@@ -326,7 +319,7 @@ export function Trade({
           </AlertDescription>
         </Alert>
       ) : null}
-      <div className="grid grid-cols-2 gap-5 max-sm:grid-cols-1 max-sm:gap-4">
+      <div className={PANEL_GRID}>
         <Panel
           title={
             <span className="inline-flex items-center gap-2">
