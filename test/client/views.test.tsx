@@ -435,3 +435,36 @@ describe("Trade copy buttons", () => {
     expect(writeText).toHaveBeenCalledWith("UR\nKirari, MP 4TH, 1");
   });
 });
+
+describe("Trade rarity filter", () => {
+  const card = (
+    character: string,
+    rarity: "R" | "SR" | "SSR" | "UR",
+    owned: number,
+    id: number,
+  ) => ({ catalogId: id, series: "MP 4TH", character, rarity, owned });
+
+  // Kirari SR owned 2 AND Kirari UR owned 2 → surplus in two rarities.
+  const twoSurplus: OverviewResponse = {
+    cells: [
+      card("Kirari", "R", 1, 1),
+      card("Kirari", "SR", 2, 2),
+      card("Kirari", "SSR", 1, 3),
+      card("Kirari", "UR", 2, 4),
+    ],
+    progress: [],
+  };
+
+  it("scopes the 可換出 copy list to the selected rarity", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    render(<Trade m={buildMatrix(twoSurplus)} />);
+    // Radix single-select ToggleGroup items render as role="radio".
+    fireEvent.click(screen.getByRole("radio", { name: "SR" }));
+    fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
+    expect(writeText).toHaveBeenCalledWith("SR\nKirari, MP 4TH, 1");
+  });
+});

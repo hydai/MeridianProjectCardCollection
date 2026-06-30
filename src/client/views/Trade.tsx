@@ -1,4 +1,6 @@
 import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 import { Check, Copy } from "lucide-react";
 import { useRef, useState } from "react";
 import type { PublicPendingTrade, ReservationLine } from "../../shared/types";
@@ -145,7 +147,7 @@ export function Trade({
     {
       key: "all",
       label: "全部",
-      cls: "ts-all",
+      cls: "text-muted-foreground",
       need: needs.length,
       spare: totalSpare,
       shortfall: false,
@@ -158,7 +160,12 @@ export function Trade({
       return {
         key: RARITY_KEYS[ri] as Filter,
         label: rarity,
-        cls: `ts-${RARITY_KEYS[ri]}`,
+        cls: [
+          "text-rarity-r",
+          "text-rarity-sr",
+          "text-rarity-ssr",
+          "text-rarity-ur",
+        ][ri],
         need,
         spare,
         shortfall: need > spare,
@@ -225,30 +232,47 @@ export function Trade({
   const showWarning =
     (filter === "all" || filter === "ur") && urNeed > 0 && urSpare === 0;
 
-  const toggle = (f: Filter) =>
-    setFilter((cur) => (cur === f && f !== "all" ? "all" : f));
+  const sumItemClass = (key: Filter, shortfall: boolean) =>
+    cn(
+      "flex h-auto w-full flex-col items-stretch justify-start gap-2 rounded-[4px] border-[0.5px] border-border bg-card px-2.5 py-3.5 text-center transition-colors select-none hover:bg-card hover:[border-color:var(--border-strong)] hover:text-foreground max-sm:px-1.5 max-sm:py-[11px]",
+      shortfall && filter !== key && "border-rarity-ur/40 bg-[var(--ur-soft)]",
+      filter === key &&
+        "border-primary bg-secondary shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.45)]",
+    );
 
   return (
     <section className="view view-trade">
-      <div className="trade-summary">
+      <ToggleGroup
+        type="single"
+        value={filter}
+        onValueChange={(v) => setFilter((v || "all") as Filter)}
+        className="mb-[18px] grid w-full grid-cols-5 gap-2.5 max-sm:gap-[7px]"
+      >
         {summaryCards.map((c) => (
-          <button
-            type="button"
+          <ToggleGroupItem
             key={c.key}
-            className={`trade-sum-card ${c.shortfall ? "shortfall" : ""} ${
-              filter === c.key ? "active" : ""
-            }`}
-            onClick={() => toggle(c.key)}
+            value={c.key}
+            aria-label={c.label}
+            className={sumItemClass(c.key, c.shortfall)}
           >
-            <div className={`trade-sum-rarity ${c.cls}`}>{c.label}</div>
-            <div className="trade-sum-nums">
-              <span className="ts-need">缺 {c.need}</span>
-              <span className="ts-sep">↔</span>
-              <span className="ts-spare">餘 {c.spare}</span>
+            <div
+              className={cn(
+                "mb-2 font-mono text-sm font-medium tracking-[0.08em] max-sm:text-xs",
+                c.cls,
+              )}
+            >
+              {c.label}
             </div>
-          </button>
+            <div className="flex items-center justify-center gap-1.5 font-mono text-xs max-sm:flex-col max-sm:gap-1 max-sm:text-[11px]">
+              <span className="text-muted-foreground">缺 {c.need}</span>
+              <span className="text-[11px] text-[var(--text-quaternary)] max-sm:hidden">
+                ↔
+              </span>
+              <span className="text-foreground">餘 {c.spare}</span>
+            </div>
+          </ToggleGroupItem>
         ))}
-      </div>
+      </ToggleGroup>
       {showWarning ? (
         <div className="trade-warning">
           ⚠ <strong>UR 沒有任何多餘可換出</strong>，但還缺 {urNeed}{" "}
