@@ -102,6 +102,11 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
+
+  /* Mobile breakpoint: the migrated views collapse via `max-sm:`; pin `sm` to
+     540px so it matches the legacy `@media (max-width: 540px)` chrome (e.g. the
+     glance table) instead of Tailwind's 640px default. */
+  --breakpoint-sm: 540px;
 }
 
 /* The universal margin/padding/box-sizing reset is provided by Tailwind's

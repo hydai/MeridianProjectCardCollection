@@ -114,6 +114,10 @@ function CopyButton({
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onClick = () => {
+    // In an insecure context (e.g. http:// on a LAN IP) the Clipboard API is
+    // absent and `navigator.clipboard` is undefined; guard before use, since a
+    // `.catch()` cannot trap the synchronous throw from that member access.
+    if (!navigator.clipboard) return;
     navigator.clipboard
       .writeText(text)
       .then(() => {
@@ -122,7 +126,7 @@ function CopyButton({
         timer.current = setTimeout(() => setCopied(false), 1500);
       })
       .catch(() => {
-        /* clipboard unavailable (insecure context) — skip feedback */
+        /* write rejected (e.g. permission denied) — skip feedback */
       });
   };
   return (
@@ -130,7 +134,7 @@ function CopyButton({
       type="button"
       variant="ghost"
       size="icon"
-      className="size-6 text-[var(--text-tertiary)] hover:text-foreground"
+      className="size-6 cursor-pointer text-[var(--text-tertiary)] hover:text-foreground"
       onClick={onClick}
       disabled={disabled}
       aria-label={copied ? "已複製" : label}
@@ -268,10 +272,16 @@ export function Trade({
 
   const sumItemClass = (key: Filter, shortfall: boolean) =>
     cn(
-      "flex h-auto w-full flex-col items-stretch justify-start gap-2 rounded-[4px] border-[0.5px] border-border bg-card px-2.5 py-3.5 text-center transition-colors select-none hover:bg-card hover:[border-color:var(--border-strong)] hover:text-foreground max-sm:px-1.5 max-sm:py-[11px]",
-      shortfall && filter !== key && "border-rarity-ur/40 bg-[var(--ur-soft)]",
+      "flex h-auto w-full cursor-pointer flex-col items-stretch justify-start gap-2 rounded-[4px] border-[0.5px] border-border bg-card px-2.5 py-3.5 text-center transition-colors select-none hover:bg-card hover:[border-color:var(--border-strong)] hover:text-foreground max-sm:px-1.5 max-sm:py-[11px]",
+      // Keep the shortfall tint on hover (the base `hover:bg-card` would win otherwise).
+      shortfall &&
+        filter !== key &&
+        "border-rarity-ur/40 bg-[var(--ur-soft)] hover:bg-[var(--ur-soft)]",
+      // `data-[state=on]:bg-secondary` overrides the Toggle primitive's
+      // `data-[state=on]:bg-muted` (equal specificity → last wins) so the active
+      // card is the lighter elevated fill, not the darkest one.
       filter === key &&
-        "border-primary bg-secondary shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.45)]",
+        "border-primary bg-secondary shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.45)] hover:bg-secondary data-[state=on]:bg-secondary",
     );
 
   return (
@@ -286,7 +296,7 @@ export function Trade({
           <ToggleGroupItem
             key={c.key}
             value={c.key}
-            aria-label={c.label}
+            aria-label={`${c.label} 缺 ${c.need} 餘 ${c.spare}`}
             className={sumItemClass(c.key, c.shortfall)}
           >
             <div
@@ -353,7 +363,14 @@ export function Trade({
       </div>
       {pending && pending.length > 0 ? (
         <section className="mt-6">
-          <h3 className={PANEL_TITLE}>暫定交換列表</h3>
+          <h3
+            className={cn(
+              PANEL_TITLE,
+              "mb-4 border-b-[0.5px] border-border pb-3",
+            )}
+          >
+            暫定交換列表
+          </h3>
           {pending.map((p) => (
             <PendingCard key={p.id} p={p} />
           ))}

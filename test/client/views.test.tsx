@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SERIES, buildCatalog, charactersFor } from "../../seed/catalog-def";
 import { type Matrix, buildMatrix } from "../../src/client/collection";
 import { Glance } from "../../src/client/views/Glance";
@@ -404,6 +404,12 @@ describe("Trade copy buttons", () => {
     progress: [],
   };
 
+  // Tests below stub `navigator.clipboard`; restore it after each so the stub
+  // never leaks into later tests (which would mask a real missing-clipboard bug).
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+
   it("renders a copy button on each panel", () => {
     render(<Trade m={buildMatrix(oneSurplus)} />);
     expect(
@@ -434,6 +440,18 @@ describe("Trade copy buttons", () => {
     fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
     expect(writeText).toHaveBeenCalledWith("UR\nKirari, MP 4TH, 1");
   });
+
+  it("does not throw when the Clipboard API is unavailable", () => {
+    // Insecure context (e.g. http:// on a LAN IP): navigator.clipboard is absent.
+    Object.defineProperty(navigator, "clipboard", {
+      value: undefined,
+      configurable: true,
+    });
+    render(<Trade m={buildMatrix(oneSurplus)} />);
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" })),
+    ).not.toThrow();
+  });
 });
 
 describe("Trade rarity filter", () => {
@@ -455,6 +473,10 @@ describe("Trade rarity filter", () => {
     progress: [],
   };
 
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+
   it("scopes the 可換出 copy list to the selected rarity", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -462,8 +484,9 @@ describe("Trade rarity filter", () => {
       configurable: true,
     });
     render(<Trade m={buildMatrix(twoSurplus)} />);
-    // Radix single-select ToggleGroup items render as role="radio".
-    fireEvent.click(screen.getByRole("radio", { name: "SR" }));
+    // Radix single-select ToggleGroup items render as role="radio"; the
+    // accessible name includes the 缺/餘 counts, so match the rarity prefix.
+    fireEvent.click(screen.getByRole("radio", { name: /^SR / }));
     fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
     expect(writeText).toHaveBeenCalledWith("SR\nKirari, MP 4TH, 1");
   });
