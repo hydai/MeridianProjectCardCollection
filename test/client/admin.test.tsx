@@ -186,6 +186,32 @@ describe("AddCards", () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(body.opening.series).toBe("KILLER");
   });
+
+  it("marks the selected series and rarity as pressed toggles", () => {
+    render(<AddCards />);
+    // Defaults: series "NEW YEAR", rarity "R".
+    expect(screen.getByRole("button", { name: "NEW YEAR" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "R" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "SR" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "SR" }));
+    expect(screen.getByRole("button", { name: "SR" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "R" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
 });
 
 describe("ManageCards", () => {
