@@ -1,4 +1,6 @@
+import { RARITIES } from "../../../seed/catalog-def";
 import type { Rarity } from "../../shared/types";
+import { RARITY_TEXT } from "../views/shared";
 
 // === Admin design-system constants (Phase 4) =========================
 // Tailwind rebuilds of admin.css, shared across the five admin panels so
@@ -30,19 +32,22 @@ export const BTN_GHOST_SM =
   "h-auto rounded-[4px] border-[0.5px] border-[var(--border-strong)] bg-transparent px-2.5 py-1 font-sans text-[11px] font-normal tracking-[0.06em] text-muted-foreground hover:border-primary hover:bg-transparent hover:text-primary";
 
 // Flat option chips (.opt / .opt-group). Series + rarity are single-select
-// shadcn <Toggle> (role=button + aria-pressed, like the Phase 3c Grid
-// filters); character chips are momentary <Button variant="ghost">. OPT_TOGGLE
-// overrides BOTH the toggleVariants base `data-[state=on]:bg-muted` and
-// `aria-pressed:bg-muted` with the .opt.active gold fill (distinct variant
-// prefixes, so tailwind-merge keeps both).
+// shadcn <Toggle> (role=button + aria-pressed, like the Phase 3c Grid filters);
+// character chips are momentary <Button variant="ghost">. OPT_BASE carries no
+// active state. OPT_TOGGLE adds the gold .opt.active fill for the series toggles
+// (its data-[state=on]/aria-pressed utilities also override toggleVariants' own
+// data-[state=on]:bg-muted). Rarity toggles instead compose their own colour via
+// cn(OPT_BASE, OPT_RARITY[rr]) — OPT_BASE has nothing active to override, so the
+// result no longer depends on cn() argument order.
 export const OPT_GROUP = "flex flex-wrap gap-2";
-const OPT_BASE =
+export const OPT_BASE =
   "h-auto rounded-[4px] border-[0.5px] border-[var(--border-strong)] bg-[var(--bg-subtle)] px-3.5 py-2 font-sans text-[13px] font-normal tracking-[0.04em] text-muted-foreground transition-colors hover:border-primary hover:bg-[var(--bg-subtle)] hover:text-foreground";
 export const OPT_CHIP = OPT_BASE;
 export const OPT_TOGGLE = `${OPT_BASE} data-[state=on]:border-primary data-[state=on]:bg-[rgba(201,161,74,0.08)] data-[state=on]:text-primary aria-pressed:border-primary aria-pressed:bg-[rgba(201,161,74,0.08)] aria-pressed:text-primary`;
-// Active rarity takes its own colour (.opt.rarity.<r>.active) — overrides the
-// gold OPT_TOGGLE active block (same data-[state=on]/aria-pressed props, listed
-// last so tailwind-merge keeps these).
+// Active rarity takes its own colour (.opt.rarity.<r>.active), overriding the
+// Toggle's default data-[state=on]/aria-pressed fill. Composed at the call site
+// as cn(OPT_BASE, OPT_RARITY[rr]); since OPT_BASE has no active utilities, the
+// outcome is independent of cn() argument order.
 export const OPT_RARITY: Record<Rarity, string> = {
   R: "data-[state=on]:border-[rgba(154,149,139,0.5)] data-[state=on]:bg-[rgba(154,149,139,0.08)] data-[state=on]:text-rarity-r aria-pressed:border-[rgba(154,149,139,0.5)] aria-pressed:bg-[rgba(154,149,139,0.08)] aria-pressed:text-rarity-r",
   SR: "data-[state=on]:border-[rgba(212,168,87,0.5)] data-[state=on]:bg-[rgba(212,168,87,0.08)] data-[state=on]:text-rarity-sr aria-pressed:border-[rgba(212,168,87,0.5)] aria-pressed:bg-[rgba(212,168,87,0.08)] aria-pressed:text-rarity-sr",
@@ -55,12 +60,11 @@ export const OPT_RARITY: Record<Rarity, string> = {
 // 4b adds status/dup/reserved variants.
 export const PILL_BASE =
   "inline-flex items-center whitespace-nowrap rounded-full border-[0.5px] border-[var(--border-strong)] px-[9px] py-0.5 text-[10px] tracking-[0.1em] text-[var(--text-tertiary)]";
-export const PILL_RARITY: Record<Rarity, string> = {
-  R: "text-rarity-r",
-  SR: "text-rarity-sr",
-  SSR: "text-rarity-ssr",
-  UR: "text-rarity-ur",
-};
+// Rarity text colour reuses RARITY_TEXT (the single source shared with the
+// collection views), indexed by RARITIES order, instead of a parallel map.
+export const PILL_RARITY: Record<Rarity, string> = Object.fromEntries(
+  RARITIES.map((r, i): [Rarity, string] => [r, RARITY_TEXT[i]]),
+) as Record<Rarity, string>;
 
 // Running tally list (.tally*).
 export const TALLY =

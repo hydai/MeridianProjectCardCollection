@@ -17,6 +17,7 @@ import {
   FIELD,
   FIELD_LABEL,
   OPENING_FIELDS,
+  OPT_BASE,
   OPT_CHIP,
   OPT_GROUP,
   OPT_RARITY,
@@ -142,7 +143,7 @@ export function AddCards() {
               key={rr}
               pressed={rr === rarity}
               onPressedChange={() => setRarity(rr)}
-              className={cn(OPT_TOGGLE, OPT_RARITY[rr])}
+              className={cn(OPT_BASE, OPT_RARITY[rr])}
             >
               {rr}
             </Toggle>
