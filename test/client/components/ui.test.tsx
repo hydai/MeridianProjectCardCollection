@@ -131,6 +131,33 @@ describe("ToggleGroup", () => {
     fireEvent.click(screen.getByRole("radio", { name: "UR" }));
     expect(onValueChange).toHaveBeenCalledWith("ur");
   });
+
+  it("forwards orientation to the Radix root as data-orientation", () => {
+    // Forwarding `orientation` lets Radix drive roving-focus AND emit
+    // data-orientation, which the data-[orientation=*] Tailwind variants
+    // target. Assert the attribute lands on the DOM for both orientations.
+    const { container, rerender } = render(
+      <ToggleGroup type="single" value="all">
+        <ToggleGroupItem value="all" aria-label="全部">
+          全部
+        </ToggleGroupItem>
+      </ToggleGroup>,
+    );
+    expect(
+      container.querySelector('[data-slot="toggle-group"]'),
+    ).toHaveAttribute("data-orientation", "horizontal");
+
+    rerender(
+      <ToggleGroup type="single" value="all" orientation="vertical">
+        <ToggleGroupItem value="all" aria-label="全部">
+          全部
+        </ToggleGroupItem>
+      </ToggleGroup>,
+    );
+    expect(
+      container.querySelector('[data-slot="toggle-group"]'),
+    ).toHaveAttribute("data-orientation", "vertical");
+  });
 });
 
 describe("Panel", () => {
