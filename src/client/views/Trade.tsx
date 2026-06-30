@@ -22,7 +22,7 @@ import {
   computeTradeWithPending,
   formatTradeList,
 } from "../collection";
-import { MissChip } from "./shared";
+import { MissChip, PANEL_TITLE, Panel } from "./shared";
 
 type Filter = "all" | "r" | "sr" | "ssr" | "ur";
 const RK_NAME: Record<string, string> = {
@@ -201,23 +201,45 @@ export function Trade({
           ? `${ritems.reduce((s, x) => s + x.spare, 0)} 張`
           : `缺 ${ritems.length}`;
       return (
-        <div className="trade-rgroup" key={RARITIES[ri]}>
-          <div className={`trade-rhead ts-${RARITY_KEYS[ri]}`}>
+        <div className="mb-[18px] last:mb-0" key={RARITIES[ri]}>
+          <div
+            className={cn(
+              "mb-2 font-mono text-xs font-medium tracking-[0.08em]",
+              [
+                "text-rarity-r",
+                "text-rarity-sr",
+                "text-rarity-ssr",
+                "text-rarity-ur",
+              ][ri],
+            )}
+          >
             {RARITIES[ri]}
-            <span className="trade-rcount">{headCount}</span>
+            <span className="ml-1 font-normal text-[var(--text-tertiary)]">
+              {headCount}
+            </span>
           </div>
           {m.series.map((sname, si) => {
             const sitems = ritems.filter((x) => x.si === si);
             if (sitems.length === 0) return null;
             return (
-              <div className="trade-series-row" key={sname}>
-                <span className="trade-series-label">{sname}</span>
-                <span className="trade-names">
+              <div
+                className="grid grid-cols-[88px_1fr] items-start gap-2.5 py-[5px] [&+&]:border-t-[0.5px] [&+&]:border-[var(--border-tertiary)] max-sm:grid-cols-[72px_1fr] max-sm:gap-2"
+                key={sname}
+              >
+                <span className="pt-0.5 font-accent text-[11px] italic uppercase tracking-[0.1em] text-[var(--text-tertiary)] max-sm:text-[10px]">
+                  {sname}
+                </span>
+                <span className="flex flex-wrap gap-x-2.5 gap-y-[5px]">
                   {sitems.map((x) => (
-                    <span className="trade-name" key={m.characters[x.ci]}>
+                    <span
+                      className="whitespace-nowrap text-[13px] text-foreground max-sm:text-xs"
+                      key={m.characters[x.ci]}
+                    >
                       {m.characters[x.ci]}
                       {kind === "surplus" ? (
-                        <span className="trade-x">×{x.spare}</span>
+                        <span className="ml-0.5 font-mono text-[10px] text-primary">
+                          ×{x.spare}
+                        </span>
                       ) : null}
                     </span>
                   ))}
@@ -233,7 +255,7 @@ export function Trade({
     if (filtered.length === 0) {
       const rname = filter === "all" ? "" : `${RK_NAME[filter]} `;
       return (
-        <div className="trade-empty">
+        <div className="px-0.5 py-3 text-[13px] tracking-[0.04em] text-[var(--text-tertiary)]">
           {kind === "surplus"
             ? `目前沒有多餘的 ${rname}卡可換出。`
             : `${rname}已全部收集 ✓`}
@@ -304,10 +326,10 @@ export function Trade({
           </AlertDescription>
         </Alert>
       ) : null}
-      <div className="trade-grid">
-        <section className="trade-panel">
-          <h3 className="trade-panel-title">
-            <span className="trade-panel-titletext">
+      <div className="grid grid-cols-2 gap-5 max-sm:grid-cols-1 max-sm:gap-4">
+        <Panel
+          title={
+            <span className="inline-flex items-center gap-2">
               可換出
               <CopyButton
                 text={formatTradeList(fSurplus, m, "surplus")}
@@ -315,13 +337,14 @@ export function Trade({
                 disabled={fSurplus.length === 0}
               />
             </span>
-            <span className="trade-panel-sub">{surplusSub}</span>
-          </h3>
+          }
+          sub={surplusSub}
+        >
           {panelBody(fSurplus, "surplus")}
-        </section>
-        <section className="trade-panel">
-          <h3 className="trade-panel-title">
-            <span className="trade-panel-titletext">
+        </Panel>
+        <Panel
+          title={
+            <span className="inline-flex items-center gap-2">
               想換入
               <CopyButton
                 text={formatTradeList(fNeeds, m, "needs")}
@@ -329,14 +352,15 @@ export function Trade({
                 disabled={fNeeds.length === 0}
               />
             </span>
-            <span className="trade-panel-sub">{needsSub}</span>
-          </h3>
+          }
+          sub={needsSub}
+        >
           {panelBody(fNeeds, "needs")}
-        </section>
+        </Panel>
       </div>
       {pending && pending.length > 0 ? (
         <section className="mt-6">
-          <h3 className="trade-panel-title">暫定交換列表</h3>
+          <h3 className={PANEL_TITLE}>暫定交換列表</h3>
           {pending.map((p) => (
             <PendingCard key={p.id} p={p} />
           ))}
