@@ -70,10 +70,14 @@ export const PROGRESS_LINE =
 
 // Pill segmented toggle (Glance + Grid mode switch): rebuilds the legacy
 // .mode-toggle / .mode-btn / .mode-btn.active pill on shadcn ToggleGroup. The
-// active segment gets the elevated fill + gold text + gold hairline. We override
-// BOTH the Toggle base's `data-[state=on]:bg-muted` and its `aria-pressed:bg-muted`
-// (Radix Toggle sets both attributes when on; different variant prefixes so
-// tailwind-merge can't dedupe them — list both, last-in-source wins).
+// active segment gets the elevated fill + gold text + gold hairline. MODE_BTN
+// (below) is shared by two components that each carry the toggleVariants base
+// muted fill (`aria-pressed:bg-muted data-[state=on]:bg-muted`), so it overrides
+// both prefixes: the mode ToggleGroupItem is role=radio (data-[state=on] +
+// aria-checked, never aria-pressed); the Grid filter Toggle is a button
+// (data-[state=on] + aria-pressed). `data-[state=on]:*` is live on both;
+// `aria-pressed:*` only on the filter Toggle (inert on the radio item). Distinct
+// variant prefixes, so tailwind-merge keeps both rather than deduping.
 export const MODE_TOGGLE =
   "inline-flex w-fit gap-0.5 rounded-full border-[0.5px] border-border p-0.5";
 // `data-[state=on]:hover:*` keeps the active segment's fill + gold text when
