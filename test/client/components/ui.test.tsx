@@ -2,6 +2,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
   Table,
@@ -172,5 +173,20 @@ describe("Panel", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("3 張")).toBeInTheDocument();
     expect(screen.getByText("row")).toBeInTheDocument();
+  });
+});
+
+describe("Input", () => {
+  it("renders a textbox and accepts a typed value", () => {
+    render(<Input aria-label="價格" defaultValue="" />);
+    const box = screen.getByRole("textbox", { name: "價格" });
+    fireEvent.change(box, { target: { value: "600" } });
+    expect((box as HTMLInputElement).value).toBe("600");
+  });
+  it("forwards type and merges a custom className", () => {
+    render(<Input type="date" aria-label="日期" className="border-primary" />);
+    const box = screen.getByLabelText("日期");
+    expect(box).toHaveAttribute("type", "date");
+    expect(box.className).toContain("border-primary");
   });
 });
