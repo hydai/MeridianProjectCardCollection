@@ -9,7 +9,7 @@ import {
   exists,
   getN,
 } from "../collection";
-import { FILTER_TOGGLE, MODE_BTN, MODE_TOGGLE } from "./shared";
+import { FILTER_TOGGLE, MODE_BTN, MODE_TOGGLE, RARITY_TEXT } from "./shared";
 
 const SERIES_STORAGE_KEY = "mpc:grid:hiddenSeries";
 const RARITY_STORAGE_KEY = "mpc:grid:hiddenRarities";
@@ -162,22 +162,25 @@ export function Grid({ m }: { m: Matrix }) {
       </div>
 
       {shown.length === 0 || shownRarities.length === 0 ? (
-        <div className="grid-empty">
+        <div className="mb-4 rounded-[4px] border-[0.5px] border-border bg-card px-4 py-9 text-center text-[13px] tracking-[0.08em] text-[var(--text-tertiary)]">
           {shown.length === 0 ? "（未選擇任何系列）" : "（未選擇任何稀有度）"}
         </div>
       ) : (
-        <div className="grid-wrap">
-          <table className="grid-table">
+        <div className="overflow-x-auto rounded-[4px] border-[0.5px] border-border bg-card">
+          <table className="grid-table w-full border-collapse text-xs">
             <thead>
               <tr>
-                <th className="grid-corner" rowSpan={2}>
+                <th
+                  rowSpan={2}
+                  className="sticky left-0 z-[3] w-[92px] min-w-[92px] whitespace-nowrap bg-secondary px-3.5 py-2.5 text-left font-sans text-[11px] font-normal tracking-[0.15em] text-muted-foreground [border-bottom:0.5px_solid_var(--border-strong)] [border-right:0.5px_solid_var(--border-strong)] max-sm:w-[76px] max-sm:min-w-[76px] max-sm:px-2.5 max-sm:py-2 max-sm:text-[10px] max-sm:tracking-[0.1em]"
+                >
                   角色
                 </th>
                 {shown.map(({ s }) => (
                   <th
                     key={s}
                     colSpan={shownRarities.length}
-                    className="grid-series-head grid-series-start"
+                    className="grid-series-head grid-series-start border-b-[0.5px] border-border bg-secondary px-1.5 pt-2.5 pb-2 text-center font-accent text-xs font-medium uppercase italic tracking-[0.12em] text-foreground [border-left:0.5px_solid_var(--border-strong)] max-sm:px-1 max-sm:pt-2 max-sm:pb-1.5 max-sm:text-[11px]"
                   >
                     {s}
                   </th>
@@ -188,8 +191,10 @@ export function Grid({ m }: { m: Matrix }) {
                   shownRarities.map(({ rarity, ri }, localRi) => (
                     <th
                       key={`${s}-${rarity}`}
-                      className={`grid-rarity-head gr-${RARITY_KEYS[ri]} ${
-                        localRi === 0 ? "grid-series-start" : ""
+                      className={`grid-rarity-head gr-${RARITY_KEYS[ri]} min-w-[32px] bg-secondary px-0 py-1.5 text-center font-mono text-[10px] font-medium [border-bottom:0.5px_solid_var(--border-strong)] max-sm:min-w-[26px] max-sm:text-[9px] ${RARITY_TEXT[ri]} ${
+                        localRi === 0
+                          ? "grid-series-start [border-left:0.5px_solid_var(--border-strong)]"
+                          : ""
                       }`}
                     >
                       {rarity}
@@ -200,17 +205,24 @@ export function Grid({ m }: { m: Matrix }) {
             </thead>
             <tbody>
               {m.characters.map((charName, ci) => (
-                <tr key={charName}>
-                  <td className="grid-name">{charName}</td>
+                <tr key={charName} className="group/row">
+                  <td className="sticky left-0 z-[2] w-[92px] min-w-[92px] overflow-hidden text-ellipsis whitespace-nowrap bg-card px-3.5 py-[9px] text-left font-sans text-[13px] text-foreground [border-right:0.5px_solid_var(--border-strong)] group-hover/row:bg-secondary max-sm:w-[76px] max-sm:min-w-[76px] max-sm:px-2.5 max-sm:py-2 max-sm:text-xs">
+                    {charName}
+                  </td>
                   {shown.map(({ s, si }) =>
                     shownRarities.map(({ rarity, ri }, localRi) => {
-                      const startCls = localRi === 0 ? "grid-series-start" : "";
+                      const startCls =
+                        localRi === 0
+                          ? "[border-left:0.5px_solid_var(--border-strong)]"
+                          : "";
                       const cellKey = `${s}-${rarity}`;
+                      const base =
+                        "h-8 w-8 border-b-[0.5px] border-border p-0 text-center text-xs leading-none max-sm:h-7 max-sm:w-[26px]";
                       if (!exists(m, si, ci)) {
                         return (
                           <td
                             key={cellKey}
-                            className={`grid-cell gc-na ${startCls}`}
+                            className={`${base} bg-[var(--bg-subtle)] [background-image:repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,0.018)_4px,rgba(255,255,255,0.018)_8px)] ${startCls}`}
                           />
                         );
                       }
@@ -219,10 +231,12 @@ export function Grid({ m }: { m: Matrix }) {
                         return (
                           <td
                             key={cellKey}
-                            className={`grid-cell gc-have ${startCls}`}
+                            className={`${base} bg-[rgba(201,161,74,0.16)] font-semibold text-primary group-hover/row:bg-[rgba(201,161,74,0.26)] ${startCls}`}
                           >
                             {isCount ? (
-                              <span className="gc-count">{n}</span>
+                              <span className="font-mono font-medium text-primary">
+                                {n}
+                              </span>
                             ) : (
                               "✓"
                             )}
@@ -232,7 +246,7 @@ export function Grid({ m }: { m: Matrix }) {
                       return (
                         <td
                           key={cellKey}
-                          className={`grid-cell gc-miss ${startCls}`}
+                          className={`${base} bg-transparent group-hover/row:bg-[rgba(255,255,255,0.025)] ${startCls}`}
                         />
                       );
                     }),
