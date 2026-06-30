@@ -187,6 +187,22 @@ describe("AddCards", () => {
     expect(body.opening.series).toBe("KILLER");
   });
 
+  it("blocks submit while 開箱 is checked but the date is blank", () => {
+    render(<AddCards />);
+    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
+    expect(screen.getByRole("button", { name: "新增 1 張" })).toBeEnabled();
+
+    // Ticking 開箱 with no date must not silently drop the opening + its cost:
+    // submit stays disabled until 開箱日期 is filled.
+    fireEvent.click(screen.getByLabelText(/這是一次開箱/));
+    expect(screen.getByRole("button", { name: "新增 1 張" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("開箱日期"), {
+      target: { value: "2026-06-28" },
+    });
+    expect(screen.getByRole("button", { name: "新增 1 張" })).toBeEnabled();
+  });
+
   it("marks the selected series and rarity as pressed toggles", () => {
     render(<AddCards />);
     // Defaults: series "NEW YEAR", rarity "R".

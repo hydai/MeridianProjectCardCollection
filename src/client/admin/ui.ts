@@ -77,7 +77,9 @@ export const TALLY_EMPTY =
 // Opening sub-form (.add-actions / .opening-fields) + checkbox row.
 export const CHECKBOX_ROW =
   "mt-5 flex cursor-pointer items-center gap-2 text-sm text-muted-foreground";
-export const CHECKBOX = "h-auto w-auto accent-primary";
+// appearance-auto restores native checkbox rendering (legacy `.admin input`
+// sets appearance:none, which would otherwise make accent-primary inert).
+export const CHECKBOX = "h-auto w-auto appearance-auto accent-primary";
 export const OPENING_FIELDS =
   "mt-2 mb-4 grid grid-cols-2 gap-3 max-[600px]:grid-cols-1";
 export const ADD_ACTIONS = "mt-4 flex flex-wrap items-center gap-3";

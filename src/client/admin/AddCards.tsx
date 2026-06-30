@@ -236,7 +236,7 @@ export function AddCards() {
           type="button"
           className={BTN_PRIMARY}
           onClick={submit}
-          disabled={busy || total === 0}
+          disabled={busy || total === 0 || (isOpening && !openedAt)}
         >
           {busy ? "新增中…" : `新增 ${total} 張`}
         </Button>
