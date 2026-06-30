@@ -1,7 +1,17 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, TriangleAlert } from "lucide-react";
 import { useRef, useState } from "react";
 import type { PublicPendingTrade, ReservationLine } from "../../shared/types";
 import {
@@ -56,32 +66,41 @@ function pendingRows(
 function PendingCard({ p }: { p: PublicPendingTrade }) {
   const rows = pendingRows(p.give, p.receive);
   return (
-    <div className="pending-card">
-      <div className="pending-date">{p.reservedAt}</div>
-      <table className="pending-table">
-        <thead>
-          <tr>
-            <th>稀有度</th>
-            <th>給出</th>
-            <th>換入</th>
-          </tr>
-        </thead>
-        <tbody>
+    <Card className="mt-3 gap-0 rounded-[10px] border border-border bg-card px-3.5 py-3 ring-0">
+      <div className="mb-1.5 text-xs text-[var(--text-tertiary)]">
+        {p.reservedAt}
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow className="border-0 hover:bg-transparent">
+            <TableHead className="h-auto px-2 py-1 text-left">稀有度</TableHead>
+            <TableHead className="h-auto px-2 py-1 text-left">給出</TableHead>
+            <TableHead className="h-auto px-2 py-1 text-left">換入</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row, i) => (
-            <tr key={`${row.rarity}-${i}`}>
-              <td>
+            <TableRow
+              key={`${row.rarity}-${i}`}
+              className="border-0 hover:bg-transparent"
+            >
+              <TableCell className="px-2 py-1">
                 <MissChip
                   ri={RARITIES.indexOf(row.rarity)}
                   label={row.rarity}
                 />
-              </td>
-              <td>{row.give ?? "—"}</td>
-              <td>{row.receive ?? "—"}</td>
-            </tr>
+              </TableCell>
+              <TableCell className="px-2 py-1 text-left text-foreground">
+                {row.give ?? "—"}
+              </TableCell>
+              <TableCell className="px-2 py-1 text-left text-foreground">
+                {row.receive ?? "—"}
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </Card>
   );
 }
 
@@ -274,11 +293,16 @@ export function Trade({
         ))}
       </ToggleGroup>
       {showWarning ? (
-        <div className="trade-warning">
-          ⚠ <strong>UR 沒有任何多餘可換出</strong>，但還缺 {urNeed}{" "}
-          張。同階互換補不齊 UR，需用多張低階卡換 1 張 UR，或直接購入。其餘 R /
-          SR / SSR 的重複都足以換回所缺。
-        </div>
+        <Alert className="mb-[22px] gap-1 rounded-[4px] border-[0.5px] border-rarity-ur/35 bg-[var(--ur-soft)] px-[18px] py-3.5 text-[13px] leading-[1.6] text-muted-foreground">
+          <TriangleAlert className="text-rarity-ur" />
+          <AlertTitle className="font-medium text-rarity-ur">
+            UR 沒有任何多餘可換出
+          </AlertTitle>
+          <AlertDescription className="text-[13px] leading-[1.6] text-muted-foreground">
+            還缺 {urNeed} 張。同階互換補不齊 UR，需用多張低階卡換 1 張
+            UR，或直接購入。其餘 R / SR / SSR 的重複都足以換回所缺。
+          </AlertDescription>
+        </Alert>
       ) : null}
       <div className="trade-grid">
         <section className="trade-panel">
@@ -311,7 +335,7 @@ export function Trade({
         </section>
       </div>
       {pending && pending.length > 0 ? (
-        <section className="pending-list">
+        <section className="mt-6">
           <h3 className="trade-panel-title">暫定交換列表</h3>
           {pending.map((p) => (
             <PendingCard key={p.id} p={p} />
