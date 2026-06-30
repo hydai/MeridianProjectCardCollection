@@ -59,15 +59,19 @@ export const EMPTY_MSG =
 // tailwind-merge can't dedupe them — list both, last-in-source wins).
 export const MODE_TOGGLE =
   "inline-flex w-fit gap-0.5 rounded-full border-[0.5px] border-border p-0.5";
+// `data-[state=on]:hover:*` keeps the active segment's fill + gold text when
+// hovered (legacy `.mode-btn:hover` only recolors the INACTIVE segments; the
+// active one never changes). Without it, `hover:bg-transparent` — needed to kill
+// the Toggle base's `hover:bg-muted` — would also wipe the active fill on hover.
 export const MODE_BTN =
-  "h-auto rounded-full px-4 py-1.5 font-sans text-xs font-normal tracking-[0.06em] text-[var(--text-tertiary)] transition-colors hover:bg-transparent hover:text-muted-foreground data-[state=on]:bg-secondary data-[state=on]:text-primary data-[state=on]:shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.25)] aria-pressed:bg-secondary aria-pressed:text-primary";
+  "h-auto rounded-full px-4 py-1.5 font-sans text-xs font-normal tracking-[0.06em] text-[var(--text-tertiary)] transition-colors hover:bg-transparent hover:text-muted-foreground data-[state=on]:bg-secondary data-[state=on]:text-primary data-[state=on]:shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.25)] data-[state=on]:hover:bg-secondary data-[state=on]:hover:text-primary aria-pressed:bg-secondary aria-pressed:text-primary";
 
 // Standalone multi-select filter toggle (Grid rarity + series): the legacy
 // `.grid-filter .mode-btn` — same pill chip but with its own 0.5px outline so the
 // off state still reads as tappable. Rendered via shadcn <Toggle> (native button +
 // aria-pressed), so the existing role/aria-pressed Grid tests stay green.
 export const FILTER_TOGGLE =
-  "h-auto rounded-full border-[0.5px] border-border px-3.5 py-1.5 font-sans text-xs font-normal tracking-[0.06em] text-[var(--text-tertiary)] transition-colors hover:bg-transparent hover:text-muted-foreground data-[state=on]:bg-secondary data-[state=on]:text-primary data-[state=on]:shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.25)] aria-pressed:bg-secondary aria-pressed:text-primary";
+  "h-auto rounded-full border-[0.5px] border-border px-3.5 py-1.5 font-sans text-xs font-normal tracking-[0.06em] text-[var(--text-tertiary)] transition-colors hover:bg-transparent hover:text-muted-foreground data-[state=on]:bg-secondary data-[state=on]:text-primary data-[state=on]:shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.25)] data-[state=on]:hover:bg-secondary data-[state=on]:hover:text-primary aria-pressed:bg-secondary aria-pressed:text-primary";
 
 export function Panel({
   title,

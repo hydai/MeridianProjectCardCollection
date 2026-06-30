@@ -1,3 +1,4 @@
+import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useEffect, useState } from "react";
 import {
@@ -8,7 +9,7 @@ import {
   exists,
   getN,
 } from "../collection";
-import { MODE_BTN, MODE_TOGGLE } from "./shared";
+import { FILTER_TOGGLE, MODE_BTN, MODE_TOGGLE } from "./shared";
 
 const SERIES_STORAGE_KEY = "mpc:grid:hiddenSeries";
 const RARITY_STORAGE_KEY = "mpc:grid:hiddenRarities";
@@ -121,37 +122,39 @@ export function Grid({ m }: { m: Matrix }) {
         </span>
       </div>
 
-      <div className="grid-filter">
-        <div className="grid-filter-row">
-          <span className="grid-filter-label">稀有度</span>
-          <div className="grid-filter-btns">
+      <div className="grid-filter mb-4 flex flex-col gap-2 px-1">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="min-w-[42px] font-mono text-[11px] tracking-[0.08em] text-[var(--text-tertiary)]">
+            稀有度
+          </span>
+          <div className="flex flex-wrap gap-1.5">
             {RARITIES.map((rarity) => (
-              <button
-                type="button"
+              <Toggle
                 key={rarity}
-                className={`mode-btn ${!hiddenR.has(rarity) ? "active" : ""}`}
-                aria-pressed={!hiddenR.has(rarity)}
-                onClick={() => toggleRarity(rarity)}
+                pressed={!hiddenR.has(rarity)}
+                onPressedChange={() => toggleRarity(rarity)}
+                className={FILTER_TOGGLE}
               >
                 {rarity}
-              </button>
+              </Toggle>
             ))}
           </div>
         </div>
         {volumeRows.map((row) => (
-          <div key={row.label} className="grid-filter-row">
-            <span className="grid-filter-label">{row.label}</span>
-            <div className="grid-filter-btns">
+          <div key={row.label} className="flex flex-wrap items-center gap-3">
+            <span className="min-w-[42px] font-mono text-[11px] tracking-[0.08em] text-[var(--text-tertiary)]">
+              {row.label}
+            </span>
+            <div className="flex flex-wrap gap-1.5">
               {row.series.map((s) => (
-                <button
-                  type="button"
+                <Toggle
                   key={s}
-                  className={`mode-btn ${!hidden.has(s) ? "active" : ""}`}
-                  aria-pressed={!hidden.has(s)}
-                  onClick={() => toggle(s)}
+                  pressed={!hidden.has(s)}
+                  onPressedChange={() => toggle(s)}
+                  className={FILTER_TOGGLE}
                 >
                   {s}
-                </button>
+                </Toggle>
               ))}
             </div>
           </div>
