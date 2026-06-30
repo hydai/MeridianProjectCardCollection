@@ -1,6 +1,6 @@
+import { RARITY_TEXT } from "@/shared/rarity";
 import { RARITIES } from "../../../seed/catalog-def";
 import type { Rarity } from "../../shared/types";
-import { RARITY_TEXT } from "../views/shared";
 
 // === Admin design-system constants (Phase 4) =========================
 // Tailwind rebuilds of admin.css, shared across the five admin panels so
@@ -60,8 +60,9 @@ export const OPT_RARITY: Record<Rarity, string> = {
 // 4b adds status/dup/reserved variants.
 export const PILL_BASE =
   "inline-flex items-center whitespace-nowrap rounded-full border-[0.5px] border-[var(--border-strong)] px-[9px] py-0.5 text-[10px] tracking-[0.1em] text-[var(--text-tertiary)]";
-// Rarity text colour reuses RARITY_TEXT (the single source shared with the
-// collection views), indexed by RARITIES order, instead of a parallel map.
+// Rarity text colour reuses the shared RARITY_TEXT token (@/shared/rarity) — the
+// single source also used by the collection views — indexed by RARITIES order,
+// instead of a parallel map.
 export const PILL_RARITY: Record<Rarity, string> = Object.fromEntries(
   RARITIES.map((r, i): [Rarity, string] => [r, RARITY_TEXT[i]]),
 ) as Record<Rarity, string>;

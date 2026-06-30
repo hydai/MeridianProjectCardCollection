@@ -4,13 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TableCell } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { RARITY_TEXT } from "@/shared/rarity";
 
-export const RARITY_TEXT = [
-  "text-rarity-r",
-  "text-rarity-sr",
-  "text-rarity-ssr",
-  "text-rarity-ur",
-] as const;
+// Re-exported so view-layer callers (Trade, Grid) keep importing it from this
+// barrel; the canonical definition now lives in @/shared/rarity.
+export { RARITY_TEXT };
 
 // rarity pill: rarity text + rarity border + soft rarity tint (legacy --*-soft).
 const RARITY_CHIP = [
