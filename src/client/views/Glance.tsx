@@ -2,7 +2,14 @@ import { Badge } from "@/components/ui/badge";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useState } from "react";
 import { type Matrix, RARITIES, exists, getN } from "../collection";
-import { MODE_BTN, MODE_TOGGLE, MissChip } from "./shared";
+import {
+  CARD_FRAME,
+  MODE_BTN,
+  MODE_TOGGLE,
+  MissChip,
+  PROGRESS_LINE,
+  VIEW_HEADER,
+} from "./shared";
 
 type Owned = { name: string; ri: number; count: number };
 type GlanceCellData = { na: true } | { na: false; owned: Owned[] };
@@ -37,7 +44,7 @@ function GlanceCell({
         <td className={GLANCE_TD}>
           <Badge
             variant="outline"
-            className="h-auto gap-1 rounded-full border-[0.5px] border-primary/35 bg-primary/[0.08] px-2.5 py-[3px] text-[10px] font-normal tracking-[0.12em] text-primary"
+            className="h-auto gap-1 rounded-full border-[0.5px] border-primary/35 bg-primary/[0.08] px-2.5 py-[3px] text-[10px] font-normal tracking-[0.12em] text-primary max-sm:px-[7px] max-sm:py-0.5 max-sm:text-[9px] max-sm:tracking-[0.08em]"
           >
             ✓ 完成
           </Badge>
@@ -109,7 +116,7 @@ export function Glance({ m }: { m: Matrix }) {
 
   return (
     <section className="view view-glance">
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 px-1">
+      <div className={VIEW_HEADER}>
         <ToggleGroup
           type="single"
           value={mode}
@@ -123,7 +130,7 @@ export function Glance({ m }: { m: Matrix }) {
             收集清單
           </ToggleGroupItem>
         </ToggleGroup>
-        <span className="font-mono text-xs tracking-[0.08em] text-[var(--text-tertiary)] [&_strong]:font-medium [&_strong]:text-foreground">
+        <span className={`${PROGRESS_LINE} max-sm:text-[11px]`}>
           {isWish ? (
             <>
               <strong>{collected}</strong> / {totalSlots} · {pct}% · 缺{" "}
@@ -137,7 +144,7 @@ export function Glance({ m }: { m: Matrix }) {
           )}
         </span>
       </div>
-      <div className="overflow-hidden rounded-[4px] border-[0.5px] border-border bg-card">
+      <div className={`overflow-hidden ${CARD_FRAME}`}>
         <table className="w-full table-fixed border-collapse text-[13px] max-sm:text-xs">
           <thead>
             <tr>

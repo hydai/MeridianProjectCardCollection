@@ -9,10 +9,40 @@ import {
   exists,
   getN,
 } from "../collection";
-import { FILTER_TOGGLE, MODE_BTN, MODE_TOGGLE, RARITY_TEXT } from "./shared";
+import {
+  CARD_FRAME,
+  FILTER_TOGGLE,
+  MODE_BTN,
+  MODE_TOGGLE,
+  PROGRESS_LINE,
+  RARITY_TEXT,
+  VIEW_HEADER,
+} from "./shared";
 
 const SERIES_STORAGE_KEY = "mpc:grid:hiddenSeries";
 const RARITY_STORAGE_KEY = "mpc:grid:hiddenRarities";
+
+// Strong (heavier) hairline borders for the frozen first column + series
+// dividers (legacy `var(--border-strong)`); repeated across the sticky corner,
+// the series/rarity headers, the name cells, and each series-start cell.
+const BORDER_STRONG_B = "[border-bottom:0.5px_solid_var(--border-strong)]";
+const BORDER_STRONG_R = "[border-right:0.5px_solid_var(--border-strong)]";
+const BORDER_STRONG_L = "[border-left:0.5px_solid_var(--border-strong)]";
+
+// Grid body cell base (legacy `.grid-cell`): fixed 32px square, hairline bottom,
+// centered. Each cell layers its state fill on top.
+const GRID_CELL_BASE =
+  "h-8 w-8 border-b-[0.5px] border-border p-0 text-center text-xs leading-none max-sm:h-7 max-sm:w-[26px]";
+
+// Gold "have" tint (legacy `.gc-have` / `.sw-have`): shared by the filled grid
+// cells and the legend's ✓ swatch so a retint stays in lockstep.
+const HAVE_TINT = "bg-[rgba(201,161,74,0.16)] font-semibold text-primary";
+
+// Grid legend chrome (legacy `.grid-legend`): each key is an inline row; the
+// swatch is a 16px rounded box.
+const LEGEND_ITEM = "inline-flex items-center gap-[7px]";
+const LEGEND_SWATCH =
+  "inline-flex h-4 w-4 items-center justify-center rounded-[3px]";
 
 // Load a persisted "hidden" set, keeping only values still present in `valid`
 // (drops stale entries — a removed series, or an unknown rarity). Returns an
@@ -98,7 +128,7 @@ export function Grid({ m }: { m: Matrix }) {
 
   return (
     <section className="view view-grid">
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 px-1">
+      <div className={VIEW_HEADER}>
         <div className="flex flex-wrap items-center gap-3.5">
           <span className="font-serif text-[15px] font-medium tracking-[0.08em] text-foreground">
             收集格表
@@ -117,7 +147,7 @@ export function Grid({ m }: { m: Matrix }) {
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
-        <span className="grid-progress font-mono text-xs tracking-[0.08em] text-[var(--text-tertiary)] [&_strong]:font-medium [&_strong]:text-foreground">
+        <span className={`grid-progress ${PROGRESS_LINE}`}>
           <strong>{totalHave}</strong> / {totalSlots} · {pct}%
         </span>
       </div>
@@ -162,17 +192,19 @@ export function Grid({ m }: { m: Matrix }) {
       </div>
 
       {shown.length === 0 || shownRarities.length === 0 ? (
-        <div className="mb-4 rounded-[4px] border-[0.5px] border-border bg-card px-4 py-9 text-center text-[13px] tracking-[0.08em] text-[var(--text-tertiary)]">
+        <div
+          className={`mb-4 ${CARD_FRAME} px-4 py-9 text-center text-[13px] tracking-[0.08em] text-[var(--text-tertiary)]`}
+        >
           {shown.length === 0 ? "（未選擇任何系列）" : "（未選擇任何稀有度）"}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-[4px] border-[0.5px] border-border bg-card">
+        <div className={`overflow-x-auto ${CARD_FRAME}`}>
           <table className="grid-table w-full border-collapse text-xs">
             <thead>
               <tr>
                 <th
                   rowSpan={2}
-                  className="sticky left-0 z-[3] w-[92px] min-w-[92px] whitespace-nowrap bg-secondary px-3.5 py-2.5 text-left font-sans text-[11px] font-normal tracking-[0.15em] text-muted-foreground [border-bottom:0.5px_solid_var(--border-strong)] [border-right:0.5px_solid_var(--border-strong)] max-sm:w-[76px] max-sm:min-w-[76px] max-sm:px-2.5 max-sm:py-2 max-sm:text-[10px] max-sm:tracking-[0.1em]"
+                  className={`sticky left-0 z-[3] w-[92px] min-w-[92px] whitespace-nowrap bg-secondary px-3.5 py-2.5 text-left font-sans text-[11px] font-normal tracking-[0.15em] text-muted-foreground ${BORDER_STRONG_B} ${BORDER_STRONG_R} max-sm:w-[76px] max-sm:min-w-[76px] max-sm:px-2.5 max-sm:py-2 max-sm:text-[10px] max-sm:tracking-[0.1em]`}
                 >
                   角色
                 </th>
@@ -180,7 +212,7 @@ export function Grid({ m }: { m: Matrix }) {
                   <th
                     key={s}
                     colSpan={shownRarities.length}
-                    className="grid-series-head grid-series-start border-b-[0.5px] border-border bg-secondary px-1.5 pt-2.5 pb-2 text-center font-accent text-xs font-medium uppercase italic tracking-[0.12em] text-foreground [border-left:0.5px_solid_var(--border-strong)] max-sm:px-1 max-sm:pt-2 max-sm:pb-1.5 max-sm:text-[11px]"
+                    className={`grid-series-head grid-series-start border-b-[0.5px] border-border bg-secondary px-1.5 pt-2.5 pb-2 text-center font-accent text-xs font-medium uppercase italic tracking-[0.12em] text-foreground ${BORDER_STRONG_L} max-sm:px-1 max-sm:pt-2 max-sm:pb-1.5 max-sm:text-[11px]`}
                   >
                     {s}
                   </th>
@@ -191,9 +223,9 @@ export function Grid({ m }: { m: Matrix }) {
                   shownRarities.map(({ rarity, ri }, localRi) => (
                     <th
                       key={`${s}-${rarity}`}
-                      className={`grid-rarity-head gr-${RARITY_KEYS[ri]} min-w-[32px] bg-secondary px-0 py-1.5 text-center font-mono text-[10px] font-medium [border-bottom:0.5px_solid_var(--border-strong)] max-sm:min-w-[26px] max-sm:text-[9px] ${RARITY_TEXT[ri]} ${
+                      className={`grid-rarity-head gr-${RARITY_KEYS[ri]} min-w-[32px] bg-secondary px-0 py-1.5 text-center font-mono text-[10px] font-medium ${BORDER_STRONG_B} max-sm:min-w-[26px] max-sm:text-[9px] ${RARITY_TEXT[ri]} ${
                         localRi === 0
-                          ? "grid-series-start [border-left:0.5px_solid_var(--border-strong)]"
+                          ? `grid-series-start ${BORDER_STRONG_L}`
                           : ""
                       }`}
                     >
@@ -206,23 +238,20 @@ export function Grid({ m }: { m: Matrix }) {
             <tbody>
               {m.characters.map((charName, ci) => (
                 <tr key={charName} className="group/row">
-                  <td className="sticky left-0 z-[2] w-[92px] min-w-[92px] overflow-hidden text-ellipsis whitespace-nowrap bg-card px-3.5 py-[9px] text-left font-sans text-[13px] text-foreground [border-right:0.5px_solid_var(--border-strong)] group-hover/row:bg-secondary max-sm:w-[76px] max-sm:min-w-[76px] max-sm:px-2.5 max-sm:py-2 max-sm:text-xs">
+                  <td
+                    className={`sticky left-0 z-[2] w-[92px] min-w-[92px] overflow-hidden text-ellipsis whitespace-nowrap bg-card px-3.5 py-[9px] text-left font-sans text-[13px] text-foreground ${BORDER_STRONG_R} group-hover/row:bg-secondary max-sm:w-[76px] max-sm:min-w-[76px] max-sm:px-2.5 max-sm:py-2 max-sm:text-xs`}
+                  >
                     {charName}
                   </td>
                   {shown.map(({ s, si }) =>
                     shownRarities.map(({ rarity, ri }, localRi) => {
-                      const startCls =
-                        localRi === 0
-                          ? "[border-left:0.5px_solid_var(--border-strong)]"
-                          : "";
+                      const startCls = localRi === 0 ? BORDER_STRONG_L : "";
                       const cellKey = `${s}-${rarity}`;
-                      const base =
-                        "h-8 w-8 border-b-[0.5px] border-border p-0 text-center text-xs leading-none max-sm:h-7 max-sm:w-[26px]";
                       if (!exists(m, si, ci)) {
                         return (
                           <td
                             key={cellKey}
-                            className={`${base} bg-[var(--bg-subtle)] [background-image:repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,0.018)_4px,rgba(255,255,255,0.018)_8px)] ${startCls}`}
+                            className={`${GRID_CELL_BASE} bg-[var(--bg-subtle)] [background-image:repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,0.018)_4px,rgba(255,255,255,0.018)_8px)] ${startCls}`}
                           />
                         );
                       }
@@ -231,7 +260,7 @@ export function Grid({ m }: { m: Matrix }) {
                         return (
                           <td
                             key={cellKey}
-                            className={`${base} bg-[rgba(201,161,74,0.16)] font-semibold text-primary group-hover/row:bg-[rgba(201,161,74,0.26)] ${startCls}`}
+                            className={`${GRID_CELL_BASE} ${HAVE_TINT} group-hover/row:bg-[rgba(201,161,74,0.26)] ${startCls}`}
                           >
                             {isCount ? (
                               <span className="font-mono font-medium text-primary">
@@ -246,7 +275,7 @@ export function Grid({ m }: { m: Matrix }) {
                       return (
                         <td
                           key={cellKey}
-                          className={`${base} bg-transparent group-hover/row:bg-[rgba(255,255,255,0.025)] ${startCls}`}
+                          className={`${GRID_CELL_BASE} bg-transparent group-hover/row:bg-[rgba(255,255,255,0.025)] ${startCls}`}
                         />
                       );
                     }),
@@ -259,18 +288,22 @@ export function Grid({ m }: { m: Matrix }) {
       )}
 
       <div className="mt-3.5 flex flex-wrap gap-[18px] pl-1 text-xs text-muted-foreground max-sm:gap-3 max-sm:text-[11px]">
-        <span className="inline-flex items-center gap-[7px]">
-          <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-[rgba(201,161,74,0.16)] text-[10px] font-semibold text-primary">
+        <span className={LEGEND_ITEM}>
+          <span className={`${LEGEND_SWATCH} ${HAVE_TINT} text-[10px]`}>
             {isCount ? "2" : "✓"}
           </span>{" "}
           {isCount ? "數字＝持有張數（≥2 為重複）" : "已收集"}
         </span>
-        <span className="inline-flex items-center gap-[7px]">
-          <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-transparent [border:0.5px_solid_var(--border-strong)]" />{" "}
+        <span className={LEGEND_ITEM}>
+          <span
+            className={`${LEGEND_SWATCH} bg-transparent [border:0.5px_solid_var(--border-strong)]`}
+          />{" "}
           未收集
         </span>
-        <span className="inline-flex items-center gap-[7px]">
-          <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-[var(--bg-subtle)] [background-image:repeating-linear-gradient(45deg,transparent,transparent_3px,rgba(255,255,255,0.018)_3px,rgba(255,255,255,0.018)_6px)] [border:0.5px_solid_var(--border)]" />{" "}
+        <span className={LEGEND_ITEM}>
+          <span
+            className={`${LEGEND_SWATCH} bg-[var(--bg-subtle)] [background-image:repeating-linear-gradient(45deg,transparent,transparent_3px,rgba(255,255,255,0.018)_3px,rgba(255,255,255,0.018)_6px)] [border:0.5px_solid_var(--border)]`}
+          />{" "}
           未收錄（此系列無此角色）
         </span>
       </div>

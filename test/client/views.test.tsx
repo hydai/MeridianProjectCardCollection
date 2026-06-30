@@ -193,6 +193,7 @@ describe("Glance mode toggle", () => {
 });
 
 describe("Grid mode toggle", () => {
+  beforeEach(() => localStorage.clear());
   it("switches check↔count via the radio toggle", () => {
     render(<Grid m={m} />);
     const check = screen.getByRole("radio", { name: "打勾" });

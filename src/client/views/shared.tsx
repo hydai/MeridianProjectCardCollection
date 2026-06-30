@@ -51,6 +51,23 @@ export const PANEL_GRID =
 export const EMPTY_MSG =
   "px-0.5 py-3 text-[13px] tracking-[0.04em] text-[var(--text-tertiary)]";
 
+// Bordered card surface (legacy `.surface` / `.grid-empty` chrome): 4px radius +
+// 0.5px hairline + card bg. Shared by the Glance table wrap, the Grid table wrap,
+// and the Grid empty state; each adds its own overflow/padding.
+export const CARD_FRAME = "rounded-[4px] border-[0.5px] border-border bg-card";
+
+// View top bar (Glance + Grid): mode toggle on the left, progress readout on the
+// right, wrapping on narrow screens (legacy `.glance-header` / `.grid-header`).
+export const VIEW_HEADER =
+  "mb-4 flex flex-wrap items-baseline justify-between gap-2 px-1";
+
+// Progress readout (legacy `.glance-progress` / `.grid-progress`): mono, tertiary,
+// with the embedded <strong> count in the foreground. The Glance caller appends a
+// `max-sm:text-[11px]` shrink — legacy only shrank the Glance progress on mobile,
+// not the Grid one.
+export const PROGRESS_LINE =
+  "font-mono text-xs tracking-[0.08em] text-[var(--text-tertiary)] [&_strong]:font-medium [&_strong]:text-foreground";
+
 // Pill segmented toggle (Glance + Grid mode switch): rebuilds the legacy
 // .mode-toggle / .mode-btn / .mode-btn.active pill on shadcn ToggleGroup. The
 // active segment gets the elevated fill + gold text + gold hairline. We override
@@ -63,15 +80,22 @@ export const MODE_TOGGLE =
 // hovered (legacy `.mode-btn:hover` only recolors the INACTIVE segments; the
 // active one never changes). Without it, `hover:bg-transparent` — needed to kill
 // the Toggle base's `hover:bg-muted` — would also wipe the active fill on hover.
+// `max-sm:*` restores the legacy `@media (max-width: 540px) .mode-btn`
+// compaction (`padding: 5px 12px; font-size: 11px`) the deleted CSS provided.
 export const MODE_BTN =
-  "h-auto rounded-full px-4 py-1.5 font-sans text-xs font-normal tracking-[0.06em] text-[var(--text-tertiary)] transition-colors hover:bg-transparent hover:text-muted-foreground data-[state=on]:bg-secondary data-[state=on]:text-primary data-[state=on]:shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.25)] data-[state=on]:hover:bg-secondary data-[state=on]:hover:text-primary aria-pressed:bg-secondary aria-pressed:text-primary";
+  "h-auto rounded-full px-4 py-1.5 font-sans text-xs font-normal tracking-[0.06em] text-[var(--text-tertiary)] transition-colors hover:bg-transparent hover:text-muted-foreground data-[state=on]:bg-secondary data-[state=on]:text-primary data-[state=on]:shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.25)] data-[state=on]:hover:bg-secondary data-[state=on]:hover:text-primary aria-pressed:bg-secondary aria-pressed:text-primary max-sm:px-3 max-sm:py-[5px] max-sm:text-[11px]";
 
 // Standalone multi-select filter toggle (Grid rarity + series): the legacy
-// `.grid-filter .mode-btn` — same pill chip but with its own 0.5px outline so the
-// off state still reads as tappable. Rendered via shadcn <Toggle> (native button +
-// aria-pressed), so the existing role/aria-pressed Grid tests stay green.
-export const FILTER_TOGGLE =
-  "h-auto rounded-full border-[0.5px] border-border px-3.5 py-1.5 font-sans text-xs font-normal tracking-[0.06em] text-[var(--text-tertiary)] transition-colors hover:bg-transparent hover:text-muted-foreground data-[state=on]:bg-secondary data-[state=on]:text-primary data-[state=on]:shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.25)] data-[state=on]:hover:bg-secondary data-[state=on]:hover:text-primary aria-pressed:bg-secondary aria-pressed:text-primary";
+// `.grid-filter .mode-btn` — the same pill as MODE_BTN plus its own 0.5px outline
+// (so the off state still reads as tappable) and a slightly tighter px. Built on
+// MODE_BTN via cn so the active-state + Radix override block stays single-sourced;
+// the trailing `px-3.5` overrides MODE_BTN's `px-4` while the `max-sm:` shrink is
+// inherited. Rendered via shadcn <Toggle> (native button + aria-pressed), so the
+// existing role/aria-pressed Grid tests stay green.
+export const FILTER_TOGGLE = cn(
+  MODE_BTN,
+  "border-[0.5px] border-border px-3.5",
+);
 
 export function Panel({
   title,
