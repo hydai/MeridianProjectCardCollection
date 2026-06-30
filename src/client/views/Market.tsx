@@ -1,6 +1,7 @@
+import { cn } from "@/lib/utils";
 import type { MarketListing } from "../../shared/types";
 import { RARITIES } from "../collection";
-import { MissChip } from "./shared";
+import { EMPTY_MSG, MissChip, PANEL_GRID, Panel } from "./shared";
 
 function ListingRow({ item }: { item: MarketListing }) {
   const ri = RARITIES.indexOf(item.rarity);
@@ -13,28 +14,33 @@ function ListingRow({ item }: { item: MarketListing }) {
         ? `想換：${item.wantInReturn}`
         : "開放出價";
   return (
-    <div className="market-row">
+    <div className="flex flex-wrap items-center gap-2.5 border-b-[0.5px] border-border py-[9px] last:border-b-0">
       <MissChip ri={ri} label={item.rarity} />
-      <span className="market-where">
+      <span className="text-[13px] tracking-[0.02em] text-muted-foreground">
         {item.series} · {item.character}
       </span>
-      <span className="market-meta">{detail}</span>
-      {item.note ? <span className="market-note">{item.note}</span> : null}
+      <span className="ml-auto font-mono text-xs text-foreground">
+        {detail}
+      </span>
+      {item.note ? (
+        <span className="basis-full text-xs tracking-[0.02em] text-[var(--text-tertiary)]">
+          {item.note}
+        </span>
+      ) : null}
     </div>
   );
 }
 
-function Panel({ title, items }: { title: string; items: MarketListing[] }) {
+function ListingPanel({
+  title,
+  items,
+}: { title: string; items: MarketListing[] }) {
   return (
-    <section className="trade-panel">
-      <h3 className="trade-panel-title">
-        {title}
-        <span className="trade-panel-sub">{items.length} 張</span>
-      </h3>
+    <Panel title={title} sub={`${items.length} 張`}>
       {items.map((item) => (
         <ListingRow key={item.cardId} item={item} />
       ))}
-    </section>
+    </Panel>
   );
 }
 
@@ -48,14 +54,16 @@ export function MarketBoard({
   if (error) {
     return (
       <section className="view view-market">
-        <div className="trade-empty">無法載入交易資料：{error}</div>
+        <div className={EMPTY_MSG}>無法載入交易資料：{error}</div>
       </section>
     );
   }
   if (listings === null) {
     return (
       <section className="view view-market">
-        <div className="state-msg">載入中…</div>
+        <div className="py-12 text-center font-accent text-base italic tracking-[0.1em] text-[var(--text-tertiary)]">
+          載入中…
+        </div>
       </section>
     );
   }
@@ -66,7 +74,7 @@ export function MarketBoard({
   if (forSale.length === 0 && forTrade.length === 0) {
     return (
       <section className="view view-market">
-        <div className="trade-empty">目前沒有上架中的卡片。</div>
+        <div className={EMPTY_MSG}>目前沒有上架中的卡片。</div>
       </section>
     );
   }
@@ -74,17 +82,20 @@ export function MarketBoard({
   // Only render panels that have listings; a single panel gets a narrower grid.
   const panels = [
     forSale.length > 0 ? (
-      <Panel key="sale" title="待售" items={forSale} />
+      <ListingPanel key="sale" title="待售" items={forSale} />
     ) : null,
     forTrade.length > 0 ? (
-      <Panel key="trade" title="待換" items={forTrade} />
+      <ListingPanel key="trade" title="待換" items={forTrade} />
     ) : null,
   ].filter(Boolean);
 
   return (
     <section className="view view-market">
       <div
-        className={`trade-grid${panels.length === 1 ? " trade-grid-single" : ""}`}
+        className={cn(
+          PANEL_GRID,
+          panels.length === 1 && "max-w-[520px] grid-cols-1",
+        )}
       >
         {panels}
       </div>

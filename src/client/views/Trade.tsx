@@ -1,22 +1,38 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
+import { Check, Copy, TriangleAlert } from "lucide-react";
 import { useRef, useState } from "react";
 import type { PublicPendingTrade, ReservationLine } from "../../shared/types";
 import {
   type Matrix,
   RARITIES,
   RARITY_KEYS,
+  type RarityKey,
   type TradeItem,
   computeTradeWithPending,
   formatTradeList,
 } from "../collection";
-import { MissChip } from "./shared";
+import {
+  EMPTY_MSG,
+  MissChip,
+  PANEL_GRID,
+  PANEL_TITLE,
+  Panel,
+  RARITY_TEXT,
+} from "./shared";
 
-type Filter = "all" | "r" | "sr" | "ssr" | "ur";
-const RK_NAME: Record<string, string> = {
-  r: "R",
-  sr: "SR",
-  ssr: "SSR",
-  ur: "UR",
-};
+type Filter = "all" | RarityKey;
 
 interface PendingRow {
   rarity: (typeof RARITIES)[number];
@@ -52,60 +68,41 @@ function pendingRows(
 function PendingCard({ p }: { p: PublicPendingTrade }) {
   const rows = pendingRows(p.give, p.receive);
   return (
-    <div className="pending-card">
-      <div className="pending-date">{p.reservedAt}</div>
-      <table className="pending-table">
-        <thead>
-          <tr>
-            <th>稀有度</th>
-            <th>給出</th>
-            <th>換入</th>
-          </tr>
-        </thead>
-        <tbody>
+    <Card className="mt-3 gap-0 rounded-[10px] border border-border bg-card px-3.5 py-3 ring-0">
+      <div className="mb-1.5 text-xs text-[var(--text-tertiary)]">
+        {p.reservedAt}
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow className="border-0 hover:bg-transparent">
+            <TableHead className="h-auto px-2 py-1 text-left">稀有度</TableHead>
+            <TableHead className="h-auto px-2 py-1 text-left">給出</TableHead>
+            <TableHead className="h-auto px-2 py-1 text-left">換入</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row, i) => (
-            <tr key={`${row.rarity}-${i}`}>
-              <td>
+            <TableRow
+              key={`${row.rarity}-${i}`}
+              className="border-0 hover:bg-transparent"
+            >
+              <TableCell className="px-2 py-1">
                 <MissChip
                   ri={RARITIES.indexOf(row.rarity)}
                   label={row.rarity}
                 />
-              </td>
-              <td>{row.give ?? "—"}</td>
-              <td>{row.receive ?? "—"}</td>
-            </tr>
+              </TableCell>
+              <TableCell className="px-2 py-1 text-left text-foreground">
+                {row.give ?? "—"}
+              </TableCell>
+              <TableCell className="px-2 py-1 text-left text-foreground">
+                {row.receive ?? "—"}
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-const ICON = {
-  width: 15,
-  height: 15,
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 2,
-  strokeLinecap: "round",
-  strokeLinejoin: "round",
-} as const;
-
-function CopyIcon() {
-  return (
-    <svg {...ICON} aria-hidden="true">
-      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg {...ICON} aria-hidden="true">
-      <path d="M20 6 9 17l-5-5" />
-    </svg>
+        </TableBody>
+      </Table>
+    </Card>
   );
 }
 
@@ -117,6 +114,10 @@ function CopyButton({
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onClick = () => {
+    // In an insecure context (e.g. http:// on a LAN IP) the Clipboard API is
+    // absent and `navigator.clipboard` is undefined; guard before use, since a
+    // `.catch()` cannot trap the synchronous throw from that member access.
+    if (!navigator.clipboard) return;
     navigator.clipboard
       .writeText(text)
       .then(() => {
@@ -125,20 +126,22 @@ function CopyButton({
         timer.current = setTimeout(() => setCopied(false), 1500);
       })
       .catch(() => {
-        /* clipboard unavailable (insecure context) — skip feedback */
+        /* write rejected (e.g. permission denied) — skip feedback */
       });
   };
   return (
-    <button
+    <Button
       type="button"
-      className={`trade-copy-btn ${copied ? "copied" : ""}`}
+      variant="ghost"
+      size="icon"
+      className="size-6 cursor-pointer text-[var(--text-tertiary)] hover:text-foreground"
       onClick={onClick}
       disabled={disabled}
       aria-label={copied ? "已複製" : label}
       title={label}
     >
-      {copied ? <CheckIcon /> : <CopyIcon />}
-    </button>
+      {copied ? <Check /> : <Copy />}
+    </Button>
   );
 }
 
@@ -169,7 +172,7 @@ export function Trade({
     {
       key: "all",
       label: "全部",
-      cls: "ts-all",
+      cls: "text-muted-foreground",
       need: needs.length,
       spare: totalSpare,
       shortfall: false,
@@ -182,7 +185,7 @@ export function Trade({
       return {
         key: RARITY_KEYS[ri] as Filter,
         label: rarity,
-        cls: `ts-${RARITY_KEYS[ri]}`,
+        cls: RARITY_TEXT[ri],
         need,
         spare,
         shortfall: need > spare,
@@ -199,23 +202,40 @@ export function Trade({
           ? `${ritems.reduce((s, x) => s + x.spare, 0)} 張`
           : `缺 ${ritems.length}`;
       return (
-        <div className="trade-rgroup" key={RARITIES[ri]}>
-          <div className={`trade-rhead ts-${RARITY_KEYS[ri]}`}>
+        <div className="mb-[18px] last:mb-0" key={RARITIES[ri]}>
+          <div
+            className={cn(
+              "mb-2 font-mono text-xs font-medium tracking-[0.08em]",
+              RARITY_TEXT[ri],
+            )}
+          >
             {RARITIES[ri]}
-            <span className="trade-rcount">{headCount}</span>
+            <span className="ml-1 font-normal text-[var(--text-tertiary)]">
+              {headCount}
+            </span>
           </div>
           {m.series.map((sname, si) => {
             const sitems = ritems.filter((x) => x.si === si);
             if (sitems.length === 0) return null;
             return (
-              <div className="trade-series-row" key={sname}>
-                <span className="trade-series-label">{sname}</span>
-                <span className="trade-names">
+              <div
+                className="grid grid-cols-[88px_1fr] items-start gap-2.5 py-[5px] [&+&]:border-t-[0.5px] [&+&]:border-[var(--border-tertiary)] max-sm:grid-cols-[72px_1fr] max-sm:gap-2"
+                key={sname}
+              >
+                <span className="pt-0.5 font-accent text-[11px] italic uppercase tracking-[0.1em] text-[var(--text-tertiary)] max-sm:text-[10px]">
+                  {sname}
+                </span>
+                <span className="flex flex-wrap gap-x-2.5 gap-y-[5px]">
                   {sitems.map((x) => (
-                    <span className="trade-name" key={m.characters[x.ci]}>
+                    <span
+                      className="whitespace-nowrap text-[13px] text-foreground max-sm:text-xs"
+                      key={m.characters[x.ci]}
+                    >
                       {m.characters[x.ci]}
                       {kind === "surplus" ? (
-                        <span className="trade-x">×{x.spare}</span>
+                        <span className="ml-0.5 font-mono text-[10px] text-primary">
+                          ×{x.spare}
+                        </span>
                       ) : null}
                     </span>
                   ))}
@@ -229,9 +249,10 @@ export function Trade({
 
   const panelBody = (filtered: TradeItem[], kind: "surplus" | "needs") => {
     if (filtered.length === 0) {
-      const rname = filter === "all" ? "" : `${RK_NAME[filter]} `;
+      const rname =
+        filter === "all" ? "" : `${RARITIES[RARITY_KEYS.indexOf(filter)]} `;
       return (
-        <div className="trade-empty">
+        <div className={EMPTY_MSG}>
           {kind === "surplus"
             ? `目前沒有多餘的 ${rname}卡可換出。`
             : `${rname}已全部收集 ✓`}
@@ -249,41 +270,69 @@ export function Trade({
   const showWarning =
     (filter === "all" || filter === "ur") && urNeed > 0 && urSpare === 0;
 
-  const toggle = (f: Filter) =>
-    setFilter((cur) => (cur === f && f !== "all" ? "all" : f));
+  const sumItemClass = (key: Filter, shortfall: boolean) =>
+    cn(
+      "flex h-auto w-full cursor-pointer flex-col items-stretch justify-start gap-2 rounded-[4px] border-[0.5px] border-border bg-card px-2.5 py-3.5 text-center transition-colors select-none hover:bg-card hover:[border-color:var(--border-strong)] hover:text-foreground max-sm:px-1.5 max-sm:py-[11px]",
+      // Keep the shortfall tint on hover (the base `hover:bg-card` would win otherwise).
+      shortfall &&
+        filter !== key &&
+        "border-rarity-ur/40 bg-[var(--ur-soft)] hover:bg-[var(--ur-soft)]",
+      // `data-[state=on]:bg-secondary` overrides the Toggle primitive's
+      // `data-[state=on]:bg-muted` (equal specificity → last wins) so the active
+      // card is the lighter elevated fill, not the darkest one.
+      filter === key &&
+        "border-primary bg-secondary shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.45)] hover:bg-secondary data-[state=on]:bg-secondary",
+    );
 
   return (
     <section className="view view-trade">
-      <div className="trade-summary">
+      <ToggleGroup
+        type="single"
+        value={filter}
+        onValueChange={(v) => setFilter((v || "all") as Filter)}
+        className="mb-[18px] grid w-full grid-cols-5 gap-2.5 max-sm:gap-[7px]"
+      >
         {summaryCards.map((c) => (
-          <button
-            type="button"
+          <ToggleGroupItem
             key={c.key}
-            className={`trade-sum-card ${c.shortfall ? "shortfall" : ""} ${
-              filter === c.key ? "active" : ""
-            }`}
-            onClick={() => toggle(c.key)}
+            value={c.key}
+            aria-label={`${c.label} 缺 ${c.need} 餘 ${c.spare}`}
+            className={sumItemClass(c.key, c.shortfall)}
           >
-            <div className={`trade-sum-rarity ${c.cls}`}>{c.label}</div>
-            <div className="trade-sum-nums">
-              <span className="ts-need">缺 {c.need}</span>
-              <span className="ts-sep">↔</span>
-              <span className="ts-spare">餘 {c.spare}</span>
+            <div
+              className={cn(
+                "mb-2 font-mono text-sm font-medium tracking-[0.08em] max-sm:text-xs",
+                c.cls,
+              )}
+            >
+              {c.label}
             </div>
-          </button>
+            <div className="flex items-center justify-center gap-1.5 font-mono text-xs max-sm:flex-col max-sm:gap-1 max-sm:text-[11px]">
+              <span className="text-muted-foreground">缺 {c.need}</span>
+              <span className="text-[11px] text-[var(--text-quaternary)] max-sm:hidden">
+                ↔
+              </span>
+              <span className="text-foreground">餘 {c.spare}</span>
+            </div>
+          </ToggleGroupItem>
         ))}
-      </div>
+      </ToggleGroup>
       {showWarning ? (
-        <div className="trade-warning">
-          ⚠ <strong>UR 沒有任何多餘可換出</strong>，但還缺 {urNeed}{" "}
-          張。同階互換補不齊 UR，需用多張低階卡換 1 張 UR，或直接購入。其餘 R /
-          SR / SSR 的重複都足以換回所缺。
-        </div>
+        <Alert className="mb-[22px] gap-1 rounded-[4px] border-[0.5px] border-rarity-ur/35 bg-[var(--ur-soft)] px-[18px] py-3.5 text-[13px] leading-[1.6] text-muted-foreground">
+          <TriangleAlert className="text-rarity-ur" />
+          <AlertTitle className="font-medium text-rarity-ur">
+            UR 沒有任何多餘可換出
+          </AlertTitle>
+          <AlertDescription className="text-[13px] leading-[1.6] text-muted-foreground">
+            還缺 {urNeed} 張。同階互換補不齊 UR，需用多張低階卡換 1 張
+            UR，或直接購入。其餘 R / SR / SSR 的重複都足以換回所缺。
+          </AlertDescription>
+        </Alert>
       ) : null}
-      <div className="trade-grid">
-        <section className="trade-panel">
-          <h3 className="trade-panel-title">
-            <span className="trade-panel-titletext">
+      <div className={PANEL_GRID}>
+        <Panel
+          title={
+            <span className="inline-flex items-center gap-2">
               可換出
               <CopyButton
                 text={formatTradeList(fSurplus, m, "surplus")}
@@ -291,13 +340,14 @@ export function Trade({
                 disabled={fSurplus.length === 0}
               />
             </span>
-            <span className="trade-panel-sub">{surplusSub}</span>
-          </h3>
+          }
+          sub={surplusSub}
+        >
           {panelBody(fSurplus, "surplus")}
-        </section>
-        <section className="trade-panel">
-          <h3 className="trade-panel-title">
-            <span className="trade-panel-titletext">
+        </Panel>
+        <Panel
+          title={
+            <span className="inline-flex items-center gap-2">
               想換入
               <CopyButton
                 text={formatTradeList(fNeeds, m, "needs")}
@@ -305,14 +355,22 @@ export function Trade({
                 disabled={fNeeds.length === 0}
               />
             </span>
-            <span className="trade-panel-sub">{needsSub}</span>
-          </h3>
+          }
+          sub={needsSub}
+        >
           {panelBody(fNeeds, "needs")}
-        </section>
+        </Panel>
       </div>
       {pending && pending.length > 0 ? (
-        <section className="pending-list">
-          <h3 className="trade-panel-title">暫定交換列表</h3>
+        <section className="mt-6">
+          <h3
+            className={cn(
+              PANEL_TITLE,
+              "mb-4 border-b-[0.5px] border-border pb-3",
+            )}
+          >
+            暫定交換列表
+          </h3>
           {pending.map((p) => (
             <PendingCard key={p.id} p={p} />
           ))}

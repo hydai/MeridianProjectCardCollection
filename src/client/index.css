@@ -102,6 +102,11 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
+
+  /* Mobile breakpoint: the migrated views collapse via `max-sm:`; pin `sm` to
+     540px so it matches the legacy `@media (max-width: 540px)` chrome (e.g. the
+     glance table) instead of Tailwind's 640px default. */
+  --breakpoint-sm: 540px;
 }
 
 /* The universal margin/padding/box-sizing reset is provided by Tailwind's
@@ -194,8 +199,8 @@
     color: var(--text);
   }
 
-  /* LOADING / ERROR — interim: still used by Market + admin panels
-     (Market → Phase 3b, admin → Phase 4); remove once those migrate. */
+  /* LOADING / ERROR — interim: still used by admin panels
+     (Phase 4); remove once those migrate. */
   .state-msg {
     text-align: center;
     color: var(--text-tertiary);
@@ -636,260 +641,14 @@
     border: 0.5px solid var(--border);
   }
 
-  /* ------------- TRADE VIEW ------------- */
-
-  .trade-summary {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 10px;
-    margin-bottom: 18px;
-  }
-
-  .trade-sum-card {
-    appearance: none;
-    font-family: inherit;
-    color: inherit;
-    width: 100%;
-    display: block;
-    background: var(--surface);
-    border: 0.5px solid var(--border);
-    border-radius: 4px;
-    padding: 14px 10px;
-    text-align: center;
-    cursor: pointer;
-    user-select: none;
-    transition: border-color 0.2s ease, background 0.2s ease;
-  }
-  .trade-sum-card:hover {
-    border-color: var(--border-strong);
-  }
-  .trade-sum-card.shortfall {
-    border-color: rgba(224, 113, 113, 0.4);
-    background: var(--ur-soft);
-  }
-  .trade-sum-card.active {
-    border-color: var(--primary);
-    background: var(--surface-elevated);
-    box-shadow: inset 0 0 0 0.5px rgba(201, 161, 74, 0.45);
-  }
-  .ts-all {
-    color: var(--text-secondary);
-  }
+  /* .trade-empty / .state-msg: shared with admin panels (Phase 4). The rest of
+     the Trade + Market legacy CSS was removed in Phase 3b (now shadcn). */
 
   .trade-empty {
     color: var(--text-tertiary);
     font-size: 13px;
     padding: 12px 2px;
     letter-spacing: 0.04em;
-  }
-
-  .trade-sum-rarity {
-    font-family: "JetBrains Mono", monospace;
-    font-size: 14px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    margin-bottom: 8px;
-  }
-  .ts-r {
-    color: var(--r-color);
-  }
-  .ts-sr {
-    color: var(--sr-color);
-  }
-  .ts-ssr {
-    color: var(--ssr-color);
-  }
-  .ts-ur {
-    color: var(--ur-color);
-  }
-
-  .trade-sum-nums {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    font-family: "JetBrains Mono", "IBM Plex Sans TC", monospace;
-    font-size: 12px;
-  }
-  .ts-need {
-    color: var(--text-secondary);
-  }
-  .ts-spare {
-    color: var(--text);
-  }
-  .ts-sep {
-    color: var(--text-quaternary);
-    font-size: 11px;
-  }
-
-  .trade-warning {
-    background: var(--ur-soft);
-    border: 0.5px solid rgba(224, 113, 113, 0.35);
-    border-radius: 4px;
-    padding: 14px 18px;
-    margin-bottom: 22px;
-    font-size: 13px;
-    line-height: 1.6;
-    color: var(--text-secondary);
-  }
-  .trade-warning strong {
-    color: var(--ur-color);
-    font-weight: 500;
-  }
-
-  .trade-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-  }
-
-  .trade-panel {
-    background: var(--surface);
-    border: 0.5px solid var(--border);
-    border-radius: 4px;
-    padding: 20px 22px;
-  }
-
-  .trade-panel-title {
-    font-family: "Noto Serif TC", serif;
-    font-size: 16px;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    color: var(--text);
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 0.5px solid var(--border);
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-  }
-  .trade-panel-sub {
-    font-family: "JetBrains Mono", "IBM Plex Sans TC", monospace;
-    font-size: 11px;
-    color: var(--text-tertiary);
-    letter-spacing: 0.06em;
-    font-weight: 400;
-  }
-  .trade-panel-titletext {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .trade-copy-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2px;
-    border: none;
-    border-radius: 3px;
-    background: transparent;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    transition: color 0.15s, background 0.15s;
-  }
-  .trade-copy-btn:hover:not(:disabled) {
-    color: var(--text);
-    background: var(--surface-elevated);
-  }
-  .trade-copy-btn:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-  .trade-copy-btn.copied {
-    color: var(--text);
-  }
-
-  /* Market board (交易看板) — public listing view */
-  .trade-grid-single {
-    grid-template-columns: 1fr;
-    max-width: 520px;
-  }
-  .market-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 0;
-    border-bottom: 0.5px solid var(--border);
-  }
-  .market-row:last-child {
-    border-bottom: none;
-  }
-  .market-where {
-    font-size: 13px;
-    color: var(--text-secondary);
-    letter-spacing: 0.02em;
-  }
-  .market-meta {
-    margin-left: auto;
-    font-family: "JetBrains Mono", "IBM Plex Sans TC", monospace;
-    font-size: 12px;
-    color: var(--text);
-  }
-  .market-note {
-    flex-basis: 100%;
-    font-size: 12px;
-    color: var(--text-tertiary);
-    letter-spacing: 0.02em;
-  }
-
-  .trade-rgroup {
-    margin-bottom: 18px;
-  }
-  .trade-rgroup:last-child {
-    margin-bottom: 0;
-  }
-
-  .trade-rhead {
-    font-family: "JetBrains Mono", monospace;
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    margin-bottom: 8px;
-  }
-  .trade-rcount {
-    color: var(--text-tertiary);
-    font-weight: 400;
-    margin-left: 4px;
-  }
-
-  .trade-series-row {
-    display: grid;
-    grid-template-columns: 88px 1fr;
-    gap: 10px;
-    padding: 5px 0;
-    align-items: start;
-  }
-  .trade-series-row + .trade-series-row {
-    border-top: 0.5px solid var(--border-tertiary);
-  }
-
-  .trade-series-label {
-    font-family: "Cormorant Garamond", serif;
-    font-style: italic;
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--text-tertiary);
-    padding-top: 2px;
-  }
-
-  .trade-names {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px 10px;
-  }
-  .trade-name {
-    font-family: "IBM Plex Sans TC", sans-serif;
-    font-size: 13px;
-    color: var(--text);
-    white-space: nowrap;
-  }
-  .trade-x {
-    font-family: "JetBrains Mono", monospace;
-    font-size: 10px;
-    color: var(--primary);
-    margin-left: 2px;
   }
 
   /* ------------- RESPONSIVE ------------- */
@@ -939,40 +698,6 @@
       font-size: 11px;
       gap: 12px;
     }
-    .trade-grid {
-      grid-template-columns: 1fr;
-      gap: 16px;
-    }
-    .trade-summary {
-      gap: 7px;
-    }
-    .trade-sum-card {
-      padding: 11px 6px;
-    }
-    .trade-sum-rarity {
-      font-size: 12px;
-    }
-    .trade-sum-nums {
-      font-size: 11px;
-      gap: 4px;
-      flex-direction: column;
-    }
-    .ts-sep {
-      display: none;
-    }
-    .trade-panel {
-      padding: 16px 16px;
-    }
-    .trade-series-row {
-      grid-template-columns: 72px 1fr;
-      gap: 8px;
-    }
-    .trade-series-label {
-      font-size: 10px;
-    }
-    .trade-name {
-      font-size: 12px;
-    }
     .glance-table {
       font-size: 12px;
     }
@@ -1004,31 +729,6 @@
     .glance-progress {
       font-size: 11px;
     }
-  }
-
-  .pending-list {
-    margin-top: 24px;
-  }
-  .pending-card {
-    border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
-    border-radius: 10px;
-    padding: 12px 14px;
-    margin-top: 12px;
-  }
-  .pending-date {
-    font-size: 12px;
-    color: var(--text-tertiary);
-    margin-bottom: 6px;
-  }
-  .pending-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
-  }
-  .pending-table th,
-  .pending-table td {
-    text-align: left;
-    padding: 4px 8px;
   }
 }
 /* end @layer legacy */

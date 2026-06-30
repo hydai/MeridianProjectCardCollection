@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SERIES, buildCatalog, charactersFor } from "../../seed/catalog-def";
 import { type Matrix, buildMatrix } from "../../src/client/collection";
 import { Glance } from "../../src/client/views/Glance";
@@ -11,6 +11,22 @@ import { ByCharacter, ByRarity, BySeries } from "../../src/client/views/tables";
 import type { MarketListing } from "../../src/shared/types";
 import type { OverviewResponse } from "../../src/shared/types";
 import type { PublicPendingTrade } from "../../src/shared/types";
+
+// Snapshot navigator.clipboard's original property descriptor and restore it
+// after each test in the calling describe. Tests stub `navigator.clipboard`;
+// restoring the original (rather than unconditionally deleting) returns it to
+// its true prior state so a stub never leaks into later tests — and stays
+// correct even if the test env ever ships a real clipboard by default.
+function restoreClipboardAfterEach() {
+  const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  afterEach(() => {
+    if (original) {
+      Object.defineProperty(navigator, "clipboard", original);
+    } else {
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+}
 
 // Full 180-type universe with a mix of missing (0), single, and duplicate (>=2)
 // counts so every view branch is exercised.
@@ -404,6 +420,11 @@ describe("Trade copy buttons", () => {
     progress: [],
   };
 
+  // Tests below stub `navigator.clipboard`; restore the original after each so
+  // the stub never leaks into later tests (which would mask a real
+  // missing-clipboard bug).
+  restoreClipboardAfterEach();
+
   it("renders a copy button on each panel", () => {
     render(<Trade m={buildMatrix(oneSurplus)} />);
     expect(
@@ -433,5 +454,53 @@ describe("Trade copy buttons", () => {
     render(<Trade m={buildMatrix(oneSurplus)} />);
     fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
     expect(writeText).toHaveBeenCalledWith("UR\nKirari, MP 4TH, 1");
+  });
+
+  it("does not throw when the Clipboard API is unavailable", () => {
+    // Insecure context (e.g. http:// on a LAN IP): navigator.clipboard is absent.
+    Object.defineProperty(navigator, "clipboard", {
+      value: undefined,
+      configurable: true,
+    });
+    render(<Trade m={buildMatrix(oneSurplus)} />);
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" })),
+    ).not.toThrow();
+  });
+});
+
+describe("Trade rarity filter", () => {
+  const card = (
+    character: string,
+    rarity: "R" | "SR" | "SSR" | "UR",
+    owned: number,
+    id: number,
+  ) => ({ catalogId: id, series: "MP 4TH", character, rarity, owned });
+
+  // Kirari SR owned 2 AND Kirari UR owned 2 → surplus in two rarities.
+  const twoSurplus: OverviewResponse = {
+    cells: [
+      card("Kirari", "R", 1, 1),
+      card("Kirari", "SR", 2, 2),
+      card("Kirari", "SSR", 1, 3),
+      card("Kirari", "UR", 2, 4),
+    ],
+    progress: [],
+  };
+
+  restoreClipboardAfterEach();
+
+  it("scopes the 可換出 copy list to the selected rarity", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    render(<Trade m={buildMatrix(twoSurplus)} />);
+    // Radix single-select ToggleGroup items render as role="radio"; the
+    // accessible name includes the 缺/餘 counts, so match the rarity prefix.
+    fireEvent.click(screen.getByRole("radio", { name: /^SR / }));
+    fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
+    expect(writeText).toHaveBeenCalledWith("SR\nKirari, MP 4TH, 1");
   });
 });

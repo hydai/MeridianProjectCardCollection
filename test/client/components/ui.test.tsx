@@ -1,3 +1,4 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,8 +11,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Panel } from "@/views/shared";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 describe("Button", () => {
   it("renders as a button with its label", () => {
@@ -94,5 +97,80 @@ describe("Progress", () => {
     const bar = screen.getByRole("progressbar");
     expect(bar).toHaveAttribute("aria-valuenow", "3");
     expect(bar).toHaveAttribute("aria-valuemax", "6");
+  });
+});
+
+describe("Alert", () => {
+  it("renders with role=alert and shows title + description", () => {
+    render(
+      <Alert>
+        <AlertTitle>警告</AlertTitle>
+        <AlertDescription>內容說明</AlertDescription>
+      </Alert>,
+    );
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText("警告")).toBeInTheDocument();
+    expect(screen.getByText("內容說明")).toBeInTheDocument();
+  });
+});
+
+describe("ToggleGroup", () => {
+  it("selects a single value and reports changes", () => {
+    const onValueChange = vi.fn();
+    render(
+      <ToggleGroup type="single" value="all" onValueChange={onValueChange}>
+        <ToggleGroupItem value="all" aria-label="全部">
+          全部
+        </ToggleGroupItem>
+        <ToggleGroupItem value="ur" aria-label="UR">
+          UR
+        </ToggleGroupItem>
+      </ToggleGroup>,
+    );
+    // Radix single-select ToggleGroup renders items as role="radio".
+    fireEvent.click(screen.getByRole("radio", { name: "UR" }));
+    expect(onValueChange).toHaveBeenCalledWith("ur");
+  });
+
+  it("forwards orientation to the Radix root as data-orientation", () => {
+    // Forwarding `orientation` lets Radix drive roving-focus AND emit
+    // data-orientation, which the data-[orientation=*] Tailwind variants
+    // target. Assert the attribute lands on the DOM for both orientations.
+    const { container, rerender } = render(
+      <ToggleGroup type="single" value="all">
+        <ToggleGroupItem value="all" aria-label="全部">
+          全部
+        </ToggleGroupItem>
+      </ToggleGroup>,
+    );
+    expect(
+      container.querySelector('[data-slot="toggle-group"]'),
+    ).toHaveAttribute("data-orientation", "horizontal");
+
+    rerender(
+      <ToggleGroup type="single" value="all" orientation="vertical">
+        <ToggleGroupItem value="all" aria-label="全部">
+          全部
+        </ToggleGroupItem>
+      </ToggleGroup>,
+    );
+    expect(
+      container.querySelector('[data-slot="toggle-group"]'),
+    ).toHaveAttribute("data-orientation", "vertical");
+  });
+});
+
+describe("Panel", () => {
+  it("renders an h3 title, a sub, and its children", () => {
+    render(
+      <Panel title="待售" sub="3 張">
+        <div>row</div>
+      </Panel>,
+    );
+    expect(
+      screen.getByRole("heading", { level: 3, name: "待售" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("3 張")).toBeInTheDocument();
+    expect(screen.getByText("row")).toBeInTheDocument();
   });
 });
