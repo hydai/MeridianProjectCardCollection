@@ -1,3 +1,4 @@
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useEffect, useState } from "react";
 import {
   type Matrix,
@@ -7,6 +8,7 @@ import {
   exists,
   getN,
 } from "../collection";
+import { MODE_BTN, MODE_TOGGLE } from "./shared";
 
 const SERIES_STORAGE_KEY = "mpc:grid:hiddenSeries";
 const RARITY_STORAGE_KEY = "mpc:grid:hiddenRarities";
@@ -95,27 +97,26 @@ export function Grid({ m }: { m: Matrix }) {
 
   return (
     <section className="view view-grid">
-      <div className="grid-header">
-        <div className="grid-head-left">
-          <span className="grid-title">收集格表</span>
-          <div className="mode-toggle">
-            <button
-              type="button"
-              className={`mode-btn ${!isCount ? "active" : ""}`}
-              onClick={() => setMode("check")}
-            >
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 px-1">
+        <div className="flex flex-wrap items-center gap-3.5">
+          <span className="font-serif text-[15px] font-medium tracking-[0.08em] text-foreground">
+            收集格表
+          </span>
+          <ToggleGroup
+            type="single"
+            value={mode}
+            onValueChange={(v) => v && setMode(v as "check" | "count")}
+            className={MODE_TOGGLE}
+          >
+            <ToggleGroupItem value="check" className={MODE_BTN}>
               打勾
-            </button>
-            <button
-              type="button"
-              className={`mode-btn ${isCount ? "active" : ""}`}
-              onClick={() => setMode("count")}
-            >
+            </ToggleGroupItem>
+            <ToggleGroupItem value="count" className={MODE_BTN}>
               數量
-            </button>
-          </div>
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
-        <span className="grid-progress">
+        <span className="grid-progress font-mono text-xs tracking-[0.08em] text-[var(--text-tertiary)] [&_strong]:font-medium [&_strong]:text-foreground">
           <strong>{totalHave}</strong> / {totalSlots} · {pct}%
         </span>
       </div>

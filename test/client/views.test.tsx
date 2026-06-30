@@ -192,6 +192,19 @@ describe("Glance mode toggle", () => {
   });
 });
 
+describe("Grid mode toggle", () => {
+  it("switches check↔count via the radio toggle", () => {
+    render(<Grid m={m} />);
+    const check = screen.getByRole("radio", { name: "打勾" });
+    const count = screen.getByRole("radio", { name: "數量" });
+    expect(check).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(count);
+    expect(count).toHaveAttribute("aria-checked", "true");
+    // count mode swaps the legend copy to the "持有張數" wording
+    expect(screen.getByText(/持有張數/)).toBeInTheDocument();
+  });
+});
+
 describe("Grid volume filter", () => {
   beforeEach(() => localStorage.clear());
 
