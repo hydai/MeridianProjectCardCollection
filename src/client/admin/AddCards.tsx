@@ -241,6 +241,9 @@ export function AddCards() {
         >
           {busy ? "新增中…" : `新增 ${total} 張`}
         </Button>
+        {isOpening && !openedAt ? (
+          <span className={ERROR_TEXT}>開箱日期為必填</span>
+        ) : null}
         {toast ? <span className={TOAST}>{toast}</span> : null}
         {error ? <span className={ERROR_TEXT}>{error}</span> : null}
       </div>

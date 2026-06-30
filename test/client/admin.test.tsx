@@ -203,6 +203,21 @@ describe("AddCards", () => {
     expect(screen.getByRole("button", { name: "新增 1 張" })).toBeEnabled();
   });
 
+  it("shows a required-date hint while 開箱 is checked but the date is blank", () => {
+    render(<AddCards />);
+    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
+    expect(screen.queryByText("開箱日期為必填")).not.toBeInTheDocument();
+
+    // A disabled submit alone doesn't tell the user why; the inline hint must.
+    fireEvent.click(screen.getByLabelText(/這是一次開箱/));
+    expect(screen.getByText("開箱日期為必填")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("開箱日期"), {
+      target: { value: "2026-06-28" },
+    });
+    expect(screen.queryByText("開箱日期為必填")).not.toBeInTheDocument();
+  });
+
   it("marks the selected series and rarity as pressed toggles", () => {
     render(<AddCards />);
     // Defaults: series "NEW YEAR", rarity "R".
