@@ -51,6 +51,24 @@ export const PANEL_GRID =
 export const EMPTY_MSG =
   "px-0.5 py-3 text-[13px] tracking-[0.04em] text-[var(--text-tertiary)]";
 
+// Pill segmented toggle (Glance + Grid mode switch): rebuilds the legacy
+// .mode-toggle / .mode-btn / .mode-btn.active pill on shadcn ToggleGroup. The
+// active segment gets the elevated fill + gold text + gold hairline. We override
+// BOTH the Toggle base's `data-[state=on]:bg-muted` and its `aria-pressed:bg-muted`
+// (Radix Toggle sets both attributes when on; different variant prefixes so
+// tailwind-merge can't dedupe them — list both, last-in-source wins).
+export const MODE_TOGGLE =
+  "inline-flex w-fit gap-0.5 rounded-full border-[0.5px] border-border p-0.5";
+export const MODE_BTN =
+  "h-auto rounded-full px-4 py-1.5 font-sans text-xs font-normal tracking-[0.06em] text-[var(--text-tertiary)] transition-colors hover:bg-transparent hover:text-muted-foreground data-[state=on]:bg-secondary data-[state=on]:text-primary data-[state=on]:shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.25)] aria-pressed:bg-secondary aria-pressed:text-primary";
+
+// Standalone multi-select filter toggle (Grid rarity + series): the legacy
+// `.grid-filter .mode-btn` — same pill chip but with its own 0.5px outline so the
+// off state still reads as tappable. Rendered via shadcn <Toggle> (native button +
+// aria-pressed), so the existing role/aria-pressed Grid tests stay green.
+export const FILTER_TOGGLE =
+  "h-auto rounded-full border-[0.5px] border-border px-3.5 py-1.5 font-sans text-xs font-normal tracking-[0.06em] text-[var(--text-tertiary)] transition-colors hover:bg-transparent hover:text-muted-foreground data-[state=on]:bg-secondary data-[state=on]:text-primary data-[state=on]:shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.25)] aria-pressed:bg-secondary aria-pressed:text-primary";
+
 export function Panel({
   title,
   sub,

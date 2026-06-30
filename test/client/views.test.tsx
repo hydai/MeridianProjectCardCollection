@@ -178,6 +178,20 @@ describe("Trade pending overlay", () => {
   });
 });
 
+describe("Glance mode toggle", () => {
+  it("switches wishlist↔collection via the radio toggle", () => {
+    render(<Glance m={m} />);
+    const wish = screen.getByRole("radio", { name: "願望清單" });
+    const coll = screen.getByRole("radio", { name: "收集清單" });
+    expect(wish).toHaveAttribute("aria-checked", "true");
+    // collection mode shows the "已收集 … 種 · 共 … 張" progress line
+    expect(screen.queryByText(/已收集/)).toBeNull();
+    fireEvent.click(coll);
+    expect(coll).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText(/已收集/)).toBeInTheDocument();
+  });
+});
+
 describe("Grid volume filter", () => {
   beforeEach(() => localStorage.clear());
 

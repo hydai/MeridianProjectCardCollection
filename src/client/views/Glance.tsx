@@ -1,6 +1,7 @@
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useState } from "react";
 import { type Matrix, RARITIES, exists, getN } from "../collection";
-import { MissChip } from "./shared";
+import { MODE_BTN, MODE_TOGGLE, MissChip } from "./shared";
 
 type Owned = { name: string; ri: number; count: number };
 type GlanceCellData = { na: true } | { na: false; owned: Owned[] };
@@ -90,24 +91,21 @@ export function Glance({ m }: { m: Matrix }) {
 
   return (
     <section className="view view-glance">
-      <div className="glance-header">
-        <div className="mode-toggle">
-          <button
-            type="button"
-            className={`mode-btn ${isWish ? "active" : ""}`}
-            onClick={() => setMode("wishlist")}
-          >
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 px-1">
+        <ToggleGroup
+          type="single"
+          value={mode}
+          onValueChange={(v) => v && setMode(v as "wishlist" | "collection")}
+          className={MODE_TOGGLE}
+        >
+          <ToggleGroupItem value="wishlist" className={MODE_BTN}>
             願望清單
-          </button>
-          <button
-            type="button"
-            className={`mode-btn ${!isWish ? "active" : ""}`}
-            onClick={() => setMode("collection")}
-          >
+          </ToggleGroupItem>
+          <ToggleGroupItem value="collection" className={MODE_BTN}>
             收集清單
-          </button>
-        </div>
-        <span className="glance-progress">
+          </ToggleGroupItem>
+        </ToggleGroup>
+        <span className="font-mono text-xs tracking-[0.08em] text-[var(--text-tertiary)] [&_strong]:font-medium [&_strong]:text-foreground">
           {isWish ? (
             <>
               <strong>{collected}</strong> / {totalSlots} · {pct}% · 缺{" "}
