@@ -93,3 +93,50 @@ export const ADD_ACTIONS = "mt-4 flex flex-wrap items-center gap-3";
 export const TOAST =
   "font-accent text-sm italic tracking-[0.06em] text-primary";
 export const ERROR_TEXT = "text-[13px] text-destructive";
+
+// === Phase 4b: ManageCards (+ shared with PendingTrades / 4c) ========
+
+// Admin data table (.admin-table) — bespoke <table>, ported 1:1 from
+// admin.css (4b decision: keep a plain table rather than fight shadcn
+// Table's 1px-row-border / nowrap / last-row-stripped defaults). The
+// hover tint is the legacy `.admin-table tr:hover td` selector verbatim.
+export const TABLE =
+  "w-full border-collapse text-[13px] [&_tr:hover_td]:bg-[rgba(255,255,255,0.012)]";
+export const TH =
+  "border-b-[0.5px] border-border px-2.5 py-2 text-left text-[10px] font-normal uppercase tracking-[0.18em] text-[var(--text-tertiary)]";
+export const TD =
+  "border-b-[0.5px] border-border p-2.5 text-left align-middle font-sans text-muted-foreground";
+
+// Filter bar (.filters) above the ManageCards table. Each field composes
+// cn(FIELD, "min-w-[150px]") for the legacy .filters .field min-width.
+export const FILTERS = "mb-[18px] flex flex-wrap items-end gap-[14px]";
+
+// Row action button cluster (.row-actions).
+export const ROW_ACTIONS = "flex flex-wrap gap-1.5";
+
+// Inline expand-in-place form (.action-form) + its field row (.inline-fields),
+// shared by ManageCards's ActionForm and PendingTrades's ReservationForm.
+export const ACTION_FORM =
+  "mt-2 rounded-[4px] border-[0.5px] border-border bg-[var(--bg-subtle)] px-3.5 py-3";
+export const INLINE_FIELDS = "flex flex-wrap items-end gap-2";
+
+// Small gold primary button (.btn-primary.btn-sm) — the .btn-sm-sized sibling
+// of BTN_PRIMARY, for the inline confirm actions (確認 / 新增預約 / 確認完成).
+export const BTN_PRIMARY_SM =
+  "h-auto rounded-[4px] bg-gradient-to-r from-[var(--primary-dim)] to-primary px-2.5 py-1 font-sans text-[11px] font-semibold tracking-[0.06em] text-[#1a1612] hover:brightness-[1.08]";
+
+// Status / duplicate / reserved pills, layered on PILL_BASE via cn(). `owned`
+// has no legacy rule → base only (""). for_sale/for_trade recolour text + border;
+// sold/traded dim to quaternary; dup is gold-filled; reserved is amber-filled
+// (its border stays PILL_BASE's border-strong — legacy .pill.reserved sets only
+// background + color).
+export const PILL_STATUS: Record<string, string> = {
+  owned: "",
+  for_sale: "border-[rgba(212,168,87,0.4)] text-rarity-sr",
+  for_trade: "border-[rgba(214,138,163,0.4)] text-rarity-ssr",
+  sold: "text-[var(--text-quaternary)]",
+  traded: "text-[var(--text-quaternary)]",
+};
+export const PILL_DUP =
+  "border-[rgba(201,161,74,0.4)] bg-[rgba(201,161,74,0.08)] text-primary";
+export const PILL_RESERVED = "bg-[rgba(234,179,8,0.15)] text-[#a16207]";
