@@ -258,16 +258,20 @@ export function Grid({ m }: { m: Matrix }) {
         </div>
       )}
 
-      <div className="grid-legend">
-        <span>
-          <span className="swatch sw-have">{isCount ? "2" : "✓"}</span>{" "}
+      <div className="mt-3.5 flex flex-wrap gap-[18px] pl-1 text-xs text-muted-foreground max-sm:gap-3 max-sm:text-[11px]">
+        <span className="inline-flex items-center gap-[7px]">
+          <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-[rgba(201,161,74,0.16)] text-[10px] font-semibold text-primary">
+            {isCount ? "2" : "✓"}
+          </span>{" "}
           {isCount ? "數字＝持有張數（≥2 為重複）" : "已收集"}
         </span>
-        <span>
-          <span className="swatch sw-miss" /> 未收集
+        <span className="inline-flex items-center gap-[7px]">
+          <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-transparent [border:0.5px_solid_var(--border-strong)]" />{" "}
+          未收集
         </span>
-        <span>
-          <span className="swatch sw-na" /> 未收錄（此系列無此角色）
+        <span className="inline-flex items-center gap-[7px]">
+          <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-[var(--bg-subtle)] [background-image:repeating-linear-gradient(45deg,transparent,transparent_3px,rgba(255,255,255,0.018)_3px,rgba(255,255,255,0.018)_6px)] [border:0.5px_solid_var(--border)]" />{" "}
+          未收錄（此系列無此角色）
         </span>
       </div>
     </section>
