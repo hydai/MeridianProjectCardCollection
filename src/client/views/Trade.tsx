@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui/button";
+import { Check, Copy } from "lucide-react";
 import { useRef, useState } from "react";
 import type { PublicPendingTrade, ReservationLine } from "../../shared/types";
 import {
@@ -81,34 +83,6 @@ function PendingCard({ p }: { p: PublicPendingTrade }) {
   );
 }
 
-const ICON = {
-  width: 15,
-  height: 15,
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 2,
-  strokeLinecap: "round",
-  strokeLinejoin: "round",
-} as const;
-
-function CopyIcon() {
-  return (
-    <svg {...ICON} aria-hidden="true">
-      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg {...ICON} aria-hidden="true">
-      <path d="M20 6 9 17l-5-5" />
-    </svg>
-  );
-}
-
 function CopyButton({
   text,
   label,
@@ -129,16 +103,18 @@ function CopyButton({
       });
   };
   return (
-    <button
+    <Button
       type="button"
-      className={`trade-copy-btn ${copied ? "copied" : ""}`}
+      variant="ghost"
+      size="icon"
+      className="size-6 text-[var(--text-tertiary)] hover:text-foreground"
       onClick={onClick}
       disabled={disabled}
       aria-label={copied ? "已複製" : label}
       title={label}
     >
-      {copied ? <CheckIcon /> : <CopyIcon />}
-    </button>
+      {copied ? <Check /> : <Copy />}
+    </Button>
   );
 }
 
