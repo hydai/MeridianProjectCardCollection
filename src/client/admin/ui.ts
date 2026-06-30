@@ -140,3 +140,8 @@ export const PILL_STATUS: Record<string, string> = {
 export const PILL_DUP =
   "border-[rgba(201,161,74,0.4)] bg-[rgba(201,161,74,0.08)] text-primary";
 export const PILL_RESERVED = "bg-[rgba(234,179,8,0.15)] text-[#a16207]";
+
+// === Phase 4b: PendingTrades line editor (.line-editor / -head / -row) =
+export const LINE_EDITOR = "mt-3";
+export const LINE_EDITOR_HEAD = "mb-1.5 flex items-center gap-3";
+export const LINE_ROW = "mt-1.5 flex items-center gap-2";
