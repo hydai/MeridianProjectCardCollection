@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Panel } from "@/views/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -129,5 +130,20 @@ describe("ToggleGroup", () => {
     // Radix single-select ToggleGroup renders items as role="radio".
     fireEvent.click(screen.getByRole("radio", { name: "UR" }));
     expect(onValueChange).toHaveBeenCalledWith("ur");
+  });
+});
+
+describe("Panel", () => {
+  it("renders an h3 title, a sub, and its children", () => {
+    render(
+      <Panel title="待售" sub="3 張">
+        <div>row</div>
+      </Panel>,
+    );
+    expect(
+      screen.getByRole("heading", { level: 3, name: "待售" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("3 張")).toBeInTheDocument();
+    expect(screen.getByText("row")).toBeInTheDocument();
   });
 });

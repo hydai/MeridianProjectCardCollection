@@ -1,4 +1,7 @@
+import type * as React from "react";
+
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TableCell } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +30,42 @@ export const CARD_TITLE =
   "font-serif text-[22px] font-medium tracking-[0.04em] text-foreground max-sm:text-[19px]";
 export const CARD_COUNT =
   "font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground";
+
+// Editorial sub-panel (shared by Trade + Market): the legacy `.trade-panel`
+// rebuilt on shadcn Card — 0.5px border, 4px radius, serif title with a mono
+// sub on the right and a 0.5px header divider. Smaller than CARD_SHELL.
+export const PANEL_SHELL =
+  "gap-0 overflow-visible rounded-[4px] border-[0.5px] border-border bg-card px-[22px] py-5 ring-0 max-sm:px-4 max-sm:py-4";
+export const PANEL_HEADER =
+  "flex flex-row items-baseline justify-between gap-3 border-b-[0.5px] border-border px-0 pb-3 mb-4";
+export const PANEL_TITLE =
+  "font-serif text-base font-medium tracking-[0.04em] text-foreground";
+export const PANEL_SUB =
+  "font-mono text-[11px] font-normal tracking-[0.06em] text-[var(--text-tertiary)]";
+
+export function Panel({
+  title,
+  sub,
+  children,
+  className,
+}: {
+  title: React.ReactNode;
+  sub?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <Card className={cn(PANEL_SHELL, className)}>
+      <CardHeader className={PANEL_HEADER}>
+        <CardTitle asChild className={PANEL_TITLE}>
+          <h3>{title}</h3>
+        </CardTitle>
+        {sub != null ? <span className={PANEL_SUB}>{sub}</span> : null}
+      </CardHeader>
+      <CardContent className="px-0">{children}</CardContent>
+    </Card>
+  );
+}
 
 export function NumCell({ n, ri }: { n: number; ri: number }) {
   if (n === 0) {
