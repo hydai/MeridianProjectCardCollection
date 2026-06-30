@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useState } from "react";
 import { type Matrix, RARITIES, exists, getN } from "../collection";
@@ -6,14 +7,26 @@ import { MODE_BTN, MODE_TOGGLE, MissChip } from "./shared";
 type Owned = { name: string; ri: number; count: number };
 type GlanceCellData = { na: true } | { na: false; owned: Owned[] };
 
+// Body cell chrome (legacy `.glance-table tbody td`): hairline divider, centered,
+// padded; shared by every GlanceCell branch.
+const GLANCE_TD =
+  "border-b-[0.5px] border-border px-3 py-3 text-center align-middle max-sm:px-[7px] max-sm:py-2.5";
+
+// Empty marker (legacy `.glance-na`): faint quaternary em dash.
+const GlanceNa = () => (
+  <span className="select-none font-mono text-[13px] text-[var(--text-quaternary)] opacity-45">
+    —
+  </span>
+);
+
 function GlanceCell({
   cell,
   isWish,
 }: { cell: GlanceCellData; isWish: boolean }) {
   if (cell.na) {
     return (
-      <td>
-        <span className="glance-na">—</span>
+      <td className={GLANCE_TD}>
+        <GlanceNa />
       </td>
     );
   }
@@ -21,13 +34,18 @@ function GlanceCell({
     const missing = cell.owned.filter((o) => o.count === 0);
     if (missing.length === 0) {
       return (
-        <td>
-          <span className="glance-complete-badge">✓ 完成</span>
+        <td className={GLANCE_TD}>
+          <Badge
+            variant="outline"
+            className="h-auto gap-1 rounded-full border-[0.5px] border-primary/35 bg-primary/[0.08] px-2.5 py-[3px] text-[10px] font-normal tracking-[0.12em] text-primary"
+          >
+            ✓ 完成
+          </Badge>
         </td>
       );
     }
     return (
-      <td>
+      <td className={GLANCE_TD}>
         {missing.map((r) => (
           <MissChip key={r.name} ri={r.ri} label={r.name} />
         ))}
@@ -37,13 +55,13 @@ function GlanceCell({
   const have = cell.owned.filter((o) => o.count > 0);
   if (have.length === 0) {
     return (
-      <td>
-        <span className="glance-na">—</span>
+      <td className={GLANCE_TD}>
+        <GlanceNa />
       </td>
     );
   }
   return (
-    <td>
+    <td className={GLANCE_TD}>
       {have.map((o) => (
         <MissChip key={o.name} ri={o.ri} label={o.name} count={o.count} />
       ))}
@@ -119,13 +137,20 @@ export function Glance({ m }: { m: Matrix }) {
           )}
         </span>
       </div>
-      <div className="glance-wrap">
-        <table className="glance-table">
+      <div className="overflow-hidden rounded-[4px] border-[0.5px] border-border bg-card">
+        <table className="w-full table-fixed border-collapse text-[13px] max-sm:text-xs">
           <thead>
             <tr>
-              <th className="g-char">角色</th>
+              <th className="w-[20%] border-b-[0.5px] border-border bg-secondary px-3 pt-3.5 pb-3 text-left font-sans text-[11px] font-normal tracking-[0.25em] text-foreground max-sm:w-[19%] max-sm:px-[7px] max-sm:py-2.5 max-sm:text-[9px]">
+                角色
+              </th>
               {m.series.map((s) => (
-                <th key={s}>{s}</th>
+                <th
+                  key={s}
+                  className="border-b-[0.5px] border-border bg-secondary px-3 pt-3.5 pb-3 text-center font-accent text-[11px] font-medium uppercase italic tracking-[0.18em] text-foreground max-sm:px-[7px] max-sm:py-2.5 max-sm:text-[9px] max-sm:tracking-[0.12em]"
+                >
+                  {s}
+                </th>
               ))}
             </tr>
           </thead>
@@ -133,12 +158,18 @@ export function Glance({ m }: { m: Matrix }) {
             {rows.map((row) => (
               <tr
                 key={row.charName}
-                className={row.isComplete ? "is-complete" : ""}
+                className={
+                  row.isComplete
+                    ? "last:[&_td]:border-b-0 [&_td]:bg-[rgba(201,161,74,0.025)]"
+                    : "last:[&_td]:border-b-0"
+                }
               >
-                <td className="g-char">
+                <td className="border-b-[0.5px] border-border px-3 py-3 text-left align-middle font-sans text-sm text-foreground max-sm:px-[7px] max-sm:py-2.5 max-sm:text-[13px]">
                   {row.charName}
                   {row.isComplete ? (
-                    <span className="complete-mark">✓</span>
+                    <span className="ml-1.5 inline-block font-accent text-xs italic tracking-[0.1em] text-primary">
+                      ✓
+                    </span>
                   ) : null}
                 </td>
                 {row.cells.map((c, si) => (
