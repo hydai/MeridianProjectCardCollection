@@ -135,6 +135,7 @@ export function Grid({ m }: { m: Matrix }) {
           </span>
           <ToggleGroup
             type="single"
+            aria-label="顯示模式"
             value={mode}
             onValueChange={(v) => v && setMode(v as "check" | "count")}
             className={MODE_TOGGLE}

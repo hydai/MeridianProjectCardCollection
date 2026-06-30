@@ -119,6 +119,7 @@ export function Glance({ m }: { m: Matrix }) {
       <div className={VIEW_HEADER}>
         <ToggleGroup
           type="single"
+          aria-label="顯示模式"
           value={mode}
           onValueChange={(v) => v && setMode(v as "wishlist" | "collection")}
           className={MODE_TOGGLE}

@@ -181,6 +181,10 @@ describe("Trade pending overlay", () => {
 describe("Glance mode toggle", () => {
   it("switches wishlist↔collection via the radio toggle", () => {
     render(<Glance m={m} />);
+    // the single-select mode switch is a radiogroup with an accessible name
+    expect(
+      screen.getByRole("radiogroup", { name: "顯示模式" }),
+    ).toBeInTheDocument();
     const wish = screen.getByRole("radio", { name: "願望清單" });
     const coll = screen.getByRole("radio", { name: "收集清單" });
     expect(wish).toHaveAttribute("aria-checked", "true");
@@ -196,6 +200,10 @@ describe("Grid mode toggle", () => {
   beforeEach(() => localStorage.clear());
   it("switches check↔count via the radio toggle", () => {
     render(<Grid m={m} />);
+    // the single-select mode switch is a radiogroup with an accessible name
+    expect(
+      screen.getByRole("radiogroup", { name: "顯示模式" }),
+    ).toBeInTheDocument();
     const check = screen.getByRole("radio", { name: "打勾" });
     const count = screen.getByRole("radio", { name: "數量" });
     expect(check).toHaveAttribute("aria-checked", "true");
