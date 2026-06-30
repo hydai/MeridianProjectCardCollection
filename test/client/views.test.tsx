@@ -12,6 +12,22 @@ import type { MarketListing } from "../../src/shared/types";
 import type { OverviewResponse } from "../../src/shared/types";
 import type { PublicPendingTrade } from "../../src/shared/types";
 
+// Snapshot navigator.clipboard's original property descriptor and restore it
+// after each test in the calling describe. Tests stub `navigator.clipboard`;
+// restoring the original (rather than unconditionally deleting) returns it to
+// its true prior state so a stub never leaks into later tests — and stays
+// correct even if the test env ever ships a real clipboard by default.
+function restoreClipboardAfterEach() {
+  const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  afterEach(() => {
+    if (original) {
+      Object.defineProperty(navigator, "clipboard", original);
+    } else {
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+}
+
 // Full 180-type universe with a mix of missing (0), single, and duplicate (>=2)
 // counts so every view branch is exercised.
 const full: OverviewResponse = {
@@ -404,11 +420,10 @@ describe("Trade copy buttons", () => {
     progress: [],
   };
 
-  // Tests below stub `navigator.clipboard`; restore it after each so the stub
-  // never leaks into later tests (which would mask a real missing-clipboard bug).
-  afterEach(() => {
-    Reflect.deleteProperty(navigator, "clipboard");
-  });
+  // Tests below stub `navigator.clipboard`; restore the original after each so
+  // the stub never leaks into later tests (which would mask a real
+  // missing-clipboard bug).
+  restoreClipboardAfterEach();
 
   it("renders a copy button on each panel", () => {
     render(<Trade m={buildMatrix(oneSurplus)} />);
@@ -473,9 +488,7 @@ describe("Trade rarity filter", () => {
     progress: [],
   };
 
-  afterEach(() => {
-    Reflect.deleteProperty(navigator, "clipboard");
-  });
+  restoreClipboardAfterEach();
 
   it("scopes the 可換出 copy list to the selected rarity", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
