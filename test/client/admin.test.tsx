@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildCatalog } from "../../seed/catalog-def";
 import { AddCards } from "../../src/client/admin/AddCards";
+import { History } from "../../src/client/admin/History";
 import { ManageCards } from "../../src/client/admin/ManageCards";
 import { Openings } from "../../src/client/admin/Openings";
 import { PendingTrades } from "../../src/client/admin/PendingTrades";
@@ -568,6 +569,69 @@ describe("Openings", () => {
     render(<Openings />);
     await waitFor(() =>
       expect(screen.getByText(/尚無開箱紀錄/)).toBeInTheDocument(),
+    );
+  });
+});
+
+describe("History", () => {
+  it("renders the income summary, type pills, rarity pills, and a trade row", async () => {
+    const rows = [
+      {
+        id: 1,
+        cardId: 11,
+        type: "sale",
+        counterparty: "阿明",
+        price: 300,
+        happenedAt: "2026-06-02",
+        series: "KILLER",
+        character: "Rei",
+        rarity: "SR",
+        note: null,
+      },
+      {
+        id: 2,
+        cardId: 12,
+        type: "trade",
+        counterparty: null,
+        price: null,
+        happenedAt: "2026-06-03",
+        series: "NEW YEAR",
+        character: "Mizuki",
+        rarity: "R",
+        note: null,
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => rows })),
+    );
+
+    render(<History />);
+
+    await waitFor(() =>
+      expect(screen.getByText("交易歷史")).toBeInTheDocument(),
+    );
+    // Summary: 2 records, sale income = 300.
+    expect(screen.getByText(/共/)).toBeInTheDocument();
+    // Type pills.
+    expect(screen.getByText("賣出")).toBeInTheDocument();
+    expect(screen.getByText("交換")).toBeInTheDocument();
+    // Rarity pills.
+    expect(screen.getByText("SR")).toBeInTheDocument();
+    expect(screen.getByText("R")).toBeInTheDocument();
+    // Counterparty + the sale price (mono cell); the trade row's null price → —.
+    expect(screen.getByText("阿明")).toBeInTheDocument();
+    expect(screen.getByText("300 元")).toBeInTheDocument();
+  });
+
+  it("shows the empty state when there are no transactions", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => [] })),
+    );
+    render(<History />);
+    await waitFor(() =>
+      expect(screen.getByText(/尚無成交紀錄/)).toBeInTheDocument(),
     );
   });
 });
