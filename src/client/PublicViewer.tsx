@@ -1,4 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { useRovingTablist } from "@/lib/tablist";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import type { MarketListing, PublicPendingTrade } from "../shared/types";
@@ -24,6 +25,8 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+const TAB_IDS = TABS.map((t) => t.id);
 
 function ActiveView({
   id,
@@ -102,6 +105,8 @@ export default function PublicViewer() {
     }
   };
 
+  const tabProps = useRovingTablist(TAB_IDS, selectTab);
+
   return (
     <div className="mx-auto max-w-[820px] px-7 pt-20 pb-24 max-sm:px-[18px] max-sm:pt-14 max-sm:pb-[72px]">
       <header className="mb-16 text-center animate-[rise_0.7s_ease_0.05s_both]">
@@ -122,12 +127,13 @@ export default function PublicViewer() {
         role="tablist"
         className="mt-16 mb-12 flex flex-wrap justify-center border-b border-border animate-[rise_0.7s_ease_0.35s_both]"
       >
-        {TABS.map((t) => (
+        {TABS.map((t, i) => (
           <button
             key={t.id}
             type="button"
             role="tab"
             aria-selected={tab === t.id}
+            {...tabProps(i, tab === t.id)}
             onClick={() => selectTab(t.id)}
             className={cn(
               "relative flex cursor-pointer flex-col items-center gap-1 border-0 bg-transparent px-7 pt-[18px] pb-4 font-sans text-sm tracking-[0.15em] text-muted-foreground transition-colors hover:text-foreground max-sm:px-3.5 max-sm:text-[13px]",
