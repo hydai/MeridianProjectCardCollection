@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import "./admin.css";
 import { AddCards } from "./AddCards";
 import { History } from "./History";
 import { ManageCards } from "./ManageCards";
@@ -22,7 +21,7 @@ export default function Admin() {
   const [tab, setTab] = useState<TabId>("add");
 
   return (
-    <div className="admin mx-auto max-w-[940px] px-7 pt-14 pb-24 max-sm:px-4 max-sm:pt-10 max-sm:pb-[72px]">
+    <div className="mx-auto max-w-[940px] px-7 pt-14 pb-24 max-sm:px-4 max-sm:pt-10 max-sm:pb-[72px]">
       <div className="flex flex-wrap items-baseline justify-between gap-2.5">
         <h1 className="font-serif text-[26px] font-medium tracking-[0.06em] text-foreground">
           管理後台
