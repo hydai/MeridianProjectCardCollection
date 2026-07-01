@@ -39,9 +39,14 @@ with a live site you edit directly.
 | Runtime  | Cloudflare Workers (a single Worker)                                          |
 | API      | [Hono](https://hono.dev/)                                                     |
 | Database | Cloudflare D1 (SQLite) — all stats computed live via SQL, no derived tables  |
-| Frontend | React + React Router, bundled by Vite, served via Workers Static Assets      |
+| Frontend | React + React Router + Tailwind v4 + shadcn/ui, bundled by Vite, served via Workers Static Assets |
 | Auth     | Cloudflare Access (JWT verified in-Worker with [jose](https://github.com/panva/jose)) |
 | Tooling  | Wrangler, Biome (lint/format), Vitest (+ `@cloudflare/vitest-pool-workers`)  |
+
+The UI is built with **Tailwind CSS v4 + shadcn/ui** (Radix primitives copied
+into `src/client/components/ui/`), themed to a bespoke dark-gold "editorial"
+palette via a CSS token bridge in `src/client/index.css` — dark mode only, no
+theme switcher.
 
 ## Architecture
 
