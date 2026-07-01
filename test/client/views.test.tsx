@@ -540,3 +540,97 @@ describe("Trade rarity filter", () => {
     expect(writeText).toHaveBeenCalledWith("SR\nKirari, MP 4TH, 1");
   });
 });
+
+describe("Trade view mode toggle", () => {
+  const card = (
+    character: string,
+    rarity: "R" | "SR" | "SSR" | "UR",
+    owned: number,
+    id: number,
+  ) => ({ catalogId: id, series: "MP 4TH", character, rarity, owned });
+
+  // Kirari: SR owned 3 (spare 2) + UR owned 2 (spare 1) → 可換出;
+  // SSR owned 0 → 想換入; R owned 1 → 兩者皆非。
+  const mixed: OverviewResponse = {
+    cells: [
+      card("Kirari", "R", 1, 1),
+      card("Kirari", "SR", 3, 2),
+      card("Kirari", "SSR", 0, 3),
+      card("Kirari", "UR", 2, 4),
+    ],
+    progress: [],
+  };
+
+  const toGrid = () =>
+    fireEvent.click(
+      within(
+        screen.getByRole("radiogroup", { name: "交換檢視模式" }),
+      ).getByRole("radio", { name: "格表" }),
+    );
+
+  it("defaults to list mode with the mode switch present", () => {
+    const { container } = render(<Trade m={buildMatrix(mixed)} />);
+    const group = screen.getByRole("radiogroup", { name: "交換檢視模式" });
+    expect(within(group).getByRole("radio", { name: "清單" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(container.querySelectorAll(".trade-grid-table")).toHaveLength(0);
+  });
+
+  it("switches to grid mode showing a surplus and a needs table", () => {
+    const { container } = render(<Trade m={buildMatrix(mixed)} />);
+    toGrid();
+    expect(container.querySelectorAll(".trade-grid-table")).toHaveLength(2);
+    const surplus = container.querySelector(
+      '[data-kind="surplus"]',
+    ) as HTMLElement;
+    const needs = container.querySelector('[data-kind="needs"]') as HTMLElement;
+    expect(within(surplus).getByText("2")).toBeInTheDocument(); // SR spare 2
+    expect(within(needs).getByText("1")).toBeInTheDocument(); // SSR 缺 → 1
+  });
+
+  it("switches back to list mode, removing the grid tables", () => {
+    const { container } = render(<Trade m={buildMatrix(mixed)} />);
+    toGrid();
+    expect(container.querySelectorAll(".trade-grid-table")).toHaveLength(2);
+    fireEvent.click(
+      within(
+        screen.getByRole("radiogroup", { name: "交換檢視模式" }),
+      ).getByRole("radio", { name: "清單" }),
+    );
+    expect(container.querySelectorAll(".trade-grid-table")).toHaveLength(0);
+  });
+
+  it("scopes grid columns to the selected rarity", () => {
+    const { container } = render(<Trade m={buildMatrix(mixed)} />);
+    toGrid();
+    const surplus = () =>
+      container.querySelector('[data-kind="surplus"]') as HTMLElement;
+    expect(surplus().querySelectorAll(".trade-grid-rarity-head")).toHaveLength(
+      4,
+    );
+    // 頂部稀有度總覽卡是 role="radio"，可存取名稱以稀有度開頭（含 缺/餘 計數）。
+    fireEvent.click(screen.getByRole("radio", { name: /^SR / }));
+    expect(surplus().querySelectorAll(".trade-grid-rarity-head")).toHaveLength(
+      1,
+    );
+  });
+
+  it("shows the needs empty state when nothing is missing", () => {
+    // 全持有 + UR 一張重複 → 有可換出、無想換入。
+    const noNeeds: OverviewResponse = {
+      cells: [
+        card("Kirari", "R", 1, 1),
+        card("Kirari", "SR", 1, 2),
+        card("Kirari", "SSR", 1, 3),
+        card("Kirari", "UR", 2, 4),
+      ],
+      progress: [],
+    };
+    const { container } = render(<Trade m={buildMatrix(noNeeds)} />);
+    toGrid();
+    expect(container.querySelectorAll(".trade-grid-table")).toHaveLength(1); // 只有可換出
+    expect(screen.getByText("已全部收集 ✓")).toBeInTheDocument();
+  });
+});

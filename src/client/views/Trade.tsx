@@ -24,7 +24,10 @@ import {
   formatTradeList,
 } from "../collection";
 import {
+  CARD_FRAME,
   EMPTY_MSG,
+  MODE_BTN,
+  MODE_TOGGLE,
   MissChip,
   PANEL_GRID,
   PANEL_TITLE,
@@ -33,6 +36,8 @@ import {
 } from "./shared";
 
 type Filter = "all" | RarityKey;
+
+type TradeMode = "list" | "grid";
 
 interface PendingRow {
   rarity: (typeof RARITIES)[number];
@@ -145,11 +150,162 @@ function CopyButton({
   );
 }
 
+// --- Grid-mode chrome ---------------------------------------------------
+// Grid.tsx 的格線/邊框 chrome 本地副本，讓收集格表（Grid.tsx）維持不動。
+// 若 Grid.tsx 的格表樣式調整，這裡需一併同步。
+const TG_BORDER_STRONG_B = "[border-bottom:0.5px_solid_var(--border-strong)]";
+const TG_BORDER_STRONG_R = "[border-right:0.5px_solid_var(--border-strong)]";
+const TG_BORDER_STRONG_L = "[border-left:0.5px_solid_var(--border-strong)]";
+const TG_CELL_BASE =
+  "h-8 w-8 border-b-[0.5px] border-border p-0 text-center text-xs leading-none max-sm:h-7 max-sm:w-[26px]";
+// 可換出格：金色「持有」底（同 Grid.tsx 數量模式的 HAVE_TINT）。
+const TG_HAVE_TINT = "bg-[rgba(201,161,74,0.16)] font-semibold text-primary";
+// 想換入格：各稀有度 soft 底（同 MissChip 的 --*-soft 底色系）。
+const TG_NEEDS_TINT = [
+  "bg-[var(--r-soft)]",
+  "bg-[var(--sr-soft)]",
+  "bg-[var(--ssr-soft)]",
+  "bg-[var(--ur-soft)]",
+] as const;
+
+// 角色 × 系列稀有度明細格表。surplus/needs 共用；差異在格子數值與填色。
+// items 傳入完整 surplus 或 needs（未經 rarity 篩選）；shownRi 決定顯示哪些稀有度欄。
+function TradeGrid({
+  m,
+  items,
+  kind,
+  shownRi,
+}: {
+  m: Matrix;
+  items: TradeItem[];
+  kind: "surplus" | "needs";
+  shownRi: number[];
+}) {
+  // 值查表：surplus→spare、needs→1；僅收錄 shownRi。
+  const val = new Map<string, number>();
+  for (const it of items) {
+    if (!shownRi.includes(it.ri)) continue;
+    val.set(`${it.si}|${it.ci}|${it.ri}`, kind === "surplus" ? it.spare : 1);
+  }
+
+  // 只留「有東西」的系列欄與角色列。
+  const shownSi = m.series
+    .map((_s, si) => si)
+    .filter((si) =>
+      m.characters.some((_c, ci) =>
+        shownRi.some((ri) => val.has(`${si}|${ci}|${ri}`)),
+      ),
+    );
+  const shownCi = m.characters
+    .map((_c, ci) => ci)
+    .filter((ci) =>
+      shownSi.some((si) => shownRi.some((ri) => val.has(`${si}|${ci}|${ri}`))),
+    );
+
+  if (shownSi.length === 0 || shownCi.length === 0) {
+    return (
+      <div className={EMPTY_MSG}>
+        {kind === "surplus" ? "目前沒有多餘的卡可換出。" : "已全部收集 ✓"}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`trade-grid overflow-x-auto ${CARD_FRAME}`}
+      data-kind={kind}
+    >
+      <table className="trade-grid-table w-full border-collapse text-xs">
+        <thead>
+          <tr>
+            <th
+              rowSpan={2}
+              className={`sticky left-0 z-[3] w-[92px] min-w-[92px] whitespace-nowrap bg-secondary px-3.5 py-2.5 text-left font-sans text-[11px] font-normal tracking-[0.15em] text-muted-foreground ${TG_BORDER_STRONG_B} ${TG_BORDER_STRONG_R} max-sm:w-[76px] max-sm:min-w-[76px] max-sm:px-2.5 max-sm:py-2 max-sm:text-[10px] max-sm:tracking-[0.1em]`}
+            >
+              角色
+            </th>
+            {shownSi.map((si) => (
+              <th
+                key={m.series[si]}
+                colSpan={shownRi.length}
+                className={`trade-grid-series-head border-b-[0.5px] border-border bg-secondary px-1.5 pt-2.5 pb-2 text-center font-accent text-xs font-medium uppercase italic tracking-[0.12em] text-foreground ${TG_BORDER_STRONG_L} max-sm:px-1 max-sm:pt-2 max-sm:pb-1.5 max-sm:text-[11px]`}
+              >
+                {m.series[si]}
+              </th>
+            ))}
+          </tr>
+          <tr>
+            {shownSi.map((si) =>
+              shownRi.map((ri, localRi) => (
+                <th
+                  key={`${m.series[si]}-${RARITIES[ri]}`}
+                  className={`trade-grid-rarity-head min-w-[32px] bg-secondary px-0 py-1.5 text-center font-mono text-[10px] font-medium ${TG_BORDER_STRONG_B} max-sm:min-w-[26px] max-sm:text-[9px] ${RARITY_TEXT[ri]} ${
+                    localRi === 0 ? TG_BORDER_STRONG_L : ""
+                  }`}
+                >
+                  {RARITIES[ri]}
+                </th>
+              )),
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {shownCi.map((ci) => (
+            <tr key={m.characters[ci]} className="group/row">
+              <td
+                className={`sticky left-0 z-[2] w-[92px] min-w-[92px] overflow-hidden text-ellipsis whitespace-nowrap bg-card px-3.5 py-[9px] text-left font-sans text-[13px] text-foreground ${TG_BORDER_STRONG_R} group-hover/row:bg-secondary max-sm:w-[76px] max-sm:min-w-[76px] max-sm:px-2.5 max-sm:py-2 max-sm:text-xs`}
+              >
+                {m.characters[ci]}
+              </td>
+              {shownSi.map((si) =>
+                shownRi.map((ri, localRi) => {
+                  const startCls = localRi === 0 ? TG_BORDER_STRONG_L : "";
+                  const cellKey = `${m.series[si]}-${RARITIES[ri]}`;
+                  const v = val.get(`${si}|${ci}|${ri}`);
+                  if (v == null) {
+                    return (
+                      <td
+                        key={cellKey}
+                        className={`${TG_CELL_BASE} text-muted-foreground/40 ${startCls}`}
+                      >
+                        ·
+                      </td>
+                    );
+                  }
+                  if (kind === "surplus") {
+                    return (
+                      <td
+                        key={cellKey}
+                        className={`${TG_CELL_BASE} ${TG_HAVE_TINT} ${startCls}`}
+                      >
+                        {v}
+                      </td>
+                    );
+                  }
+                  return (
+                    <td
+                      key={cellKey}
+                      className={`${TG_CELL_BASE} font-mono font-medium ${TG_NEEDS_TINT[ri]} ${RARITY_TEXT[ri]} ${startCls}`}
+                    >
+                      {v}
+                    </td>
+                  );
+                }),
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function Trade({
   m,
   pending,
 }: { m: Matrix; pending?: PublicPendingTrade[] }) {
   const [filter, setFilter] = useState<Filter>("all");
+  const [mode, setMode] = useState<TradeMode>("list");
   const { surplus, needs } = computeTradeWithPending(m, pending ?? []);
   const totalSpare = surplus.reduce((s, x) => s + x.spare, 0);
 
@@ -284,6 +440,30 @@ export function Trade({
         "border-primary bg-secondary shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.45)] hover:bg-secondary data-[state=on]:bg-secondary",
     );
 
+  const shownRi =
+    filter === "all" ? [0, 1, 2, 3] : [RARITY_KEYS.indexOf(filter)];
+
+  const surplusTitle = (
+    <span className="inline-flex items-center gap-2">
+      可換出
+      <CopyButton
+        text={formatTradeList(fSurplus, m, "surplus")}
+        label="複製可換出清單"
+        disabled={fSurplus.length === 0}
+      />
+    </span>
+  );
+  const needsTitle = (
+    <span className="inline-flex items-center gap-2">
+      想換入
+      <CopyButton
+        text={formatTradeList(fNeeds, m, "needs")}
+        label="複製想換入清單"
+        disabled={fNeeds.length === 0}
+      />
+    </span>
+  );
+
   return (
     <section className="view view-trade">
       <ToggleGroup
@@ -329,38 +509,44 @@ export function Trade({
           </AlertDescription>
         </Alert>
       ) : null}
-      <div className={PANEL_GRID}>
-        <Panel
-          title={
-            <span className="inline-flex items-center gap-2">
-              可換出
-              <CopyButton
-                text={formatTradeList(fSurplus, m, "surplus")}
-                label="複製可換出清單"
-                disabled={fSurplus.length === 0}
-              />
-            </span>
-          }
-          sub={surplusSub}
+      <div className="mb-[18px] flex items-center gap-3 px-1">
+        <span className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-tertiary)]">
+          檢視
+        </span>
+        <ToggleGroup
+          type="single"
+          aria-label="交換檢視模式"
+          value={mode}
+          onValueChange={(v) => v && setMode(v as TradeMode)}
+          className={MODE_TOGGLE}
         >
-          {panelBody(fSurplus, "surplus")}
-        </Panel>
-        <Panel
-          title={
-            <span className="inline-flex items-center gap-2">
-              想換入
-              <CopyButton
-                text={formatTradeList(fNeeds, m, "needs")}
-                label="複製想換入清單"
-                disabled={fNeeds.length === 0}
-              />
-            </span>
-          }
-          sub={needsSub}
-        >
-          {panelBody(fNeeds, "needs")}
-        </Panel>
+          <ToggleGroupItem value="list" className={MODE_BTN}>
+            清單
+          </ToggleGroupItem>
+          <ToggleGroupItem value="grid" className={MODE_BTN}>
+            格表
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
+      {mode === "list" ? (
+        <div className={PANEL_GRID}>
+          <Panel title={surplusTitle} sub={surplusSub}>
+            {panelBody(fSurplus, "surplus")}
+          </Panel>
+          <Panel title={needsTitle} sub={needsSub}>
+            {panelBody(fNeeds, "needs")}
+          </Panel>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-5">
+          <Panel title={surplusTitle} sub={surplusSub}>
+            <TradeGrid m={m} items={surplus} kind="surplus" shownRi={shownRi} />
+          </Panel>
+          <Panel title={needsTitle} sub={needsSub}>
+            <TradeGrid m={m} items={needs} kind="needs" shownRi={shownRi} />
+          </Panel>
+        </div>
+      )}
       {pending && pending.length > 0 ? (
         <section className="mt-6">
           <h3
