@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AdminPendingTrade,
@@ -400,7 +401,7 @@ export function PendingTrades() {
       <h2 className={PANEL_TITLE}>交換預約</h2>
       {error ? <div className={ERROR_TEXT}>{error}</div> : null}
       {!m || !pending ? (
-        <div className="state-msg">載入中…</div>
+        <div className={STATE_MSG}>載入中…</div>
       ) : (
         <>
           <ReservationForm
@@ -409,7 +410,7 @@ export function PendingTrades() {
             onDone={reload}
           />
           {pending.length === 0 ? (
-            <div className="trade-empty">目前沒有暫定交換。</div>
+            <div className={EMPTY_MSG}>目前沒有暫定交換。</div>
           ) : (
             <table className={cn(TABLE, "mt-4")}>
               <thead>

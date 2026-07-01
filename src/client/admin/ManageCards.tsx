@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { RARITIES, SERIES, charactersFor } from "../../../seed/catalog-def";
 import type { CardRow, Rarity } from "../../shared/types";
@@ -287,9 +288,9 @@ export function ManageCards() {
 
       {error ? <div className={ERROR_TEXT}>{error}</div> : null}
       {rows === null ? (
-        <div className="state-msg">載入中…</div>
+        <div className={STATE_MSG}>載入中…</div>
       ) : rows.length === 0 ? (
-        <div className="trade-empty">沒有符合的卡片。</div>
+        <div className={EMPTY_MSG}>沒有符合的卡片。</div>
       ) : (
         <table className={TABLE}>
           <thead>
