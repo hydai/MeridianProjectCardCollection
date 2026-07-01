@@ -159,15 +159,9 @@ const TG_BORDER_STRONG_R = "[border-right:0.5px_solid_var(--border-strong)]";
 const TG_BORDER_STRONG_L = "[border-left:0.5px_solid_var(--border-strong)]";
 const TG_CELL_BASE =
   "h-8 w-8 border-b-[0.5px] border-border p-0 text-center text-xs leading-none max-sm:h-7 max-sm:w-[26px]";
-// 可換出格：金色「持有」底（同 Grid.tsx 數量模式的 HAVE_TINT）。
+// 有值格：金色「持有」底（同 Grid.tsx 數量模式的 HAVE_TINT）。
+// 可換出與想換入共用同一個金底，維持兩表底色一致。
 const TG_HAVE_TINT = "bg-[rgba(201,161,74,0.16)] font-semibold text-primary";
-// 想換入格：各稀有度 soft 底（同 MissChip 的 --*-soft 底色系）。
-const TG_NEEDS_TINT = [
-  "bg-[var(--r-soft)]",
-  "bg-[var(--sr-soft)]",
-  "bg-[var(--ssr-soft)]",
-  "bg-[var(--ur-soft)]",
-] as const;
 
 // 角色 × 系列稀有度明細格表。surplus/needs 共用；差異在格子數值與填色。
 // items 傳入完整 surplus 或 needs（未經 rarity 篩選）；shownRi 決定顯示哪些稀有度欄。
@@ -281,20 +275,10 @@ function TradeGrid({
                       </td>
                     );
                   }
-                  if (kind === "surplus") {
-                    return (
-                      <td
-                        key={cellKey}
-                        className={`${TG_CELL_BASE} ${TG_HAVE_TINT} ${startCls}`}
-                      >
-                        {v}
-                      </td>
-                    );
-                  }
                   return (
                     <td
                       key={cellKey}
-                      className={`${TG_CELL_BASE} font-mono font-medium ${TG_NEEDS_TINT[ri]} ${RARITY_TEXT[ri]} ${startCls}`}
+                      className={`${TG_CELL_BASE} ${TG_HAVE_TINT} ${startCls}`}
                     >
                       {v}
                     </td>
