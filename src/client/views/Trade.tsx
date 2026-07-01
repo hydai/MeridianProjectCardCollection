@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { Check, Copy, TriangleAlert } from "lucide-react";
@@ -183,21 +184,23 @@ function TradeGrid({
     val.set(`${it.si}|${it.ci}|${it.ri}`, kind === "surplus" ? it.spare : 1);
   }
 
-  // 只留「有東西」的系列欄與角色列。
-  const shownSi = m.series
-    .map((_s, si) => si)
-    .filter((si) =>
-      m.characters.some((_c, ci) =>
-        shownRi.some((ri) => val.has(`${si}|${ci}|${ri}`)),
+  // 逐系列只展開「真的有資料」的稀有度子欄，避免聯集（或全部）時出現整欄皆空
+  // 的稀有度子欄；再據此留下有東西的角色列。
+  const cols = m.series
+    .map((_s, si) => ({
+      si,
+      ris: shownRi.filter((ri) =>
+        m.characters.some((_c, ci) => val.has(`${si}|${ci}|${ri}`)),
       ),
-    );
+    }))
+    .filter((c) => c.ris.length > 0);
   const shownCi = m.characters
     .map((_c, ci) => ci)
     .filter((ci) =>
-      shownSi.some((si) => shownRi.some((ri) => val.has(`${si}|${ci}|${ri}`))),
+      cols.some((c) => c.ris.some((ri) => val.has(`${c.si}|${ci}|${ri}`))),
     );
 
-  if (shownSi.length === 0 || shownCi.length === 0) {
+  if (cols.length === 0 || shownCi.length === 0) {
     return (
       <div className={EMPTY_MSG}>
         {kind === "surplus" ? "目前沒有多餘的卡可換出。" : "已全部收集 ✓"}
@@ -219,21 +222,21 @@ function TradeGrid({
             >
               角色
             </th>
-            {shownSi.map((si) => (
+            {cols.map((c) => (
               <th
-                key={m.series[si]}
-                colSpan={shownRi.length}
+                key={m.series[c.si]}
+                colSpan={c.ris.length}
                 className={`trade-grid-series-head border-b-[0.5px] border-border bg-secondary px-1.5 pt-2.5 pb-2 text-center font-accent text-xs font-medium uppercase italic tracking-[0.12em] text-foreground ${TG_BORDER_STRONG_L} max-sm:px-1 max-sm:pt-2 max-sm:pb-1.5 max-sm:text-[11px]`}
               >
-                {m.series[si]}
+                {m.series[c.si]}
               </th>
             ))}
           </tr>
           <tr>
-            {shownSi.map((si) =>
-              shownRi.map((ri, localRi) => (
+            {cols.map((c) =>
+              c.ris.map((ri, localRi) => (
                 <th
-                  key={`${m.series[si]}-${RARITIES[ri]}`}
+                  key={`${m.series[c.si]}-${RARITIES[ri]}`}
                   className={`trade-grid-rarity-head min-w-[32px] bg-secondary px-0 py-1.5 text-center font-mono text-[10px] font-medium ${TG_BORDER_STRONG_B} max-sm:min-w-[26px] max-sm:text-[9px] ${RARITY_TEXT[ri]} ${
                     localRi === 0 ? TG_BORDER_STRONG_L : ""
                   }`}
@@ -252,8 +255,9 @@ function TradeGrid({
               >
                 {m.characters[ci]}
               </td>
-              {shownSi.map((si) =>
-                shownRi.map((ri, localRi) => {
+              {cols.map((c) =>
+                c.ris.map((ri, localRi) => {
+                  const si = c.si;
                   const startCls = localRi === 0 ? TG_BORDER_STRONG_L : "";
                   const cellKey = `${m.series[si]}-${RARITIES[ri]}`;
                   if (!exists(m, si, ci)) {
@@ -297,15 +301,23 @@ export function Trade({
   m,
   pending,
 }: { m: Matrix; pending?: PublicPendingTrade[] }) {
-  const [filter, setFilter] = useState<Filter>("all");
+  const [rarities, setRarities] = useState<Set<RarityKey>>(new Set());
   const [mode, setMode] = useState<TradeMode>("list");
   const { surplus, needs } = computeTradeWithPending(m, pending ?? []);
   const totalSpare = surplus.reduce((s, x) => s + x.spare, 0);
 
+  // Empty selection = 顯示全部；否則只顯示所選稀有度的聯集。
+  const showAll = rarities.size === 0;
+  const toggleRarity = (k: RarityKey) =>
+    setRarities((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+
   const filterItems = (items: TradeItem[]) =>
-    filter === "all"
-      ? items
-      : items.filter((x) => RARITY_KEYS[x.ri] === filter);
+    showAll ? items : items.filter((x) => rarities.has(RARITY_KEYS[x.ri]));
 
   const fSurplus = filterItems(surplus);
   const fNeeds = filterItems(needs);
@@ -398,8 +410,9 @@ export function Trade({
 
   const panelBody = (filtered: TradeItem[], kind: "surplus" | "needs") => {
     if (filtered.length === 0) {
-      const rname =
-        filter === "all" ? "" : `${RARITIES[RARITY_KEYS.indexOf(filter)]} `;
+      const rname = showAll
+        ? ""
+        : `${RARITIES.filter((_r, ri) => rarities.has(RARITY_KEYS[ri])).join("/")} `;
       return (
         <div className={EMPTY_MSG}>
           {kind === "surplus"
@@ -417,24 +430,25 @@ export function Trade({
   const urNeed = needs.filter((x) => x.ri === 3).length;
   const urSpare = surplus.filter((x) => x.ri === 3).length;
   const showWarning =
-    (filter === "all" || filter === "ur") && urNeed > 0 && urSpare === 0;
+    (showAll || rarities.has("ur")) && urNeed > 0 && urSpare === 0;
 
-  const sumItemClass = (key: Filter, shortfall: boolean) =>
+  const sumItemClass = (active: boolean, shortfall: boolean) =>
     cn(
       "flex h-auto w-full cursor-pointer flex-col items-stretch justify-start gap-2 rounded-[4px] border-[0.5px] border-border bg-card px-2.5 py-3.5 text-center transition-colors select-none hover:bg-card hover:[border-color:var(--border-strong)] hover:text-foreground max-sm:px-1.5 max-sm:py-[11px]",
       // Keep the shortfall tint on hover (the base `hover:bg-card` would win otherwise).
       shortfall &&
-        filter !== key &&
+        !active &&
         "border-rarity-ur/40 bg-[var(--ur-soft)] hover:bg-[var(--ur-soft)]",
       // `data-[state=on]:bg-secondary` overrides the Toggle primitive's
       // `data-[state=on]:bg-muted` (equal specificity → last wins) so the active
       // card is the lighter elevated fill, not the darkest one.
-      filter === key &&
+      active &&
         "border-primary bg-secondary shadow-[inset_0_0_0_0.5px_rgba(201,161,74,0.45)] hover:bg-secondary data-[state=on]:bg-secondary",
     );
 
-  const shownRi =
-    filter === "all" ? [0, 1, 2, 3] : [RARITY_KEYS.indexOf(filter)];
+  const shownRi = showAll
+    ? [0, 1, 2, 3]
+    : [0, 1, 2, 3].filter((ri) => rarities.has(RARITY_KEYS[ri]));
 
   const surplusTitle = (
     <span className="inline-flex items-center gap-2">
@@ -459,37 +473,41 @@ export function Trade({
 
   return (
     <section className="view view-trade">
-      <ToggleGroup
-        type="single"
-        value={filter}
-        onValueChange={(v) => setFilter((v || "all") as Filter)}
-        className="mb-[18px] grid w-full grid-cols-5 gap-2.5 max-sm:gap-[7px]"
-      >
-        {summaryCards.map((c) => (
-          <ToggleGroupItem
-            key={c.key}
-            value={c.key}
-            aria-label={`${c.label} 缺 ${c.need} 餘 ${c.spare}`}
-            className={sumItemClass(c.key, c.shortfall)}
-          >
-            <div
-              className={cn(
-                "mb-2 font-mono text-sm font-medium tracking-[0.08em] max-sm:text-xs",
-                c.cls,
-              )}
+      <div className="mb-[18px] grid w-full grid-cols-5 gap-2.5 max-sm:gap-[7px]">
+        {summaryCards.map((c) => {
+          const active =
+            c.key === "all" ? showAll : rarities.has(c.key as RarityKey);
+          return (
+            <Toggle
+              key={c.key}
+              pressed={active}
+              onPressedChange={() =>
+                c.key === "all"
+                  ? setRarities(new Set())
+                  : toggleRarity(c.key as RarityKey)
+              }
+              aria-label={`${c.label} 缺 ${c.need} 餘 ${c.spare}`}
+              className={sumItemClass(active, c.shortfall)}
             >
-              {c.label}
-            </div>
-            <div className="flex items-center justify-center gap-1.5 font-mono text-xs max-sm:flex-col max-sm:gap-1 max-sm:text-[11px]">
-              <span className="text-muted-foreground">缺 {c.need}</span>
-              <span className="text-[11px] text-[var(--text-quaternary)] max-sm:hidden">
-                ↔
-              </span>
-              <span className="text-foreground">餘 {c.spare}</span>
-            </div>
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
+              <div
+                className={cn(
+                  "mb-2 font-mono text-sm font-medium tracking-[0.08em] max-sm:text-xs",
+                  c.cls,
+                )}
+              >
+                {c.label}
+              </div>
+              <div className="flex items-center justify-center gap-1.5 font-mono text-xs max-sm:flex-col max-sm:gap-1 max-sm:text-[11px]">
+                <span className="text-muted-foreground">缺 {c.need}</span>
+                <span className="text-[11px] text-[var(--text-quaternary)] max-sm:hidden">
+                  ↔
+                </span>
+                <span className="text-foreground">餘 {c.spare}</span>
+              </div>
+            </Toggle>
+          );
+        })}
+      </div>
       {showWarning ? (
         <Alert className="mb-[22px] gap-1 rounded-[4px] border-[0.5px] border-rarity-ur/35 bg-[var(--ur-soft)] px-[18px] py-3.5 text-[13px] leading-[1.6] text-muted-foreground">
           <TriangleAlert className="text-rarity-ur" />

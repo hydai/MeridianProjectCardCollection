@@ -505,7 +505,7 @@ describe("Trade copy buttons", () => {
   });
 });
 
-describe("Trade rarity filter", () => {
+describe("Trade rarity filter (multi-select union)", () => {
   const card = (
     character: string,
     rarity: "R" | "SR" | "SSR" | "UR",
@@ -513,12 +513,12 @@ describe("Trade rarity filter", () => {
     id: number,
   ) => ({ catalogId: id, series: "MP 4TH", character, rarity, owned });
 
-  // Kirari SR owned 2 AND Kirari UR owned 2 → surplus in two rarities.
-  const twoSurplus: OverviewResponse = {
+  // Kirari duplicates in SR, SSR and UR → surplus in three rarities.
+  const multiSurplus: OverviewResponse = {
     cells: [
       card("Kirari", "R", 1, 1),
       card("Kirari", "SR", 2, 2),
-      card("Kirari", "SSR", 1, 3),
+      card("Kirari", "SSR", 2, 3),
       card("Kirari", "UR", 2, 4),
     ],
     progress: [],
@@ -526,18 +526,65 @@ describe("Trade rarity filter", () => {
 
   restoreClipboardAfterEach();
 
-  it("scopes the 可換出 copy list to the selected rarity", () => {
+  const stubClipboard = () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText },
       configurable: true,
     });
-    render(<Trade m={buildMatrix(twoSurplus)} />);
-    // Radix single-select ToggleGroup items render as role="radio"; the
-    // accessible name includes the 缺/餘 counts, so match the rarity prefix.
-    fireEvent.click(screen.getByRole("radio", { name: /^SR / }));
+    return writeText;
+  };
+
+  it("defaults to 全部 selected (all rarities shown)", () => {
+    render(<Trade m={buildMatrix(multiSurplus)} />);
+    expect(screen.getByRole("button", { name: /^全部 / })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /^SR / })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("scopes the 可換出 copy list to a single selected rarity", () => {
+    const writeText = stubClipboard();
+    render(<Trade m={buildMatrix(multiSurplus)} />);
+    // Rarity cards are multi-select buttons (aria-pressed); the accessible name
+    // includes the 缺/餘 counts, so match the rarity prefix.
+    fireEvent.click(screen.getByRole("button", { name: /^SR / }));
     fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
     expect(writeText).toHaveBeenCalledWith("SR\nKirari, MP 4TH, 1");
+  });
+
+  it("unions multiple selected rarities and excludes the unselected", () => {
+    const writeText = stubClipboard();
+    render(<Trade m={buildMatrix(multiSurplus)} />);
+    fireEvent.click(screen.getByRole("button", { name: /^SR / }));
+    fireEvent.click(screen.getByRole("button", { name: /^SSR / }));
+    fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
+    // formatTradeList sorts rarity desc → SSR then SR; UR excluded.
+    expect(writeText).toHaveBeenCalledWith(
+      "SSR\nKirari, MP 4TH, 1\n\nSR\nKirari, MP 4TH, 1",
+    );
+  });
+
+  it("toggles a rarity off, and 全部 clears the whole selection", () => {
+    render(<Trade m={buildMatrix(multiSurplus)} />);
+    const sr = screen.getByRole("button", { name: /^SR / });
+    const ssr = screen.getByRole("button", { name: /^SSR / });
+    const all = screen.getByRole("button", { name: /^全部 / });
+    fireEvent.click(sr);
+    fireEvent.click(ssr);
+    expect(sr).toHaveAttribute("aria-pressed", "true");
+    expect(ssr).toHaveAttribute("aria-pressed", "true");
+    expect(all).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(ssr); // toggle SSR back off
+    expect(ssr).toHaveAttribute("aria-pressed", "false");
+    expect(sr).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(all); // 全部 = clear → back to all
+    expect(all).toHaveAttribute("aria-pressed", "true");
+    expect(sr).toHaveAttribute("aria-pressed", "false");
   });
 });
 
@@ -602,18 +649,34 @@ describe("Trade view mode toggle", () => {
     expect(container.querySelectorAll(".trade-grid-table")).toHaveLength(0);
   });
 
-  it("scopes grid columns to the selected rarity", () => {
-    const { container } = render(<Trade m={buildMatrix(mixed)} />);
+  it("scopes grid columns to the selected rarities (union), trimming empties", () => {
+    // Kirari 在 R/SR/SSR 有多餘、UR 無。
+    const gridCols: OverviewResponse = {
+      cells: [
+        card("Kirari", "R", 2, 1),
+        card("Kirari", "SR", 2, 2),
+        card("Kirari", "SSR", 2, 3),
+        card("Kirari", "UR", 1, 4),
+      ],
+      progress: [],
+    };
+    const { container } = render(<Trade m={buildMatrix(gridCols)} />);
     toGrid();
     const surplus = () =>
       container.querySelector('[data-kind="surplus"]') as HTMLElement;
+    // 全部：只顯示有多餘的稀有度（R/SR/SSR；UR 無 → 不顯示空欄）。
     expect(surplus().querySelectorAll(".trade-grid-rarity-head")).toHaveLength(
-      4,
+      3,
     );
-    // 頂部稀有度總覽卡是 role="radio"，可存取名稱以稀有度開頭（含 缺/餘 計數）。
-    fireEvent.click(screen.getByRole("radio", { name: /^SR / }));
+    // 稀有度卡改為多選 button（aria-pressed）；名稱以稀有度開頭。
+    fireEvent.click(screen.getByRole("button", { name: /^SR / }));
     expect(surplus().querySelectorAll(".trade-grid-rarity-head")).toHaveLength(
       1,
+    );
+    // union SR + SSR → 兩欄一起顯示。
+    fireEvent.click(screen.getByRole("button", { name: /^SSR / }));
+    expect(surplus().querySelectorAll(".trade-grid-rarity-head")).toHaveLength(
+      2,
     );
   });
 
@@ -673,5 +736,45 @@ describe("Trade grid edge cells", () => {
     expect(surplus.querySelectorAll(".trade-grid-na").length).toBeGreaterThan(
       0,
     );
+  });
+
+  it("omits empty rarity sub-columns per series when unioning rarities", () => {
+    // MP 4TH 有 SR+SSR 多餘；KSP 只有 SR 多餘。選 SR+SSR 時，KSP 底下不該出現
+    // 一整欄皆空的 SSR 子欄。
+    const overview: OverviewResponse = {
+      cells: [
+        {
+          catalogId: 1,
+          series: "MP 4TH",
+          character: "Kirari",
+          rarity: "SR",
+          owned: 2,
+        },
+        {
+          catalogId: 2,
+          series: "MP 4TH",
+          character: "Kirari",
+          rarity: "SSR",
+          owned: 2,
+        },
+        {
+          catalogId: 3,
+          series: "KSP",
+          character: "Mira",
+          rarity: "SR",
+          owned: 2,
+        },
+      ],
+      progress: [],
+    };
+    const { container } = render(<Trade m={buildMatrix(overview)} />);
+    toGrid();
+    fireEvent.click(screen.getByRole("button", { name: /^SR / }));
+    fireEvent.click(screen.getByRole("button", { name: /^SSR / }));
+    const surplus = container.querySelector(
+      '[data-kind="surplus"]',
+    ) as HTMLElement;
+    // MP 4TH → SR+SSR (2)；KSP → 只有 SR (1)；沒有空的 KSP SSR 欄 → 共 3。
+    expect(surplus.querySelectorAll(".trade-grid-rarity-head")).toHaveLength(3);
   });
 });
