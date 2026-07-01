@@ -21,6 +21,7 @@ import {
   type RarityKey,
   type TradeItem,
   computeTradeWithPending,
+  exists,
   formatTradeList,
 } from "../collection";
 import {
@@ -261,6 +262,14 @@ function TradeGrid({
                 shownRi.map((ri, localRi) => {
                   const startCls = localRi === 0 ? TG_BORDER_STRONG_L : "";
                   const cellKey = `${m.series[si]}-${RARITIES[ri]}`;
+                  if (!exists(m, si, ci)) {
+                    return (
+                      <td
+                        key={cellKey}
+                        className={`${TG_CELL_BASE} trade-grid-na bg-[var(--bg-subtle)] [background-image:repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,0.018)_4px,rgba(255,255,255,0.018)_8px)] ${startCls}`}
+                      />
+                    );
+                  }
                   const v = val.get(`${si}|${ci}|${ri}`);
                   if (v == null) {
                     return (

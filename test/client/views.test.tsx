@@ -634,3 +634,44 @@ describe("Trade view mode toggle", () => {
     expect(screen.getByText("已全部收集 ✓")).toBeInTheDocument();
   });
 });
+
+describe("Trade grid edge cells", () => {
+  const toGrid = () =>
+    fireEvent.click(
+      within(
+        screen.getByRole("radiogroup", { name: "交換檢視模式" }),
+      ).getByRole("radio", { name: "格表" }),
+    );
+
+  it("renders hatched N/A cells where a character is absent from a shown series", () => {
+    // Kirari 在 MP 4TH 有可換出；Mira 在 KSP 有可換出。兩系列與兩角色都顯示，
+    // 於是 Kirari×KSP 與 Mira×MP 4TH 是未收錄（無 catalog cell）的洞。
+    const overview: OverviewResponse = {
+      cells: [
+        {
+          catalogId: 1,
+          series: "MP 4TH",
+          character: "Kirari",
+          rarity: "SR",
+          owned: 3,
+        },
+        {
+          catalogId: 2,
+          series: "KSP",
+          character: "Mira",
+          rarity: "SR",
+          owned: 3,
+        },
+      ],
+      progress: [],
+    };
+    const { container } = render(<Trade m={buildMatrix(overview)} />);
+    toGrid();
+    const surplus = container.querySelector(
+      '[data-kind="surplus"]',
+    ) as HTMLElement;
+    expect(surplus.querySelectorAll(".trade-grid-na").length).toBeGreaterThan(
+      0,
+    );
+  });
+});
