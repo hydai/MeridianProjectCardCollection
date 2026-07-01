@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildCatalog } from "../../seed/catalog-def";
 import { AddCards } from "../../src/client/admin/AddCards";
 import { ManageCards } from "../../src/client/admin/ManageCards";
+import { Openings } from "../../src/client/admin/Openings";
 import { PendingTrades } from "../../src/client/admin/PendingTrades";
 
 afterEach(() => vi.restoreAllMocks());
@@ -526,6 +527,47 @@ describe("PendingTrades", () => {
         rarity: "R",
         qty: 1,
       }),
+    );
+  });
+});
+
+describe("Openings", () => {
+  it("renders the cost summary and a monospaced data row", async () => {
+    const rows = [
+      {
+        id: 1,
+        series: "NEW YEAR",
+        openedAt: "2026-06-01",
+        cost: 600,
+        cardCount: 10,
+        avgCost: 60,
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => rows })),
+    );
+
+    render(<Openings />);
+
+    // Summary line: 1 opening, 600 spent, 600/10 = 60.0 avg per card.
+    await waitFor(() => expect(screen.getByText(/共/)).toBeInTheDocument());
+    expect(screen.getByText("開箱成本")).toBeInTheDocument();
+    // Row cells (the mono columns): date, count, cost, avg-cost.
+    expect(screen.getByText("2026-06-01")).toBeInTheDocument();
+    expect(screen.getByText("NEW YEAR")).toBeInTheDocument();
+    expect(screen.getByText("600 元")).toBeInTheDocument();
+    expect(screen.getByText("60.0 元")).toBeInTheDocument();
+  });
+
+  it("shows the empty state when there are no openings", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => [] })),
+    );
+    render(<Openings />);
+    await waitFor(() =>
+      expect(screen.getByText(/尚無開箱紀錄/)).toBeInTheDocument(),
     );
   });
 });

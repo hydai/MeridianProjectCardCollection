@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { RARITY_TEXT } from "@/shared/rarity";
 import { RARITIES } from "../../../seed/catalog-def";
 import type { Rarity } from "../../shared/types";
@@ -145,3 +146,18 @@ export const PILL_RESERVED = "bg-[rgba(234,179,8,0.15)] text-[#a16207]";
 export const LINE_EDITOR = "mt-3";
 export const LINE_EDITOR_HEAD = "mb-1.5 flex items-center gap-3";
 export const LINE_ROW = "mt-1.5 flex items-center gap-2";
+
+// === Phase 4c: Openings + History ====================================
+
+// Summary line (.summary-line) above the openings / history tables. The
+// descendant variant ports `.summary-line strong` (brighter, medium weight)
+// so the <strong> children need no per-element class.
+export const SUMMARY_LINE =
+  "mb-4 text-[13px] tracking-[0.06em] text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground";
+
+// Monospaced table cell (.admin-table td.mono) — JetBrains Mono + brighter
+// foreground, layered on TD. Unlike 4b's inert inner-<span> case, the
+// `.admin-table td.mono` selector genuinely matches these <td> cells, so this
+// must be ported. cn() lets tailwind-merge drop TD's font-sans + muted text,
+// leaving exactly one font-family and one text-colour class.
+export const TD_MONO = cn(TD, "font-mono text-foreground");
