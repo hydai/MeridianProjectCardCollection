@@ -1,3 +1,4 @@
+import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
 import { useEffect, useState } from "react";
 import type { OpeningSummary } from "../../shared/types";
 import { fetchOpenings } from "../api";
@@ -32,7 +33,7 @@ export function Openings() {
   if (rows === null) {
     return (
       <section className={PANEL}>
-        <div className="state-msg">載入中…</div>
+        <div className={STATE_MSG}>載入中…</div>
       </section>
     );
   }
@@ -45,7 +46,7 @@ export function Openings() {
     <section className={PANEL}>
       <h2 className={PANEL_TITLE}>開箱成本</h2>
       {rows.length === 0 ? (
-        <div className="trade-empty">
+        <div className={EMPTY_MSG}>
           尚無開箱紀錄。到「開箱新增」勾選「這是一次開箱」即可記錄花費。
         </div>
       ) : (

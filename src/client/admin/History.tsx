@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
 import { useEffect, useState } from "react";
 import type { TxnRecord } from "../../shared/types";
 import { fetchTransactions } from "../api";
@@ -35,7 +36,7 @@ export function History() {
   if (rows === null) {
     return (
       <section className={PANEL}>
-        <div className="state-msg">載入中…</div>
+        <div className={STATE_MSG}>載入中…</div>
       </section>
     );
   }
@@ -48,7 +49,7 @@ export function History() {
     <section className={PANEL}>
       <h2 className={PANEL_TITLE}>交易歷史</h2>
       {rows.length === 0 ? (
-        <div className="trade-empty">尚無成交紀錄。</div>
+        <div className={EMPTY_MSG}>尚無成交紀錄。</div>
       ) : (
         <>
           <div className={SUMMARY_LINE}>

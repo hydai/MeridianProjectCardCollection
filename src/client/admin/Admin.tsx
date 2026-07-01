@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { useRovingTablist } from "@/lib/tablist";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { AddCards } from "./AddCards";
@@ -17,8 +18,12 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
+const TAB_IDS = TABS.map((t) => t.id);
+
 export default function Admin() {
   const [tab, setTab] = useState<TabId>("add");
+
+  const tabProps = useRovingTablist(TAB_IDS, setTab);
 
   return (
     <div className="mx-auto max-w-[940px] px-7 pt-14 pb-24 max-sm:px-4 max-sm:pt-10 max-sm:pb-[72px]">
@@ -39,12 +44,13 @@ export default function Admin() {
         role="tablist"
         className="mt-6 mb-8 flex flex-wrap border-b border-border"
       >
-        {TABS.map((t) => (
+        {TABS.map((t, i) => (
           <button
             key={t.id}
             type="button"
             role="tab"
             aria-selected={tab === t.id}
+            {...tabProps(i, tab === t.id)}
             onClick={() => setTab(t.id)}
             className={cn(
               "relative cursor-pointer border-0 bg-transparent px-[22px] pt-3.5 pb-3 font-sans text-sm tracking-[0.1em] text-muted-foreground transition-colors hover:text-foreground",

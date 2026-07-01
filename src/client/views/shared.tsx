@@ -45,9 +45,10 @@ const PANEL_SUB =
 export const PANEL_GRID =
   "grid grid-cols-2 gap-5 max-sm:grid-cols-1 max-sm:gap-4";
 
-// Empty/error state line (legacy `.trade-empty`), shared by Trade + Market.
-export const EMPTY_MSG =
-  "px-0.5 py-3 text-[13px] tracking-[0.04em] text-[var(--text-tertiary)]";
+// Empty/error state line (legacy `.trade-empty`); canonical definition now in
+// @/shared/states (shared with the admin panels). Re-exported so Trade + Market
+// keep importing it from this view barrel unchanged.
+export { EMPTY_MSG } from "@/shared/states";
 
 // Bordered card surface (legacy `.surface` / `.grid-empty` chrome): 4px radius +
 // 0.5px hairline + card bg. Shared by the Glance table wrap, the Grid table wrap,

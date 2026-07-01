@@ -199,27 +199,6 @@
     color: var(--text);
   }
 
-  /* LOADING / ERROR — interim: still used by admin panels
-     (Phase 4); remove once those migrate. */
-  .state-msg {
-    text-align: center;
-    color: var(--text-tertiary);
-    font-family: "Cormorant Garamond", serif;
-    font-style: italic;
-    letter-spacing: 0.1em;
-    padding: 48px 0;
-  }
-
-  /* .trade-empty / .state-msg: shared with admin panels (Phase 4). The Glance +
-     Grid legacy CSS was removed in Phase 3c; Trade + Market in Phase 3b. */
-
-  .trade-empty {
-    color: var(--text-tertiary);
-    font-size: 13px;
-    padding: 12px 2px;
-    letter-spacing: 0.04em;
-  }
-
   /* ------------- RESPONSIVE ------------- */
 
   @media (max-width: 540px) {
