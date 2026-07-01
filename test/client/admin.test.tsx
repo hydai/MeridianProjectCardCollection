@@ -7,7 +7,12 @@ import { ManageCards } from "../../src/client/admin/ManageCards";
 import { Openings } from "../../src/client/admin/Openings";
 import { PendingTrades } from "../../src/client/admin/PendingTrades";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  // restoreAllMocks() does not revert vi.stubGlobal("fetch", …); unstub to
+  // prevent a stubbed fetch leaking across tests/files (order-dependent flakes).
+  vi.unstubAllGlobals();
+});
 
 describe("AddCards", () => {
   it("disables the submit button while the tally is empty", () => {
