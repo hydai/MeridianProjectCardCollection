@@ -24,6 +24,7 @@ import {
   type TradeListLanguage,
   computeTradeWithPending,
   exists,
+  formatTradeLabel,
   formatTradeList,
 } from "../collection";
 import {
@@ -52,8 +53,14 @@ interface PendingRow {
 function pendingRows(
   give: ReservationLine[],
   receive: ReservationLine[],
+  language: TradeListLanguage,
 ): PendingRow[] {
-  const label = (l: ReservationLine) => `${l.series} ${l.character}`;
+  const label = (l: ReservationLine) =>
+    `${formatTradeLabel(l.series, language, "series")} ${formatTradeLabel(
+      l.character,
+      language,
+      "character",
+    )}`;
   const expand = (lines: ReservationLine[]) =>
     lines
       .flatMap((l) => Array.from({ length: l.qty }, () => l))
@@ -73,8 +80,11 @@ function pendingRows(
   return rows;
 }
 
-function PendingCard({ p }: { p: PublicPendingTrade }) {
-  const rows = pendingRows(p.give, p.receive);
+function PendingCard({
+  p,
+  language,
+}: { p: PublicPendingTrade; language: TradeListLanguage }) {
+  const rows = pendingRows(p.give, p.receive, language);
   return (
     <Card className="mt-3 gap-0 rounded-[10px] border border-border bg-card px-3.5 py-3 ring-0">
       <div className="mb-1.5 text-xs text-[var(--text-tertiary)]">
@@ -172,11 +182,13 @@ function TradeGrid({
   items,
   kind,
   shownRi,
+  language,
 }: {
   m: Matrix;
   items: TradeItem[];
   kind: "surplus" | "needs";
   shownRi: number[];
+  language: TradeListLanguage;
 }) {
   // 值查表：surplus→spare、needs→1；僅收錄 shownRi。
   const val = new Map<string, number>();
@@ -229,7 +241,7 @@ function TradeGrid({
                 colSpan={c.ris.length}
                 className={`trade-grid-series-head border-b-[0.5px] border-border bg-secondary px-1.5 pt-2.5 pb-2 text-center font-accent text-xs font-medium uppercase italic tracking-[0.12em] text-foreground ${TG_BORDER_STRONG_L} max-sm:px-1 max-sm:pt-2 max-sm:pb-1.5 max-sm:text-[11px]`}
               >
-                {m.series[c.si]}
+                {formatTradeLabel(m.series[c.si], language, "series")}
               </th>
             ))}
           </tr>
@@ -254,7 +266,7 @@ function TradeGrid({
               <td
                 className={`sticky left-0 z-[2] w-[92px] min-w-[92px] overflow-hidden text-ellipsis whitespace-nowrap bg-card px-3.5 py-[9px] text-left font-sans text-[13px] text-foreground ${TG_BORDER_STRONG_R} group-hover/row:bg-secondary max-sm:w-[76px] max-sm:min-w-[76px] max-sm:px-2.5 max-sm:py-2 max-sm:text-xs`}
               >
-                {m.characters[ci]}
+                {formatTradeLabel(m.characters[ci], language, "character")}
               </td>
               {cols.map((c) =>
                 c.ris.map((ri, localRi) => {
@@ -304,7 +316,7 @@ export function Trade({
 }: { m: Matrix; pending?: PublicPendingTrade[] }) {
   const [rarities, setRarities] = useState<Set<RarityKey>>(new Set());
   const [mode, setMode] = useState<TradeMode>("list");
-  const [copyLanguage, setCopyLanguage] = useState<TradeListLanguage>("en");
+  const [language, setLanguage] = useState<TradeListLanguage>("en");
   const { surplus, needs } = computeTradeWithPending(m, pending ?? []);
   const totalSpare = surplus.reduce((s, x) => s + x.spare, 0);
 
@@ -386,7 +398,7 @@ export function Trade({
                 key={sname}
               >
                 <span className="pt-0.5 font-accent text-[11px] italic uppercase tracking-[0.1em] text-[var(--text-tertiary)] max-sm:text-[10px]">
-                  {sname}
+                  {formatTradeLabel(sname, language, "series")}
                 </span>
                 <span className="flex flex-wrap gap-x-2.5 gap-y-[5px]">
                   {sitems.map((x) => (
@@ -394,7 +406,11 @@ export function Trade({
                       className="whitespace-nowrap text-[13px] text-foreground max-sm:text-xs"
                       key={m.characters[x.ci]}
                     >
-                      {m.characters[x.ci]}
+                      {formatTradeLabel(
+                        m.characters[x.ci],
+                        language,
+                        "character",
+                      )}
                       {kind === "surplus" ? (
                         <span className="ml-0.5 font-mono text-[10px] text-primary">
                           ×{x.spare}
@@ -456,7 +472,7 @@ export function Trade({
     <span className="inline-flex items-center gap-2">
       可換出
       <CopyButton
-        text={formatTradeList(fSurplus, m, "surplus", copyLanguage)}
+        text={formatTradeList(fSurplus, m, "surplus", language)}
         label="複製可換出清單"
         disabled={fSurplus.length === 0}
       />
@@ -466,7 +482,7 @@ export function Trade({
     <span className="inline-flex items-center gap-2">
       想換入
       <CopyButton
-        text={formatTradeList(fNeeds, m, "needs", copyLanguage)}
+        text={formatTradeList(fNeeds, m, "needs", language)}
         label="複製想換入清單"
         disabled={fNeeds.length === 0}
       />
@@ -544,13 +560,13 @@ export function Trade({
         </div>
         <div className="flex items-center gap-3">
           <span className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-tertiary)]">
-            複製
+            語系
           </span>
           <ToggleGroup
             type="single"
-            aria-label="複製語言"
-            value={copyLanguage}
-            onValueChange={(v) => v && setCopyLanguage(v as TradeListLanguage)}
+            aria-label="語系"
+            value={language}
+            onValueChange={(v) => v && setLanguage(v as TradeListLanguage)}
             className={MODE_TOGGLE}
           >
             <ToggleGroupItem value="en" className={MODE_BTN}>
@@ -574,10 +590,22 @@ export function Trade({
       ) : (
         <div className="flex flex-col gap-5">
           <Panel title={surplusTitle} sub={surplusSub}>
-            <TradeGrid m={m} items={surplus} kind="surplus" shownRi={shownRi} />
+            <TradeGrid
+              m={m}
+              items={surplus}
+              kind="surplus"
+              shownRi={shownRi}
+              language={language}
+            />
           </Panel>
           <Panel title={needsTitle} sub={needsSub}>
-            <TradeGrid m={m} items={needs} kind="needs" shownRi={shownRi} />
+            <TradeGrid
+              m={m}
+              items={needs}
+              kind="needs"
+              shownRi={shownRi}
+              language={language}
+            />
           </Panel>
         </div>
       )}
@@ -592,7 +620,7 @@ export function Trade({
             暫定交換列表
           </h3>
           {pending.map((p) => (
-            <PendingCard key={p.id} p={p} />
+            <PendingCard key={p.id} p={p} language={language} />
           ))}
         </section>
       ) : null}

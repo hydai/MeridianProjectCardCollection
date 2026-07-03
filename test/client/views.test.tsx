@@ -504,6 +504,25 @@ describe("Trade copy buttons", () => {
     expect(writeText).toHaveBeenCalledWith("UR\n煌Kirali, 四週年, 1");
   });
 
+  it("labels the language toggle as 語系", () => {
+    render(<Trade m={buildMatrix(oneSurplus)} />);
+    expect(screen.getByText("語系")).toBeInTheDocument();
+    expect(
+      screen.getByRole("radiogroup", { name: "語系" }),
+    ).toBeInTheDocument();
+  });
+
+  it("updates visible trade list names when switching to 中文", () => {
+    render(<Trade m={buildMatrix(oneSurplus)} />);
+    expect(screen.getByText("MP 4TH")).toBeInTheDocument();
+    expect(screen.getByText("Kirali")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "中文" }));
+    expect(screen.getByText("四週年")).toBeInTheDocument();
+    expect(screen.getByText("煌Kirali")).toBeInTheDocument();
+    expect(screen.queryByText("MP 4TH")).toBeNull();
+    expect(screen.queryByText("Kirali")).toBeNull();
+  });
+
   it("does not throw when the Clipboard API is unavailable", () => {
     // Insecure context (e.g. http:// on a LAN IP): navigator.clipboard is absent.
     Object.defineProperty(navigator, "clipboard", {

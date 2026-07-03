@@ -125,6 +125,18 @@ const localize = (
   labels: Record<string, string>,
 ) => (language === "zh" ? (labels[value] ?? value) : value);
 
+export function formatTradeLabel(
+  value: string,
+  language: TradeListLanguage,
+  kind: "series" | "character",
+): string {
+  return localize(
+    value,
+    language,
+    kind === "series" ? SERIES_ZH : CHARACTER_ZH,
+  );
+}
+
 // Surplus = duplicates that could be traded away (count - 1); needs = missing.
 export function computeTrade(m: Matrix): {
   surplus: TradeItem[];
@@ -240,8 +252,12 @@ export function formatTradeList(
       lines.push(RARITIES[it.ri]);
     }
     const qty = kind === "surplus" ? it.spare : 1;
-    const character = localize(m.characters[it.ci], language, CHARACTER_ZH);
-    const series = localize(m.series[it.si], language, SERIES_ZH);
+    const character = formatTradeLabel(
+      m.characters[it.ci],
+      language,
+      "character",
+    );
+    const series = formatTradeLabel(m.series[it.si], language, "series");
     lines.push(`${character}, ${series}, ${qty}`);
   }
   flush();
