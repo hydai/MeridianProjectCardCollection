@@ -62,14 +62,14 @@ describe("Trade view mode toggle", () => {
     id: number,
   ) => ({ catalogId: id, series: "MP 4TH", character, rarity, owned });
 
-  // Kirari: SR owned 3 (spare 2) + UR owned 2 (spare 1) → 可換出;
+  // Kirali: SR owned 3 (spare 2) + UR owned 2 (spare 1) → 可換出;
   // SSR owned 0 → 想換入; R owned 1 → 兩者皆非。
   const mixed: OverviewResponse = {
     cells: [
-      card("Kirari", "R", 1, 1),
-      card("Kirari", "SR", 3, 2),
-      card("Kirari", "SSR", 0, 3),
-      card("Kirari", "UR", 2, 4),
+      card("Kirali", "R", 1, 1),
+      card("Kirali", "SR", 3, 2),
+      card("Kirali", "SSR", 0, 3),
+      card("Kirali", "UR", 2, 4),
     ],
     progress: [],
   };
@@ -134,10 +134,10 @@ describe("Trade view mode toggle", () => {
     // 全持有 + UR 一張重複 → 有可換出、無想換入。
     const noNeeds: OverviewResponse = {
       cells: [
-        card("Kirari", "R", 1, 1),
-        card("Kirari", "SR", 1, 2),
-        card("Kirari", "SSR", 1, 3),
-        card("Kirari", "UR", 2, 4),
+        card("Kirali", "R", 1, 1),
+        card("Kirali", "SR", 1, 2),
+        card("Kirali", "SSR", 1, 3),
+        card("Kirali", "UR", 2, 4),
       ],
       progress: [],
     };
@@ -523,14 +523,14 @@ describe("Trade grid edge cells", () => {
     );
 
   it("renders hatched N/A cells where a character is absent from a shown series", () => {
-    // Kirari 在 MP 4TH 有可換出；Mira 在 KSP 有可換出。兩系列與兩角色都顯示，
-    // 於是 Kirari×KSP 與 Mira×MP 4TH 是未收錄（無 catalog cell）的洞。
+    // Kirali 在 MP 4TH 有可換出；Mira 在 KSP 有可換出。兩系列與兩角色都顯示，
+    // 於是 Kirali×KSP 與 Mira×MP 4TH 是未收錄（無 catalog cell）的洞。
     const overview: OverviewResponse = {
       cells: [
         {
           catalogId: 1,
           series: "MP 4TH",
-          character: "Kirari",
+          character: "Kirali",
           rarity: "SR",
           owned: 3,
         },

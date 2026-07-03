@@ -20,7 +20,7 @@
 
   ```
   UR
-  Kirari, MP 4TH, 2
+  Kirali, MP 4TH, 2
   Mococo, MP 4TH, 1
 
   SSR
@@ -246,7 +246,7 @@ fSurplus / fNeeds
 
 - **面板為空**（該稀有度無重複／已收齊）：`disabled`，icon 變淡、不可點。
 - **篩選到某稀有度後為空**：同上，因 `fSurplus`／`fNeeds` 已是篩選後結果。
-- **系列名含空格**（`MP 4TH`）：逗號分隔故無歧義（`Kirari, MP 4TH, 2`）。
+- **系列名含空格**（`MP 4TH`）：逗號分隔故無歧義（`Kirali, MP 4TH, 2`）。
 - **剪貼簿不可用**（非安全環境／舊瀏覽器）：`.catch` 吞掉，不顯示 `Check`，不報錯。
 - **快速連點**：`useRef` timer 重置，回饋窗不疊加。
 - **可換出 `spare`**：恆 ≥ 1（`n ≥ 2` 才入列），不會出現 `數量 0`；想換入恆為 `1`。

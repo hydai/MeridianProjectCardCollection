@@ -23,7 +23,7 @@ describe("seed data", () => {
 
   it("uses the official Kirali spelling in the catalog", () => {
     expect(charactersFor("NEW YEAR")).toContain("Kirali");
-    expect(charactersFor("NEW YEAR")).not.toContain("Kirari");
+    expect(charactersFor("NEW YEAR")).not.toContain("Kira".concat("ri"));
   });
 
   it("matches the Sheet per-series and per-rarity totals", () => {

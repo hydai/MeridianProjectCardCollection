@@ -354,13 +354,13 @@ describe("Trade rarity filter", () => {
     id: number,
   ) => ({ catalogId: id, series: "MP 4TH", character, rarity, owned });
 
-  // Kirari SR owned 2 AND Kirari UR owned 2 → surplus in two rarities.
+  // Kirali SR owned 2 AND Kirali UR owned 2 → surplus in two rarities.
   const twoSurplus: OverviewResponse = {
     cells: [
-      card("Kirari", "R", 1, 1),
-      card("Kirari", "SR", 2, 2),
-      card("Kirari", "SSR", 1, 3),
-      card("Kirari", "UR", 2, 4),
+      card("Kirali", "R", 1, 1),
+      card("Kirali", "SR", 2, 2),
+      card("Kirali", "SSR", 1, 3),
+      card("Kirali", "UR", 2, 4),
     ],
     progress: [],
   };
@@ -374,7 +374,7 @@ describe("Trade rarity filter", () => {
     render(<Trade m={buildMatrix(twoSurplus)} />);
     fireEvent.click(screen.getByRole("button", { name: "SR" }));
     fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
-    expect(writeText).toHaveBeenCalledWith("SR\nKirari, MP 4TH, 1");
+    expect(writeText).toHaveBeenCalledWith("SR\nKirali, MP 4TH, 1");
   });
 });
 ```

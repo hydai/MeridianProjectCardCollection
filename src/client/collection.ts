@@ -110,9 +110,6 @@ const CHARACTER_ZH: Record<string, string> = {
   Hitomi: "実Hitomi",
   Iruni: "祈Iruni",
   Kirali: "煌Kirali",
-  // Historical fallback for older database snapshots before the Kirali rename
-  // migration is applied.
-  Kirari: "煌Kirali",
   Koyuki: "雪Koyuki",
   KSP: "KSP",
   Itsuki: "玥Itsuki",

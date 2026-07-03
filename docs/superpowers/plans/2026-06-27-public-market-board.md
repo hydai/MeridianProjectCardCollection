@@ -68,7 +68,7 @@ const sampleListings: MarketListing[] = [
   {
     cardId: 1,
     series: "MP 4TH",
-    character: "Kirari",
+    character: "Kirali",
     rarity: "UR",
     status: "for_sale",
     askingPrice: 1200,
@@ -92,13 +92,13 @@ const sampleListings: MarketListing[] = [
     rarity: "SSR",
     status: "for_trade",
     askingPrice: null,
-    wantInReturn: "KSP Kirari UR",
+    wantInReturn: "KSP Kirali UR",
     note: null,
   },
   {
     cardId: 4,
     series: "KSP",
-    character: "Kirari",
+    character: "Kirali",
     rarity: "R",
     status: "for_trade",
     askingPrice: null,
@@ -124,7 +124,7 @@ describe("MarketBoard", () => {
     expect(screen.getByText("待換")).toBeInTheDocument();
     expect(screen.getByText("1200 元")).toBeInTheDocument();
     expect(screen.getByText("價格面議")).toBeInTheDocument();
-    expect(screen.getByText("想換：KSP Kirari UR")).toBeInTheDocument();
+    expect(screen.getByText("想換：KSP Kirali UR")).toBeInTheDocument();
     expect(screen.getByText("開放出價")).toBeInTheDocument();
     expect(screen.getByText("輕微邊緣磨損")).toBeInTheDocument();
   });
