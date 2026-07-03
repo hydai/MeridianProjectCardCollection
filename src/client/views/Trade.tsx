@@ -21,6 +21,7 @@ import {
   RARITY_KEYS,
   type RarityKey,
   type TradeItem,
+  type TradeListLanguage,
   computeTradeWithPending,
   exists,
   formatTradeList,
@@ -303,6 +304,7 @@ export function Trade({
 }: { m: Matrix; pending?: PublicPendingTrade[] }) {
   const [rarities, setRarities] = useState<Set<RarityKey>>(new Set());
   const [mode, setMode] = useState<TradeMode>("list");
+  const [copyLanguage, setCopyLanguage] = useState<TradeListLanguage>("en");
   const { surplus, needs } = computeTradeWithPending(m, pending ?? []);
   const totalSpare = surplus.reduce((s, x) => s + x.spare, 0);
 
@@ -454,7 +456,7 @@ export function Trade({
     <span className="inline-flex items-center gap-2">
       可換出
       <CopyButton
-        text={formatTradeList(fSurplus, m, "surplus")}
+        text={formatTradeList(fSurplus, m, "surplus", copyLanguage)}
         label="複製可換出清單"
         disabled={fSurplus.length === 0}
       />
@@ -464,7 +466,7 @@ export function Trade({
     <span className="inline-flex items-center gap-2">
       想換入
       <CopyButton
-        text={formatTradeList(fNeeds, m, "needs")}
+        text={formatTradeList(fNeeds, m, "needs", copyLanguage)}
         label="複製想換入清單"
         disabled={fNeeds.length === 0}
       />
@@ -520,24 +522,45 @@ export function Trade({
           </AlertDescription>
         </Alert>
       ) : null}
-      <div className="mb-[18px] flex items-center gap-3 px-1">
-        <span className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-tertiary)]">
-          檢視
-        </span>
-        <ToggleGroup
-          type="single"
-          aria-label="交換檢視模式"
-          value={mode}
-          onValueChange={(v) => v && setMode(v as TradeMode)}
-          className={MODE_TOGGLE}
-        >
-          <ToggleGroupItem value="list" className={MODE_BTN}>
-            清單
-          </ToggleGroupItem>
-          <ToggleGroupItem value="grid" className={MODE_BTN}>
-            格表
-          </ToggleGroupItem>
-        </ToggleGroup>
+      <div className="mb-[18px] flex flex-wrap items-center gap-x-5 gap-y-3 px-1">
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-tertiary)]">
+            檢視
+          </span>
+          <ToggleGroup
+            type="single"
+            aria-label="交換檢視模式"
+            value={mode}
+            onValueChange={(v) => v && setMode(v as TradeMode)}
+            className={MODE_TOGGLE}
+          >
+            <ToggleGroupItem value="list" className={MODE_BTN}>
+              清單
+            </ToggleGroupItem>
+            <ToggleGroupItem value="grid" className={MODE_BTN}>
+              格表
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-[11px] tracking-[0.08em] text-[var(--text-tertiary)]">
+            複製
+          </span>
+          <ToggleGroup
+            type="single"
+            aria-label="複製語言"
+            value={copyLanguage}
+            onValueChange={(v) => v && setCopyLanguage(v as TradeListLanguage)}
+            className={MODE_TOGGLE}
+          >
+            <ToggleGroupItem value="en" className={MODE_BTN}>
+              EN
+            </ToggleGroupItem>
+            <ToggleGroupItem value="zh" className={MODE_BTN}>
+              中文
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
       </div>
       {mode === "list" ? (
         <div className={PANEL_GRID}>

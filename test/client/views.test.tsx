@@ -70,7 +70,7 @@ const sampleListings: MarketListing[] = [
   {
     cardId: 1,
     series: "MP 4TH",
-    character: "Kirari",
+    character: "Kirali",
     rarity: "UR",
     status: "for_sale",
     askingPrice: 1200,
@@ -94,13 +94,13 @@ const sampleListings: MarketListing[] = [
     rarity: "SSR",
     status: "for_trade",
     askingPrice: null,
-    wantInReturn: "KSP Kirari UR",
+    wantInReturn: "KSP Kirali UR",
     note: null,
   },
   {
     cardId: 4,
     series: "KSP",
-    character: "Kirari",
+    character: "Kirali",
     rarity: "R",
     status: "for_trade",
     askingPrice: null,
@@ -126,7 +126,7 @@ describe("MarketBoard", () => {
     expect(screen.getByText("待換")).toBeInTheDocument();
     expect(screen.getByText("1200 元")).toBeInTheDocument();
     expect(screen.getByText("價格面議")).toBeInTheDocument();
-    expect(screen.getByText("想換：KSP Kirari UR")).toBeInTheDocument();
+    expect(screen.getByText("想換：KSP Kirali UR")).toBeInTheDocument();
     expect(screen.getByText("開放出價")).toBeInTheDocument();
     expect(screen.getByText("輕微邊緣磨損")).toBeInTheDocument();
   });
@@ -438,20 +438,20 @@ describe("Trade copy buttons", () => {
   // all owned = 1 → no duplicates, nothing missing → both panels empty
   const singles: OverviewResponse = {
     cells: [
-      card("Kirari", "R", 1, 1),
-      card("Kirari", "SR", 1, 2),
-      card("Kirari", "SSR", 1, 3),
-      card("Kirari", "UR", 1, 4),
+      card("Kirali", "R", 1, 1),
+      card("Kirali", "SR", 1, 2),
+      card("Kirali", "SSR", 1, 3),
+      card("Kirali", "UR", 1, 4),
     ],
     progress: [],
   };
-  // Kirari UR owned 2 → exactly one surplus line; nothing missing
+  // Kirali UR owned 2 → exactly one surplus line; nothing missing
   const oneSurplus: OverviewResponse = {
     cells: [
-      card("Kirari", "R", 1, 1),
-      card("Kirari", "SR", 1, 2),
-      card("Kirari", "SSR", 1, 3),
-      card("Kirari", "UR", 2, 4),
+      card("Kirali", "R", 1, 1),
+      card("Kirali", "SR", 1, 2),
+      card("Kirali", "SSR", 1, 3),
+      card("Kirali", "UR", 2, 4),
     ],
     progress: [],
   };
@@ -489,7 +489,19 @@ describe("Trade copy buttons", () => {
     });
     render(<Trade m={buildMatrix(oneSurplus)} />);
     fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
-    expect(writeText).toHaveBeenCalledWith("UR\nKirari, MP 4TH, 1");
+    expect(writeText).toHaveBeenCalledWith("UR\nKirali, MP 4TH, 1");
+  });
+
+  it("copies Chinese names after switching the copy language to 中文", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    render(<Trade m={buildMatrix(oneSurplus)} />);
+    fireEvent.click(screen.getByRole("radio", { name: "中文" }));
+    fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
+    expect(writeText).toHaveBeenCalledWith("UR\n煌Kirali, 四週年, 1");
   });
 
   it("does not throw when the Clipboard API is unavailable", () => {
@@ -513,13 +525,13 @@ describe("Trade rarity filter (multi-select union)", () => {
     id: number,
   ) => ({ catalogId: id, series: "MP 4TH", character, rarity, owned });
 
-  // Kirari duplicates in SR, SSR and UR → surplus in three rarities.
+  // Kirali duplicates in SR, SSR and UR → surplus in three rarities.
   const multiSurplus: OverviewResponse = {
     cells: [
-      card("Kirari", "R", 1, 1),
-      card("Kirari", "SR", 2, 2),
-      card("Kirari", "SSR", 2, 3),
-      card("Kirari", "UR", 2, 4),
+      card("Kirali", "R", 1, 1),
+      card("Kirali", "SR", 2, 2),
+      card("Kirali", "SSR", 2, 3),
+      card("Kirali", "UR", 2, 4),
     ],
     progress: [],
   };
@@ -554,7 +566,7 @@ describe("Trade rarity filter (multi-select union)", () => {
     // includes the 缺/餘 counts, so match the rarity prefix.
     fireEvent.click(screen.getByRole("button", { name: /^SR / }));
     fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
-    expect(writeText).toHaveBeenCalledWith("SR\nKirari, MP 4TH, 1");
+    expect(writeText).toHaveBeenCalledWith("SR\nKirali, MP 4TH, 1");
   });
 
   it("unions multiple selected rarities and excludes the unselected", () => {
@@ -565,7 +577,7 @@ describe("Trade rarity filter (multi-select union)", () => {
     fireEvent.click(screen.getByRole("button", { name: "複製可換出清單" }));
     // formatTradeList sorts rarity desc → SSR then SR; UR excluded.
     expect(writeText).toHaveBeenCalledWith(
-      "SSR\nKirari, MP 4TH, 1\n\nSR\nKirari, MP 4TH, 1",
+      "SSR\nKirali, MP 4TH, 1\n\nSR\nKirali, MP 4TH, 1",
     );
   });
 
@@ -596,14 +608,14 @@ describe("Trade view mode toggle", () => {
     id: number,
   ) => ({ catalogId: id, series: "MP 4TH", character, rarity, owned });
 
-  // Kirari: SR owned 3 (spare 2) + UR owned 2 (spare 1) → 可換出;
+  // Kirali: SR owned 3 (spare 2) + UR owned 2 (spare 1) → 可換出;
   // SSR owned 0 → 想換入; R owned 1 → 兩者皆非。
   const mixed: OverviewResponse = {
     cells: [
-      card("Kirari", "R", 1, 1),
-      card("Kirari", "SR", 3, 2),
-      card("Kirari", "SSR", 0, 3),
-      card("Kirari", "UR", 2, 4),
+      card("Kirali", "R", 1, 1),
+      card("Kirali", "SR", 3, 2),
+      card("Kirali", "SSR", 0, 3),
+      card("Kirali", "UR", 2, 4),
     ],
     progress: [],
   };
@@ -650,13 +662,13 @@ describe("Trade view mode toggle", () => {
   });
 
   it("scopes grid columns to the selected rarities (union), trimming empties", () => {
-    // Kirari 在 R/SR/SSR 有多餘、UR 無。
+    // Kirali 在 R/SR/SSR 有多餘、UR 無。
     const gridCols: OverviewResponse = {
       cells: [
-        card("Kirari", "R", 2, 1),
-        card("Kirari", "SR", 2, 2),
-        card("Kirari", "SSR", 2, 3),
-        card("Kirari", "UR", 1, 4),
+        card("Kirali", "R", 2, 1),
+        card("Kirali", "SR", 2, 2),
+        card("Kirali", "SSR", 2, 3),
+        card("Kirali", "UR", 1, 4),
       ],
       progress: [],
     };
@@ -684,10 +696,10 @@ describe("Trade view mode toggle", () => {
     // 全持有 + UR 一張重複 → 有可換出、無想換入。
     const noNeeds: OverviewResponse = {
       cells: [
-        card("Kirari", "R", 1, 1),
-        card("Kirari", "SR", 1, 2),
-        card("Kirari", "SSR", 1, 3),
-        card("Kirari", "UR", 2, 4),
+        card("Kirali", "R", 1, 1),
+        card("Kirali", "SR", 1, 2),
+        card("Kirali", "SSR", 1, 3),
+        card("Kirali", "UR", 2, 4),
       ],
       progress: [],
     };
@@ -707,14 +719,14 @@ describe("Trade grid edge cells", () => {
     );
 
   it("renders hatched N/A cells where a character is absent from a shown series", () => {
-    // Kirari 在 MP 4TH 有可換出；Mira 在 KSP 有可換出。兩系列與兩角色都顯示，
-    // 於是 Kirari×KSP 與 Mira×MP 4TH 是未收錄（無 catalog cell）的洞。
+    // Kirali 在 MP 4TH 有可換出；Mira 在 KSP 有可換出。兩系列與兩角色都顯示，
+    // 於是 Kirali×KSP 與 Mira×MP 4TH 是未收錄（無 catalog cell）的洞。
     const overview: OverviewResponse = {
       cells: [
         {
           catalogId: 1,
           series: "MP 4TH",
-          character: "Kirari",
+          character: "Kirali",
           rarity: "SR",
           owned: 3,
         },
@@ -746,14 +758,14 @@ describe("Trade grid edge cells", () => {
         {
           catalogId: 1,
           series: "MP 4TH",
-          character: "Kirari",
+          character: "Kirali",
           rarity: "SR",
           owned: 2,
         },
         {
           catalogId: 2,
           series: "MP 4TH",
-          character: "Kirari",
+          character: "Kirali",
           rarity: "SSR",
           owned: 2,
         },

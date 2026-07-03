@@ -231,7 +231,7 @@ describe("formatTradeList", () => {
   // formatTradeList only reads m.series / m.characters, not cards
   const m: Matrix = {
     series: ["MP 4TH", "MP 5TH"],
-    characters: ["Kirari", "Mococo", "Fuwawa"],
+    characters: ["Kirali", "Mococo", "Fuwawa"],
     cards: [],
   };
 
@@ -239,35 +239,51 @@ describe("formatTradeList", () => {
     const items: TradeItem[] = [
       { ri: 2, si: 0, ci: 1, spare: 3 }, // SSR Mococo MP 4TH
       { ri: 3, si: 1, ci: 2, spare: 1 }, // UR  Fuwawa MP 5TH
-      { ri: 3, si: 0, ci: 0, spare: 2 }, // UR  Kirari MP 4TH
+      { ri: 3, si: 0, ci: 0, spare: 2 }, // UR  Kirali MP 4TH
     ];
     expect(formatTradeList(items, m, "surplus")).toBe(
-      "UR\nKirari, MP 4TH, 2\nFuwawa, MP 5TH, 1\n\nSSR\nMococo, MP 4TH, 3",
+      "UR\nKirali, MP 4TH, 2\nFuwawa, MP 5TH, 1\n\nSSR\nMococo, MP 4TH, 3",
     );
   });
 
   it("uses quantity 1 for every needs line regardless of spare", () => {
     const items: TradeItem[] = [
-      { ri: 3, si: 0, ci: 0, spare: 0 }, // UR Kirari MP 4TH
+      { ri: 3, si: 0, ci: 0, spare: 0 }, // UR Kirali MP 4TH
       { ri: 0, si: 1, ci: 1, spare: 0 }, // R  Mococo MP 5TH
     ];
     expect(formatTradeList(items, m, "needs")).toBe(
-      "UR\nKirari, MP 4TH, 1\n\nR\nMococo, MP 5TH, 1",
+      "UR\nKirali, MP 4TH, 1\n\nR\nMococo, MP 5TH, 1",
     );
   });
 
   it("orders within a rarity by series then character", () => {
     const items: TradeItem[] = [
-      { ri: 3, si: 1, ci: 0, spare: 1 }, // UR Kirari MP 5TH
+      { ri: 3, si: 1, ci: 0, spare: 1 }, // UR Kirali MP 5TH
       { ri: 3, si: 0, ci: 2, spare: 1 }, // UR Fuwawa MP 4TH
-      { ri: 3, si: 0, ci: 0, spare: 1 }, // UR Kirari MP 4TH
+      { ri: 3, si: 0, ci: 0, spare: 1 }, // UR Kirali MP 4TH
     ];
     expect(formatTradeList(items, m, "surplus")).toBe(
-      "UR\nKirari, MP 4TH, 1\nFuwawa, MP 4TH, 1\nKirari, MP 5TH, 1",
+      "UR\nKirali, MP 4TH, 1\nFuwawa, MP 4TH, 1\nKirali, MP 5TH, 1",
     );
   });
 
   it("returns an empty string for no items", () => {
     expect(formatTradeList([], m, "surplus")).toBe("");
+  });
+
+  it("can format Chinese series and character names", () => {
+    const zhMatrix: Matrix = {
+      series: ["MP 4TH", "BUNNY GIRL", "MP 5TH"],
+      characters: ["Kirali", "Mizuki", "Unknown"],
+      cards: [],
+    };
+    const items: TradeItem[] = [
+      { ri: 2, si: 1, ci: 1, spare: 1 }, // SSR Mizuki BUNNY GIRL
+      { ri: 2, si: 2, ci: 2, spare: 4 }, // SSR Unknown MP 5TH
+      { ri: 3, si: 0, ci: 0, spare: 2 }, // UR Kirali MP 4TH
+    ];
+    expect(formatTradeList(items, zhMatrix, "surplus", "zh")).toBe(
+      "UR\n煌Kirali, 四週年, 2\n\nSSR\n浠Mizuki, 兔女郎, 1\nUnknown, MP 5TH, 4",
+    );
   });
 });

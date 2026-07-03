@@ -95,6 +95,39 @@ export interface TradeItem {
   spare: number;
 }
 
+export type TradeListLanguage = "en" | "zh";
+
+const SERIES_ZH: Record<string, string> = {
+  "BUNNY GIRL": "兔女郎",
+  KILLER: "殺手",
+  "NEW YEAR": "新年",
+  "MP 4TH": "四週年",
+};
+
+const CHARACTER_ZH: Record<string, string> = {
+  "998": "玖玖巴",
+  Hiyori: "煦Hiyori",
+  Hitomi: "実Hitomi",
+  Iruni: "祈Iruni",
+  Kirali: "煌Kirali",
+  // Historical fallback for older database snapshots before the Kirali rename
+  // migration is applied.
+  Kirari: "煌Kirali",
+  Koyuki: "雪Koyuki",
+  KSP: "KSP",
+  Itsuki: "玥Itsuki",
+  Mizuki: "浠Mizuki",
+  Rei: "澪Rei",
+  Sachi: "幸Sachi",
+  Yuzumi: "橙Yuzumi",
+};
+
+const localize = (
+  value: string,
+  language: TradeListLanguage,
+  labels: Record<string, string>,
+) => (language === "zh" ? (labels[value] ?? value) : value);
+
 // Surplus = duplicates that could be traded away (count - 1); needs = missing.
 export function computeTrade(m: Matrix): {
   surplus: TradeItem[];
@@ -191,6 +224,7 @@ export function formatTradeList(
   items: TradeItem[],
   m: Matrix,
   kind: "surplus" | "needs",
+  language: TradeListLanguage = "en",
 ): string {
   const ordered = [...items].sort(
     (a, b) => b.ri - a.ri || a.si - b.si || a.ci - b.ci,
@@ -209,7 +243,9 @@ export function formatTradeList(
       lines.push(RARITIES[it.ri]);
     }
     const qty = kind === "surplus" ? it.spare : 1;
-    lines.push(`${m.characters[it.ci]}, ${m.series[it.si]}, ${qty}`);
+    const character = localize(m.characters[it.ci], language, CHARACTER_ZH);
+    const series = localize(m.series[it.si], language, SERIES_ZH);
+    lines.push(`${character}, ${series}, ${qty}`);
   }
   flush();
   return groups.join("\n\n");

@@ -12,7 +12,7 @@
 
 - **Spec is authoritative:** `SPEC.md` in repo root. Tables: `card_catalog`, `cards`, `openings`, `transactions` (see SPEC §6). Status enums: `owned/for_sale/for_trade/sold/traded`. Source enums: `pull/purchase/trade_in`. Txn types: `sale/trade`.
 - **Currency:** TWD only. No `currency` columns or fields anywhere. All money is a plain `REAL`/`number`.
-- **Catalog universe = 180 card types:** series order `NEW YEAR, BUNNY GIRL, KILLER, MP 4TH`; common 11 characters `Mizuki, Rei, Yuzumi, Kirari, Iruni, Itsuki, 998, Sachi, Koyuki, Hiyori, Hitomi`; `MP 4TH` additionally has `KSP` (12 chars); rarities `R, SR, SSR, UR`. → 44+44+44+48 = 180.
+- **Catalog universe = 180 card types:** series order `NEW YEAR, BUNNY GIRL, KILLER, MP 4TH`; common 11 characters `Mizuki, Rei, Yuzumi, Kirali, Iruni, Itsuki, 998, Sachi, Koyuki, Hiyori, Hitomi`; `MP 4TH` additionally has `KSP` (12 chars); rarities `R, SR, SSR, UR`. → 44+44+44+48 = 180.
 - **Active inventory** = `status IN ('owned','for_sale','for_trade')`. Only these count toward collection stats; `sold`/`traded` are history only.
 - **Cloudflare subrequest budget:** each request must issue a small bounded number of D1 queries (target ≤ ~10). Never query D1 inside an unbounded loop; batch with `db.batch()` or a single `GROUP BY`.
 - **Every commit message** uses Conventional Commits and ends with the trailer:
@@ -271,7 +271,7 @@ git add migrations/0001_init.sql test/worker/schema.test.ts && git commit -m "fe
 ```ts
 import type { Rarity } from '../src/shared/types';
 export const SERIES = ['NEW YEAR', 'BUNNY GIRL', 'KILLER', 'MP 4TH'];
-export const COMMON_CHARACTERS = ['Mizuki','Rei','Yuzumi','Kirari','Iruni','Itsuki','998','Sachi','Koyuki','Hiyori','Hitomi'];
+export const COMMON_CHARACTERS = ['Mizuki','Rei','Yuzumi','Kirali','Iruni','Itsuki','998','Sachi','Koyuki','Hiyori','Hitomi'];
 export const MP4TH_EXTRA = ['KSP'];
 export const RARITIES: Rarity[] = ['R','SR','SSR','UR'];
 export function charactersFor(series: string): string[] {
@@ -800,8 +800,8 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import CollectionGrid from '../../src/client/components/CollectionGrid';
 const cells = [
-  { catalogId:1, series:'KILLER', character:'Kirari', rarity:'R', owned:0 },
-  { catalogId:2, series:'KILLER', character:'Kirari', rarity:'SR', owned:1 },
+  { catalogId:1, series:'KILLER', character:'Kirali', rarity:'R', owned:0 },
+  { catalogId:2, series:'KILLER', character:'Kirali', rarity:'SR', owned:1 },
 ];
 it('marks missing cells red and shows counts', () => {
   render(<CollectionGrid cells={cells as any} progress={[{series:'KILLER',collectedTypes:1,totalTypes:2}]} />);

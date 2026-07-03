@@ -43,7 +43,7 @@ BUNNY GIRL,Yuzumi,SSR
 NEW YEAR,Yuzumi,R
 NEW YEAR,Rei,R
 KILLER,Iruni,SR
-BUNNY GIRL,Kirari,SSR
+BUNNY GIRL,Kirali,SSR
 NEW YEAR,Koyuki,R
 BUNNY GIRL,Sachi,R
 BUNNY GIRL,Hiyori,SR
@@ -58,7 +58,7 @@ NEW YEAR,Sachi,SR
 NEW YEAR,Koyuki,SSR
 NEW YEAR,Mizuki,R
 NEW YEAR,Rei,R
-BUNNY GIRL,Kirari,SR
+BUNNY GIRL,Kirali,SR
 KILLER,Hiyori,SSR
 BUNNY GIRL,Rei,R
 BUNNY GIRL,Yuzumi,R
@@ -74,7 +74,7 @@ NEW YEAR,Koyuki,SR
 BUNNY GIRL,Itsuki,SSR
 NEW YEAR,Rei,SR
 NEW YEAR,Yuzumi,SR
-NEW YEAR,Kirari,SR
+NEW YEAR,Kirali,SR
 BUNNY GIRL,Hiyori,UR
 NEW YEAR,Hitomi,R
 NEW YEAR,Sachi,R
@@ -85,7 +85,7 @@ NEW YEAR,Hiyori,R
 KILLER,998,SR
 NEW YEAR,Koyuki,SSR
 BUNNY GIRL,Yuzumi,SR
-BUNNY GIRL,Kirari,SR
+BUNNY GIRL,Kirali,SR
 NEW YEAR,Sachi,SR
 NEW YEAR,Hiyori,SSR
 KILLER,998,R
@@ -99,7 +99,7 @@ BUNNY GIRL,Rei,UR
 KILLER,Koyuki,R
 KILLER,Rei,R
 NEW YEAR,Yuzumi,SR
-KILLER,Kirari,UR
+KILLER,Kirali,UR
 KILLER,Iruni,R
 NEW YEAR,Hitomi,R
 KILLER,Itsuki,SR
@@ -114,20 +114,20 @@ BUNNY GIRL,Iruni,SR
 NEW YEAR,Koyuki,SSR
 BUNNY GIRL,Itsuki,R
 BUNNY GIRL,998,R
-BUNNY GIRL,Kirari,SR
+BUNNY GIRL,Kirali,SR
 NEW YEAR,Iruni,SSR
 NEW YEAR,Koyuki,R
 BUNNY GIRL,Hitomi,SR
 BUNNY GIRL,Itsuki,SR
 NEW YEAR,Hiyori,SSR
 KILLER,Hitomi,R
-BUNNY GIRL,Kirari,SR
+BUNNY GIRL,Kirali,SR
 NEW YEAR,Sachi,SR
 KILLER,Iruni,SSR
 BUNNY GIRL,Hitomi,R
 BUNNY GIRL,Koyuki,R
 KILLER,Yuzumi,SR
-NEW YEAR,Kirari,SSR
+NEW YEAR,Kirali,SSR
 NEW YEAR,998,R
 NEW YEAR,Mizuki,R
 NEW YEAR,Sachi,SR
@@ -138,12 +138,12 @@ NEW YEAR,Mizuki,SSR,購入
 NEW YEAR,Mizuki,UR,購入
 KILLER,998,UR,購入
 BUNNY GIRL,Koyuki,SSR,購入
-KILLER,Kirari,SR,購入
+KILLER,Kirali,SR,購入
 NEW YEAR,Mizuki,SR,購入
-NEW YEAR,Kirari,R,購入
+NEW YEAR,Kirali,R,購入
 BUNNY GIRL,Iruni,R,購入
 BUNNY GIRL,Hiyori,R,購入
-BUNNY GIRL,Kirari,R,購入
+BUNNY GIRL,Kirali,R,購入
 NEW YEAR,Iruni,R,購入
 KILLER,Hiyori,R,購入
 KILLER,Mizuki,UR,購入
@@ -155,7 +155,7 @@ MP 4TH,Mizuki,R
 MP 4TH,Iruni,SR
 MP 4TH,998,SSR
 MP 4TH,Yuzumi,R
-MP 4TH,Kirari,R
+MP 4TH,Kirali,R
 MP 4TH,Mizuki,SR
 MP 4TH,Rei,SSR
 MP 4TH,Hiyori,R
@@ -167,19 +167,19 @@ MP 4TH,Yuzumi,R
 MP 4TH,Iruni,SR
 MP 4TH,998,UR
 MP 4TH,Yuzumi,R
-MP 4TH,Kirari,R
+MP 4TH,Kirali,R
 MP 4TH,Iruni,SR
 MP 4TH,Itsuki,SR
 MP 4TH,Sachi,R
 MP 4TH,Yuzumi,SR
 MP 4TH,Itsuki,SR
-MP 4TH,Kirari,UR
+MP 4TH,Kirali,UR
 MP 4TH,Sachi,R
 MP 4TH,Koyuki,R
 MP 4TH,998,SR
 MP 4TH,KSP,SR
 MP 4TH,Yuzumi,R
-MP 4TH,Kirari,R
+MP 4TH,Kirali,R
 MP 4TH,Hiyori,SR
 MP 4TH,Hitomi,SSR
 MP 4TH,Sachi,R
@@ -210,16 +210,16 @@ MP 4TH,Itsuki,R
 MP 4TH,998,R
 MP 4TH,Sachi,SR
 MP 4TH,Hiyori,UR
-MP 4TH,Kirari,R
+MP 4TH,Kirali,R
 MP 4TH,Sachi,R
 MP 4TH,998,SR
 MP 4TH,Itsuki,SSR
-MP 4TH,Kirari,R
+MP 4TH,Kirali,R
 MP 4TH,Sachi,R
 MP 4TH,Itsuki,SR
 MP 4TH,KSP,UR
 MP 4TH,Yuzumi,R
-MP 4TH,Kirari,R
+MP 4TH,Kirali,R
 MP 4TH,Iruni,SR
 MP 4TH,Itsuki,SR
 MP 4TH,Itsuki,R
@@ -237,7 +237,7 @@ MP 4TH,Hitomi,SSR
 MP 4TH,Itsuki,R
 MP 4TH,KSP,R
 MP 4TH,998,SR
-MP 4TH,Kirari,SSR
+MP 4TH,Kirali,SSR
 MP 4TH,Hiyori,R
 MP 4TH,Hitomi,R
 MP 4TH,Sachi,SR
@@ -261,7 +261,7 @@ MP 4TH,Sachi,UR
 MP 4TH,Itsuki,R
 MP 4TH,Hiyori,SR
 MP 4TH,Hitomi,SR
-MP 4TH,Kirari,SSR
+MP 4TH,Kirali,SSR
 MP 4TH,Sachi,R
 MP 4TH,Koyuki,R
 MP 4TH,Hitomi,SR

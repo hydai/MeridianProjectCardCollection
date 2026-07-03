@@ -15,7 +15,7 @@ export const COMMON_CHARACTERS = [
   "Mizuki",
   "Rei",
   "Yuzumi",
-  "Kirari",
+  "Kirali",
   "Iruni",
   "Itsuki",
   "998",

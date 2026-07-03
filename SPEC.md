@@ -192,7 +192,7 @@ CREATE INDEX idx_txn_card      ON transactions(card_id);
 
 - **卡種目錄（約 180 筆）** 由「系列 × 角色 × 稀有度」產生：
   - 系列順序：`NEW YEAR, BUNNY GIRL, KILLER, MP 4TH`
-  - 共通 11 角：`Mizuki, Rei, Yuzumi, Kirari, Iruni, Itsuki, 998, Sachi, Koyuki, Hiyori, Hitomi`
+  - 共通 11 角：`Mizuki, Rei, Yuzumi, Kirali, Iruni, Itsuki, 998, Sachi, Koyuki, Hiyori, Hitomi`
   - `MP 4TH` 另含 `KSP`（共 12 角）
   - 稀有度：`R, SR, SSR, UR`
   - → 44 + 44 + 44 + 48 = **180** 卡種

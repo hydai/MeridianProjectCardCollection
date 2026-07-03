@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ownedCards } from "../../seed/cards";
-import { buildCatalog } from "../../seed/catalog-def";
+import { buildCatalog, charactersFor } from "../../seed/catalog-def";
 
 describe("seed data", () => {
   it("catalog types are all unique (no duplicate series/character/rarity)", () => {
@@ -19,6 +19,11 @@ describe("seed data", () => {
         true,
       );
     }
+  });
+
+  it("uses the official Kirali spelling in the catalog", () => {
+    expect(charactersFor("NEW YEAR")).toContain("Kirali");
+    expect(charactersFor("NEW YEAR")).not.toContain("Kirari");
   });
 
   it("matches the Sheet per-series and per-rarity totals", () => {

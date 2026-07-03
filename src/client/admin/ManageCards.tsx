@@ -124,7 +124,7 @@ function ActionForm({
               className={CONTROL}
               value={want}
               onChange={(e) => setWant(e.target.value)}
-              placeholder="例如 KILLER Kirari UR"
+              placeholder="例如 KILLER Kirali UR"
             />
           </label>
         ) : null}
