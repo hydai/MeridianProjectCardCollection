@@ -7,12 +7,14 @@ import { History } from "./History";
 import { ManageCards } from "./ManageCards";
 import { Openings } from "./Openings";
 import { PendingTrades } from "./PendingTrades";
+import { SeriesManager } from "./SeriesManager";
 
 const TABS = [
-  { id: "add", label: "開箱新增" },
+  { id: "add", label: "卡片新增" },
+  { id: "series", label: "系列管理" },
   { id: "manage", label: "卡片管理" },
   { id: "reserve", label: "交換預約" },
-  { id: "openings", label: "開箱成本" },
+  { id: "openings", label: "開卡成本" },
   { id: "history", label: "交易歷史" },
 ] as const;
 
@@ -66,6 +68,7 @@ export default function Admin() {
       </nav>
 
       {tab === "add" ? <AddCards /> : null}
+      {tab === "series" ? <SeriesManager /> : null}
       {tab === "manage" ? <ManageCards /> : null}
       {tab === "reserve" ? <PendingTrades /> : null}
       {tab === "openings" ? <Openings /> : null}

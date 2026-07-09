@@ -72,10 +72,11 @@ export const PILL_RARITY: Record<Rarity, string> = Object.fromEntries(
 export const TALLY =
   "mt-4 rounded-[4px] border-[0.5px] border-border bg-[var(--bg-subtle)]";
 export const TALLY_ROW =
-  "flex items-center gap-2.5 border-b-[0.5px] border-border px-3 py-2 last:border-b-0";
+  "flex flex-wrap items-center gap-2.5 border-b-[0.5px] border-border px-3 py-2 last:border-b-0";
 export const TALLY_SERIES =
-  "whitespace-nowrap text-[11px] tracking-[0.04em] text-[var(--text-tertiary)]";
-export const TALLY_NAME = "min-w-[84px] text-sm text-foreground";
+  "max-w-[160px] truncate text-[11px] tracking-[0.04em] text-[var(--text-tertiary)]";
+export const TALLY_NAME =
+  "min-w-[84px] flex-1 break-words text-sm text-foreground";
 export const TALLY_QTY = "ml-auto font-mono text-[13px] text-muted-foreground";
 export const TALLY_EMPTY =
   "mt-4 text-[13px] tracking-[0.06em] text-[var(--text-tertiary)]";
@@ -108,10 +109,6 @@ export const TH =
 export const TD =
   "border-b-[0.5px] border-border p-2.5 text-left align-middle font-sans text-muted-foreground";
 
-// Filter bar (.filters) above the ManageCards table. Each field composes
-// cn(FIELD, "min-w-[150px]") for the legacy .filters .field min-width.
-export const FILTERS = "mb-[18px] flex flex-wrap items-end gap-[14px]";
-
 // Row action button cluster (.row-actions).
 export const ROW_ACTIONS = "flex flex-wrap gap-1.5";
 
@@ -140,12 +137,14 @@ export const PILL_STATUS: Record<string, string> = {
 };
 export const PILL_DUP =
   "border-[rgba(201,161,74,0.4)] bg-[rgba(201,161,74,0.08)] text-primary";
-export const PILL_RESERVED = "bg-[rgba(234,179,8,0.15)] text-[#a16207]";
+export const PILL_RESERVED =
+  "border-reservation/40 bg-[var(--reservation-soft)] text-reservation";
 
 // === Phase 4b: PendingTrades line editor (.line-editor / -head / -row) =
 export const LINE_EDITOR = "mt-3";
 export const LINE_EDITOR_HEAD = "mb-1.5 flex items-center gap-3";
-export const LINE_ROW = "mt-1.5 flex items-center gap-2";
+export const LINE_ROW =
+  "mt-1.5 flex items-center gap-2 max-[600px]:grid max-[600px]:grid-cols-[minmax(0,1fr)_auto]";
 
 // === Phase 4c: Openings + History ====================================
 

@@ -24,7 +24,7 @@ const ownedOf = (
 
 describe("mutations", () => {
   it("addCards inserts and links to an opening; cost analysis averages", async () => {
-    const op = await createOpening(env.DB, {
+    const opening = await createOpening(env.DB, {
       series: "KILLER",
       openedAt: "2026-06-01",
       cost: 600,
@@ -35,11 +35,12 @@ describe("mutations", () => {
         { series: "KILLER", character: "Rei", rarity: "SR" },
         { series: "KILLER", character: "Mizuki", rarity: "R" },
       ],
-      op,
+      opening.id,
     );
     expect(ids).toHaveLength(2);
 
-    const sum = (await getOpenings(env.DB)).find((o) => o.id === op);
+    const sum = (await getOpenings(env.DB)).find((o) => o.id === opening.id);
+    expect(sum?.packNumber).toBe(opening.packNumber);
     expect(sum?.cardCount).toBe(2);
     expect(sum?.avgCost).toBe(300);
   });

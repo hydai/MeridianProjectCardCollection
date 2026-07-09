@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { todayLocal } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -43,8 +44,6 @@ import {
   TD,
   TH,
 } from "./ui";
-
-const today = () => new Date().toISOString().slice(0, 10);
 
 // Already-owned cards have no natural receive cap; clamp the number input here.
 const RECEIVE_QTY_CAP = 99;
@@ -118,7 +117,10 @@ function LineEditor({
         return (
           <div className={LINE_ROW} key={`${title}-${d.value}-${i}`}>
             <select
-              className={cn(CONTROL, "min-w-[220px]")}
+              className={cn(
+                CONTROL,
+                "min-w-[220px] max-[600px]:col-span-2 max-[600px]:min-w-0",
+              )}
               value={d.value}
               onChange={(e) => update(i, { value: e.target.value, qty: 1 })}
             >
@@ -165,7 +167,7 @@ function ReservationForm({
   onDone: () => void;
 }) {
   const [counterparty, setCounterparty] = useState("");
-  const [reservedAt, setReservedAt] = useState(today());
+  const [reservedAt, setReservedAt] = useState(todayLocal);
   const [note, setNote] = useState("");
   const [gives, setGives] = useState<LineDraft[]>([]);
   const [receives, setReceives] = useState<LineDraft[]>([]);
@@ -279,7 +281,7 @@ function PendingRowItem({
   onChange: () => void;
 }) {
   const [completing, setCompleting] = useState(false);
-  const [happenedAt, setHappenedAt] = useState(today());
+  const [happenedAt, setHappenedAt] = useState(todayLocal);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const summary = (lines: AdminPendingTrade["give"]) =>
@@ -383,6 +385,7 @@ export function PendingTrades() {
       // One unified 換入 list over the whole catalog: 持有 N for cards you hold,
       // 缺 for missing ones, plus ・已預定換入 M when another pending trade is
       // already bringing it in (so a card never hides between two sub-lists).
+      // Give choices above use Matrix.reserved to exclude locked physical cards.
       recvOpts: receivableCards(m).map((t) => {
         const p = incoming.get(`${t.si}|${t.ci}|${t.ri}`) ?? 0;
         const base = t.spare >= 1 ? `持有 ${t.spare}` : "缺";
@@ -412,22 +415,24 @@ export function PendingTrades() {
           {pending.length === 0 ? (
             <div className={EMPTY_MSG}>目前沒有暫定交換。</div>
           ) : (
-            <table className={cn(TABLE, "mt-4")}>
-              <thead>
-                <tr>
-                  <th className={TH}>日期</th>
-                  <th className={TH}>對象</th>
-                  <th className={TH}>給出</th>
-                  <th className={TH}>換入</th>
-                  <th className={TH}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pending.map((p) => (
-                  <PendingRowItem key={p.id} p={p} onChange={reload} />
-                ))}
-              </tbody>
-            </table>
+            <div className="mt-4 overflow-x-auto">
+              <table className={cn(TABLE, "min-w-[760px]")}>
+                <thead>
+                  <tr>
+                    <th className={TH}>日期</th>
+                    <th className={TH}>對象</th>
+                    <th className={TH}>給出</th>
+                    <th className={TH}>換入</th>
+                    <th className={TH}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pending.map((p) => (
+                    <PendingRowItem key={p.id} p={p} onChange={reload} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
       )}

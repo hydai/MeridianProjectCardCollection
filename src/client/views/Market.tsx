@@ -5,8 +5,9 @@ import { EMPTY_MSG, MissChip, PANEL_GRID, Panel } from "./shared";
 
 function ListingRow({ item }: { item: MarketListing }) {
   const ri = RARITIES.indexOf(item.rarity);
-  const detail =
-    item.status === "for_sale"
+  const detail = item.reserved
+    ? "暫定交換中"
+    : item.status === "for_sale"
       ? item.askingPrice != null
         ? `${item.askingPrice} 元`
         : "價格面議"
@@ -14,12 +15,22 @@ function ListingRow({ item }: { item: MarketListing }) {
         ? `想換：${item.wantInReturn}`
         : "開放出價";
   return (
-    <div className="flex flex-wrap items-center gap-2.5 border-b-[0.5px] border-border py-[9px] last:border-b-0">
-      <MissChip ri={ri} label={item.rarity} />
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2.5 border-b-[0.5px] border-border py-[9px] last:border-b-0",
+        item.reserved && "bg-[var(--reservation-soft)] px-2",
+      )}
+    >
+      <MissChip ri={ri} label={item.rarity} reserved={item.reserved ? 1 : 0} />
       <span className="text-[13px] tracking-[0.02em] text-muted-foreground">
         {item.series} · {item.character}
       </span>
-      <span className="ml-auto font-mono text-xs text-foreground">
+      <span
+        className={cn(
+          "ml-auto font-mono text-xs text-foreground",
+          item.reserved && "text-reservation",
+        )}
+      >
         {detail}
       </span>
       {item.note ? (

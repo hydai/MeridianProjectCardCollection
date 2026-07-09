@@ -188,7 +188,7 @@ describe("completeReservation", () => {
     expect(dee?.note ?? "").toContain("額外換得");
   });
 
-  it("insufficient holdings throws and writes nothing; reservation survives", async () => {
+  it("rejects an overcommitted reservation before writing anything", async () => {
     await addCards(env.DB, [
       { series: "NEW YEAR", character: "Hitomi", rarity: "UR" },
     ]);
@@ -198,18 +198,6 @@ describe("completeReservation", () => {
       "Hitomi",
       "UR",
     );
-    const id = await createReservation(env.DB, {
-      reservedAt: "2026-06-27",
-      give: [
-        {
-          series: "NEW YEAR",
-          character: "Hitomi",
-          rarity: "UR",
-          qty: active + 1,
-        },
-      ],
-      receive: [{ series: "KILLER", character: "Koyuki", rarity: "R", qty: 1 }],
-    });
     const cardsBefore =
       (
         await env.DB.prepare("SELECT COUNT(*) AS n FROM cards").first<{
@@ -222,9 +210,23 @@ describe("completeReservation", () => {
           n: number;
         }>()
       )?.n ?? 0;
+    const reservationsBefore = (await getAdminPendingTrades(env.DB)).length;
 
     await expect(
-      completeReservation(env.DB, id, "2026-06-28"),
+      createReservation(env.DB, {
+        reservedAt: "2026-06-27",
+        give: [
+          {
+            series: "NEW YEAR",
+            character: "Hitomi",
+            rarity: "UR",
+            qty: active + 1,
+          },
+        ],
+        receive: [
+          { series: "KILLER", character: "Koyuki", rarity: "R", qty: 1 },
+        ],
+      }),
     ).rejects.toThrow();
 
     expect(
@@ -241,8 +243,8 @@ describe("completeReservation", () => {
         }>()
       )?.n ?? 0,
     ).toBe(txnsBefore);
-    expect((await getAdminPendingTrades(env.DB)).some((r) => r.id === id)).toBe(
-      true,
+    expect((await getAdminPendingTrades(env.DB)).length).toBe(
+      reservationsBefore,
     );
   });
 });

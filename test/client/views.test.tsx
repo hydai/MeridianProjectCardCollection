@@ -37,6 +37,9 @@ const full: OverviewResponse = {
     character: c.character,
     rarity: c.rarity,
     owned: i % 4,
+    reserved: 0,
+    available: i % 4,
+    volume: c.series === "MP 4TH" ? 2 : 1,
   })),
   progress: [],
 };
@@ -73,6 +76,7 @@ const sampleListings: MarketListing[] = [
     character: "Kirali",
     rarity: "UR",
     status: "for_sale",
+    reserved: false,
     askingPrice: 1200,
     wantInReturn: null,
     note: null,
@@ -83,6 +87,7 @@ const sampleListings: MarketListing[] = [
     character: "Aria",
     rarity: "SSR",
     status: "for_sale",
+    reserved: false,
     askingPrice: null,
     wantInReturn: null,
     note: "輕微邊緣磨損",
@@ -93,6 +98,7 @@ const sampleListings: MarketListing[] = [
     character: "Mira",
     rarity: "SSR",
     status: "for_trade",
+    reserved: false,
     askingPrice: null,
     wantInReturn: "KSP Kirali UR",
     note: null,
@@ -103,6 +109,7 @@ const sampleListings: MarketListing[] = [
     character: "Kirali",
     rarity: "R",
     status: "for_trade",
+    reserved: false,
     askingPrice: null,
     wantInReturn: null,
     note: null,
@@ -129,6 +136,14 @@ describe("MarketBoard", () => {
     expect(screen.getByText("想換：KSP Kirali UR")).toBeInTheDocument();
     expect(screen.getByText("開放出價")).toBeInTheDocument();
     expect(screen.getByText("輕微邊緣磨損")).toBeInTheDocument();
+  });
+
+  it("keeps a reserved listing visible with an explicit pending state", () => {
+    render(
+      <MarketBoard listings={[{ ...sampleListings[3], reserved: true }]} />,
+    );
+    expect(screen.getByText("暫定交換中")).toHaveClass("text-reservation");
+    expect(screen.getByText("預1")).toBeInTheDocument();
   });
 
   it("shows an error message scoped to this view", () => {
@@ -170,6 +185,13 @@ describe("Trade pending overlay", () => {
     expect(screen.getByText("2026-06-27")).toBeInTheDocument();
     expect(screen.getByText(/MP 4TH Mizuki/)).toBeInTheDocument();
     expect(screen.getByText(/KILLER Rei/)).toBeInTheDocument();
+    const pendingCard = screen.getByText("2026-06-27").parentElement;
+    expect(
+      within(pendingCard as HTMLElement).getByText("R"),
+    ).toBeInTheDocument();
+    expect(
+      within(pendingCard as HTMLElement).getByText("SR"),
+    ).toBeInTheDocument();
   });
 
   it("omits the 暫定交換列表 when there are no pending trades", () => {
@@ -211,6 +233,36 @@ describe("Grid mode toggle", () => {
     expect(count).toHaveAttribute("aria-checked", "true");
     // count mode swaps the legend copy to the "持有張數" wording
     expect(screen.getByText(/持有張數/)).toBeInTheDocument();
+  });
+});
+
+describe("Grid pending exchange state", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("keeps a reserved card in the collection and gives it a distinct state", () => {
+    const reservedOverview: OverviewResponse = {
+      ...full,
+      cells: full.cells.map((entry) =>
+        entry.catalogId === 1
+          ? { ...entry, owned: 3, reserved: 1, available: 2 }
+          : entry,
+      ),
+    };
+    const reservedMatrix = buildMatrix(reservedOverview);
+    const { container, unmount } = render(<Grid m={reservedMatrix} />);
+    const cell = screen.getByLabelText(
+      "NEW YEAR Mizuki R：持有 3 張，暫定換出 1 張",
+    );
+    expect(cell).toHaveClass("text-reservation");
+    expect(cell).toHaveTextContent("預1");
+    expect(screen.getByText("暫定換出（仍持有）")).toBeInTheDocument();
+    expect(container.querySelector(".grid-progress")).toHaveTextContent(/\d+/);
+
+    unmount();
+    render(<ByCharacter m={reservedMatrix} />);
+    expect(screen.getByTitle("持有 3 張，其中 1 張暫定換出")).toHaveTextContent(
+      "3預1",
+    );
   });
 });
 
@@ -433,7 +485,16 @@ describe("Trade copy buttons", () => {
     rarity: "R" | "SR" | "SSR" | "UR",
     owned: number,
     id: number,
-  ) => ({ catalogId: id, series: "MP 4TH", character, rarity, owned });
+  ) => ({
+    catalogId: id,
+    series: "MP 4TH",
+    character,
+    rarity,
+    owned,
+    reserved: 0,
+    available: owned,
+    volume: 2,
+  });
 
   // all owned = 1 → no duplicates, nothing missing → both panels empty
   const singles: OverviewResponse = {
@@ -542,7 +603,16 @@ describe("Trade rarity filter (multi-select union)", () => {
     rarity: "R" | "SR" | "SSR" | "UR",
     owned: number,
     id: number,
-  ) => ({ catalogId: id, series: "MP 4TH", character, rarity, owned });
+  ) => ({
+    catalogId: id,
+    series: "MP 4TH",
+    character,
+    rarity,
+    owned,
+    reserved: 0,
+    available: owned,
+    volume: 2,
+  });
 
   // Kirali duplicates in SR, SSR and UR → surplus in three rarities.
   const multiSurplus: OverviewResponse = {
@@ -625,7 +695,16 @@ describe("Trade view mode toggle", () => {
     rarity: "R" | "SR" | "SSR" | "UR",
     owned: number,
     id: number,
-  ) => ({ catalogId: id, series: "MP 4TH", character, rarity, owned });
+  ) => ({
+    catalogId: id,
+    series: "MP 4TH",
+    character,
+    rarity,
+    owned,
+    reserved: 0,
+    available: owned,
+    volume: 2,
+  });
 
   // Kirali: SR owned 3 (spare 2) + UR owned 2 (spare 1) → 可換出;
   // SSR owned 0 → 想換入; R owned 1 → 兩者皆非。
@@ -748,6 +827,9 @@ describe("Trade grid edge cells", () => {
           character: "Kirali",
           rarity: "SR",
           owned: 3,
+          reserved: 0,
+          available: 3,
+          volume: 2,
         },
         {
           catalogId: 2,
@@ -755,6 +837,9 @@ describe("Trade grid edge cells", () => {
           character: "Mira",
           rarity: "SR",
           owned: 3,
+          reserved: 0,
+          available: 3,
+          volume: 3,
         },
       ],
       progress: [],
@@ -780,6 +865,9 @@ describe("Trade grid edge cells", () => {
           character: "Kirali",
           rarity: "SR",
           owned: 2,
+          reserved: 0,
+          available: 2,
+          volume: 2,
         },
         {
           catalogId: 2,
@@ -787,6 +875,9 @@ describe("Trade grid edge cells", () => {
           character: "Kirali",
           rarity: "SSR",
           owned: 2,
+          reserved: 0,
+          available: 2,
+          volume: 2,
         },
         {
           catalogId: 3,
@@ -794,6 +885,9 @@ describe("Trade grid edge cells", () => {
           character: "Mira",
           rarity: "SR",
           owned: 2,
+          reserved: 0,
+          available: 2,
+          volume: 3,
         },
       ],
       progress: [],

@@ -6,8 +6,9 @@ import {
   RARITIES,
   RARITY_KEYS,
   buildVolumeRows,
-  exists,
+  existsR,
   getN,
+  getReservedN,
 } from "../collection";
 import {
   CARD_FRAME,
@@ -37,6 +38,8 @@ const GRID_CELL_BASE =
 // Gold "have" tint (legacy `.gc-have` / `.sw-have`): shared by the filled grid
 // cells and the legend's ✓ swatch so a retint stays in lockstep.
 const HAVE_TINT = "bg-[rgba(201,161,74,0.16)] font-semibold text-primary";
+const RESERVED_TINT =
+  "bg-[var(--reservation-soft)] font-semibold text-reservation";
 
 // Grid legend chrome (legacy `.grid-legend`): each key is an inline row; the
 // swatch is a 16px rounded box.
@@ -105,7 +108,7 @@ export function Grid({ m }: { m: Matrix }) {
       return next;
     });
 
-  const volumeRows = buildVolumeRows(m.series);
+  const volumeRows = buildVolumeRows(m.series, m.volumes);
   const shown = m.series
     .map((s, si) => ({ s, si }))
     .filter(({ s }) => !hidden.has(s));
@@ -117,8 +120,8 @@ export function Grid({ m }: { m: Matrix }) {
   let totalSlots = 0;
   for (const { si } of shown) {
     m.characters.forEach((_c, ci) => {
-      if (!exists(m, si, ci)) return;
       for (const { ri } of shownRarities) {
+        if (!existsR(m, si, ci, ri)) continue;
         totalSlots++;
         if (getN(m, si, ci, ri) > 0) totalHave++;
       }
@@ -248,7 +251,7 @@ export function Grid({ m }: { m: Matrix }) {
                     shownRarities.map(({ rarity, ri }, localRi) => {
                       const startCls = localRi === 0 ? BORDER_STRONG_L : "";
                       const cellKey = `${s}-${rarity}`;
-                      if (!exists(m, si, ci)) {
+                      if (!existsR(m, si, ci, ri)) {
                         return (
                           <td
                             key={cellKey}
@@ -257,16 +260,36 @@ export function Grid({ m }: { m: Matrix }) {
                         );
                       }
                       const n = getN(m, si, ci, ri);
+                      const reserved = getReservedN(m, si, ci, ri);
                       if (n > 0) {
                         return (
                           <td
                             key={cellKey}
-                            className={`${GRID_CELL_BASE} ${HAVE_TINT} group-hover/row:bg-[rgba(201,161,74,0.26)] ${startCls}`}
+                            className={`${GRID_CELL_BASE} ${
+                              reserved > 0 ? RESERVED_TINT : HAVE_TINT
+                            } ${
+                              reserved > 0
+                                ? "group-hover/row:bg-reservation/25"
+                                : "group-hover/row:bg-[rgba(201,161,74,0.26)]"
+                            } ${startCls}`}
+                            aria-label={`${s} ${charName} ${rarity}：持有 ${n} 張${
+                              reserved > 0 ? `，暫定換出 ${reserved} 張` : ""
+                            }`}
+                            title={
+                              reserved > 0
+                                ? `持有 ${n} 張，其中 ${reserved} 張暫定換出`
+                                : undefined
+                            }
                           >
-                            {isCount ? (
-                              <span className="font-mono font-medium text-primary">
-                                {n}
+                            {reserved > 0 ? (
+                              <span className="inline-flex items-baseline gap-px font-mono font-medium">
+                                {isCount ? n : null}
+                                <span className="text-[8px] tracking-normal">
+                                  預{reserved}
+                                </span>
                               </span>
+                            ) : isCount ? (
+                              <span className="font-mono font-medium">{n}</span>
                             ) : (
                               "✓"
                             )}
@@ -294,6 +317,12 @@ export function Grid({ m }: { m: Matrix }) {
             {isCount ? "2" : "✓"}
           </span>{" "}
           {isCount ? "數字＝持有張數（≥2 為重複）" : "已收集"}
+        </span>
+        <span className={LEGEND_ITEM}>
+          <span className={`${LEGEND_SWATCH} ${RESERVED_TINT} text-[10px]`}>
+            預1
+          </span>{" "}
+          暫定換出（仍持有）
         </span>
         <span className={LEGEND_ITEM}>
           <span

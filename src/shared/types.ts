@@ -5,12 +5,30 @@ export type TransactionType = "sale" | "trade";
 
 // ---- Read DTOs (shared by worker queries, API routes, and client) ----
 
+export interface CatalogSeries {
+  name: string;
+  volume: number;
+  sortOrder: number;
+  characters: string[];
+  rarities: Rarity[];
+}
+
+export interface CreateSeriesInput {
+  name: string;
+  volume: number;
+  characters: string[];
+  rarities: Rarity[];
+}
+
 export interface OverviewCell {
   catalogId: number;
   series: string;
+  volume: number;
   character: string;
   rarity: Rarity;
   owned: number;
+  reserved: number;
+  available: number;
 }
 
 export interface SeriesProgress {
@@ -37,6 +55,7 @@ export interface MarketListing {
   character: string;
   rarity: Rarity;
   status: "for_sale" | "for_trade";
+  reserved: boolean;
   askingPrice: number | null;
   wantInReturn: string | null;
   note: string | null;
@@ -74,14 +93,20 @@ export interface AddCardInput {
   character: string;
   rarity: Rarity;
   source?: CardSource;
+  purchasePrice?: number;
   note?: string;
 }
 
 export interface OpeningInput {
-  series?: string;
+  series: string;
   openedAt: string;
   cost?: number;
   note?: string;
+}
+
+export interface OpeningCreated {
+  id: number;
+  packNumber: number;
 }
 
 export interface UpdateCardInput {
@@ -106,6 +131,7 @@ export interface RecordTxnInput {
 export interface OpeningSummary {
   id: number;
   series: string | null;
+  packNumber: number;
   openedAt: string;
   cost: number | null;
   cardCount: number;
@@ -134,10 +160,12 @@ export interface CardRow {
   rarity: Rarity;
   status: CardStatus;
   source: CardSource;
+  purchasePrice: number | null;
   askingPrice: number | null;
   wantInReturn: string | null;
   note: string | null;
   duplicate: boolean;
+  reserved: boolean;
   reservedGive: number;
 }
 

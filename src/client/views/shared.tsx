@@ -124,7 +124,24 @@ export function Panel({
   );
 }
 
-export function NumCell({ n, ri }: { n: number; ri: number }) {
+export function NumCell({
+  n,
+  ri,
+  reserved = 0,
+}: { n: number; ri: number; reserved?: number }) {
+  if (reserved > 0) {
+    return (
+      <TableCell
+        className="bg-[var(--reservation-soft)] text-center font-mono text-reservation"
+        title={`持有 ${n} 張，其中 ${reserved} 張暫定換出`}
+      >
+        <span className="inline-flex items-baseline gap-1">
+          {n}
+          <span className="text-[9px] tracking-normal">預{reserved}</span>
+        </span>
+      </TableCell>
+    );
+  }
   if (n === 0) {
     return (
       <TableCell className="text-center font-mono text-muted-foreground/40">
@@ -143,17 +160,24 @@ export function MissChip({
   ri,
   label,
   count,
-}: { ri: number; label: string; count?: number }) {
+  reserved,
+}: { ri: number; label: string; count?: number; reserved?: number }) {
   return (
     <Badge
       variant="outline"
       className={cn(
         "gap-1 rounded-full border-[0.5px] font-mono text-[11px] font-medium tracking-[0.12em]",
-        RARITY_CHIP[ri],
+        reserved && reserved > 0
+          ? "border-reservation/45 bg-[var(--reservation-soft)] text-reservation"
+          : RARITY_CHIP[ri],
       )}
+      title={reserved ? `暫定換出 ${reserved} 張` : undefined}
     >
       {label}
       {count && count > 1 ? <span className="opacity-70">{count}</span> : null}
+      {reserved && reserved > 0 ? (
+        <span className="opacity-80">預{reserved}</span>
+      ) : null}
     </Badge>
   );
 }

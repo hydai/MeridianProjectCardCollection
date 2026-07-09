@@ -12,6 +12,9 @@ const getJson = async <T>(path: string): Promise<T> =>
 
 describe("pending-trade api", () => {
   it("creates via admin, exposes it publicly WITHOUT counterparty/note", async () => {
+    await send("POST", "/api/admin/cards", {
+      cards: [{ series: "KILLER", character: "Rei", rarity: "UR" }],
+    });
     const res = await send("POST", "/api/admin/pending-trades", {
       counterparty: "Zoe",
       reservedAt: "2026-06-27",
@@ -48,6 +51,9 @@ describe("pending-trade api", () => {
   });
 
   it("cancel deletes the reservation", async () => {
+    await send("POST", "/api/admin/cards", {
+      cards: [{ series: "KILLER", character: "998", rarity: "R" }],
+    });
     const { id } = (await (
       await send("POST", "/api/admin/pending-trades", {
         reservedAt: "2026-06-27",

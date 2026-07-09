@@ -1,7 +1,14 @@
 import { Badge } from "@/components/ui/badge";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useState } from "react";
-import { type Matrix, RARITIES, exists, getN } from "../collection";
+import {
+  type Matrix,
+  RARITIES,
+  exists,
+  existsR,
+  getN,
+  getReservedN,
+} from "../collection";
 import {
   CARD_FRAME,
   MODE_BTN,
@@ -11,7 +18,7 @@ import {
   VIEW_HEADER,
 } from "./shared";
 
-type Owned = { name: string; ri: number; count: number };
+type Owned = { name: string; ri: number; count: number; reserved: number };
 type GlanceCellData = { na: true } | { na: false; owned: Owned[] };
 
 // Body cell chrome (legacy `.glance-table tbody td`): hairline divider, centered,
@@ -70,7 +77,13 @@ function GlanceCell({
   return (
     <td className={GLANCE_TD}>
       {have.map((o) => (
-        <MissChip key={o.name} ri={o.ri} label={o.name} count={o.count} />
+        <MissChip
+          key={o.name}
+          ri={o.ri}
+          label={o.name}
+          count={o.count}
+          reserved={o.reserved}
+        />
       ))}
     </td>
   );
@@ -87,15 +100,22 @@ export function Glance({ m }: { m: Matrix }) {
   const rows = m.characters.map((charName, ci) => {
     const cells: GlanceCellData[] = m.series.map((_s, si) => {
       if (!exists(m, si, ci)) return { na: true };
-      const owned = RARITIES.map((name, ri) => ({
-        name,
-        ri,
-        count: getN(m, si, ci, ri),
-      }));
+      const owned = RARITIES.flatMap((name, ri) =>
+        existsR(m, si, ci, ri)
+          ? [
+              {
+                name,
+                ri,
+                count: getN(m, si, ci, ri),
+                reserved: getReservedN(m, si, ci, ri),
+              },
+            ]
+          : [],
+      );
       return { na: false, owned };
     });
     const live = cells.filter((c): c is { na: false; owned: Owned[] } => !c.na);
-    totalSlots += live.length * RARITIES.length;
+    totalSlots += live.reduce((sum, cell) => sum + cell.owned.length, 0);
     totalMissing += live.reduce(
       (s, c) => s + c.owned.filter((o) => o.count === 0).length,
       0,

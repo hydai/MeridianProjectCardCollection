@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import {
+  addCards,
   cancelReservation,
   createReservation,
   getAdminPendingTrades,
@@ -21,8 +22,15 @@ const sample = {
   ],
 };
 
+const addGiveCards = () =>
+  addCards(env.DB, [
+    { series: "MP 4TH", character: "Mizuki", rarity: "R" },
+    { series: "MP 4TH", character: "Rei", rarity: "SR" },
+  ]);
+
 describe("pending reservation read/create/cancel", () => {
   it("creates a reservation and reads it back grouped by direction", async () => {
+    await addGiveCards();
     const id = await createReservation(env.DB, sample);
     const admin = await getAdminPendingTrades(env.DB);
     const row = admin.find((r) => r.id === id);
@@ -34,6 +42,7 @@ describe("pending reservation read/create/cancel", () => {
   });
 
   it("public read omits counterparty and note", async () => {
+    await addGiveCards();
     const id = await createReservation(env.DB, sample);
     const pub = await getPublicPendingTrades(env.DB);
     const row = pub.find((r) => r.id === id) as
@@ -46,6 +55,7 @@ describe("pending reservation read/create/cancel", () => {
   });
 
   it("cancel deletes the reservation and its lines", async () => {
+    await addGiveCards();
     const id = await createReservation(env.DB, sample);
     await cancelReservation(env.DB, id);
     expect((await getAdminPendingTrades(env.DB)).some((r) => r.id === id)).toBe(

@@ -1,4 +1,3 @@
-import { VOLUMES } from "../../seed/catalog-def";
 import type {
   OverviewResponse,
   PublicPendingTrade,
@@ -10,26 +9,36 @@ export const RARITY_KEYS = ["r", "sr", "ssr", "ur"] as const;
 export type RarityKey = (typeof RARITY_KEYS)[number];
 
 export type Counts = [number, number, number, number];
+export type Slots = [boolean, boolean, boolean, boolean];
 
 // The artifact's data shape: cards[seriesIdx][charIdx] = [R,SR,SSR,UR] or null
 // (null = that character does not appear in that series, e.g. KSP outside MP 4TH).
 export interface Matrix {
   series: string[];
+  volumes: number[];
   characters: string[];
   cards: (Counts | null)[][];
+  reserved: (Counts | null)[][];
+  slots: (Slots | null)[][];
 }
 
 const RARITY_INDEX: Record<Rarity, number> = { R: 0, SR: 1, SSR: 2, UR: 3 };
 
 export function buildMatrix(overview: OverviewResponse): Matrix {
   const series: string[] = [];
+  const volumeBySeries = new Map<string, number>();
   const characters: string[] = [];
   const map = new Map<string, Counts>();
+  const reservedMap = new Map<string, Counts>();
+  const slotMap = new Map<string, Slots>();
 
   // Cells arrive ordered by catalog sort_order (series-major, then character,
   // then rarity), so first-appearance order yields the canonical ordering.
   for (const cell of overview.cells) {
     if (!series.includes(cell.series)) series.push(cell.series);
+    if (!volumeBySeries.has(cell.series)) {
+      volumeBySeries.set(cell.series, cell.volume ?? 0);
+    }
     if (!characters.includes(cell.character)) characters.push(cell.character);
     const key = `${cell.series}|${cell.character}`;
     let counts = map.get(key);
@@ -38,12 +47,39 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
       map.set(key, counts);
     }
     counts[RARITY_INDEX[cell.rarity]] = cell.owned;
+
+    let reserved = reservedMap.get(key);
+    if (!reserved) {
+      reserved = [0, 0, 0, 0];
+      reservedMap.set(key, reserved);
+    }
+    reserved[RARITY_INDEX[cell.rarity]] = cell.reserved ?? 0;
+
+    let slots = slotMap.get(key);
+    if (!slots) {
+      slots = [false, false, false, false];
+      slotMap.set(key, slots);
+    }
+    slots[RARITY_INDEX[cell.rarity]] = true;
   }
 
   const cards = series.map((s) =>
     characters.map((c) => map.get(`${s}|${c}`) ?? null),
   );
-  return { series, characters, cards };
+  const reserved = series.map((s) =>
+    characters.map((c) => reservedMap.get(`${s}|${c}`) ?? null),
+  );
+  const slots = series.map((s) =>
+    characters.map((c) => slotMap.get(`${s}|${c}`) ?? null),
+  );
+  return {
+    series,
+    volumes: series.map((s) => volumeBySeries.get(s) ?? 0),
+    characters,
+    cards,
+    reserved,
+    slots,
+  };
 }
 
 export interface VolumeRow {
@@ -51,19 +87,35 @@ export interface VolumeRow {
   series: string[];
 }
 
-// Align the static VOLUMES map with the live series list: keep only series that
-// actually exist, drop emptied volumes, and sweep any series not assigned to a
-// volume into a trailing "其他" row so nothing silently vanishes from the grid.
-export function buildVolumeRows(allSeries: string[]): VolumeRow[] {
-  const assigned = new Set<string>();
+// Group live series by the volume metadata stored in D1. A zero/invalid volume
+// is kept visible in a trailing fallback row for legacy or partially migrated
+// data instead of silently disappearing from the grid.
+export function buildVolumeRows(
+  allSeries: string[],
+  volumes: number[],
+): VolumeRow[] {
+  const byVolume = new Map<number, string[]>();
+  const unassigned: string[] = [];
+  allSeries.forEach((series, index) => {
+    const volume = volumes[index];
+    if (!Number.isInteger(volume) || volume < 1) {
+      unassigned.push(series);
+      return;
+    }
+    const members = byVolume.get(volume) ?? [];
+    members.push(series);
+    byVolume.set(volume, members);
+  });
+
   const rows: VolumeRow[] = [];
-  for (const vol of VOLUMES) {
-    const series = vol.series.filter((s) => allSeries.includes(s));
-    for (const s of series) assigned.add(s);
-    if (series.length > 0) rows.push({ label: vol.label, series });
+  for (const [volume, members] of [...byVolume.entries()].sort(
+    ([a], [b]) => a - b,
+  )) {
+    rows.push({ label: `Vol.${volume}`, series: members });
   }
-  const orphans = allSeries.filter((s) => !assigned.has(s));
-  if (orphans.length > 0) rows.push({ label: "其他", series: orphans });
+  if (unassigned.length > 0) {
+    rows.push({ label: "其他", series: unassigned });
+  }
   return rows;
 }
 
@@ -71,10 +123,27 @@ export const cellOf = (m: Matrix, s: number, c: number): Counts | null =>
   m.cards[s][c];
 export const exists = (m: Matrix, s: number, c: number): boolean =>
   m.cards[s][c] !== null;
+export const existsR = (m: Matrix, s: number, c: number, r: number): boolean =>
+  m.slots[s]?.[c]?.[r] === true;
 export const getN = (m: Matrix, s: number, c: number, r: number): number => {
   const x = m.cards[s][c];
   return x === null ? 0 : x[r];
 };
+export const getReservedN = (
+  m: Matrix,
+  s: number,
+  c: number,
+  r: number,
+): number => {
+  const x = m.reserved[s]?.[c];
+  return x === null || x === undefined ? 0 : x[r];
+};
+export const getAvailableN = (
+  m: Matrix,
+  s: number,
+  c: number,
+  r: number,
+): number => Math.max(0, getN(m, s, c, r) - getReservedN(m, s, c, r));
 export const sumRow = (arr: number[]): number => arr.reduce((a, b) => a + b, 0);
 
 export function grandTotalByRarity(m: Matrix): Counts {
@@ -146,20 +215,23 @@ export function computeTrade(m: Matrix): {
   const needs: TradeItem[] = [];
   m.series.forEach((_s, si) =>
     m.characters.forEach((_c, ci) => {
-      if (!exists(m, si, ci)) return;
       RARITIES.forEach((_r, ri) => {
-        const n = getN(m, si, ci, ri);
-        if (n >= 2) surplus.push({ ri, si, ci, spare: n - 1 });
-        else if (n === 0) needs.push({ ri, si, ci, spare: 0 });
+        if (!existsR(m, si, ci, ri)) return;
+        const owned = getN(m, si, ci, ri);
+        const available = getAvailableN(m, si, ci, ri);
+        if (available >= 2) {
+          surplus.push({ ri, si, ci, spare: available - 1 });
+        } else if (owned === 0) {
+          needs.push({ ri, si, ci, spare: 0 });
+        }
       });
     }),
   );
   return { surplus, needs };
 }
 
-// Overlay pending reservations on the derived trade view. Give-side deduction is
-// done upstream in getOverview (so it shows everywhere), so here we only clear
-// the needs that a pending receive line will fill.
+// Overlay pending receives on the derived trade view. Pending gives are already
+// represented by Matrix.reserved, while owned remains the physical holding count.
 export function computeTradeWithPending(
   m: Matrix,
   pending: PublicPendingTrade[],
@@ -188,15 +260,15 @@ export function computeTradeWithPending(
 }
 
 // Every existing catalog card, as receive candidates for the unified 換入 list.
-// spare carries the current holding count (0 = missing) so the form can render
-// 持有 N / 缺 inline. Excludes null cells. Give-side reservations are already
-// deducted in the matrix by getOverview, so spare reflects effective holdings.
+// spare carries the physical holding count (0 = missing) so the form can render
+// 持有 N / 缺 inline. Give-side choices use computeTrade's available count;
+// receive choices intentionally continue to describe physical ownership.
 export function receivableCards(m: Matrix): TradeItem[] {
   const items: TradeItem[] = [];
   m.series.forEach((_s, si) =>
     m.characters.forEach((_c, ci) => {
-      if (!exists(m, si, ci)) return;
       RARITIES.forEach((_r, ri) => {
+        if (!existsR(m, si, ci, ri)) return;
         items.push({ ri, si, ci, spare: getN(m, si, ci, ri) });
       });
     }),

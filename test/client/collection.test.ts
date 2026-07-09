@@ -7,8 +7,11 @@ import {
   computeTrade,
   computeTradeWithPending,
   exists,
+  existsR,
   formatTradeList,
+  getAvailableN,
   getN,
+  getReservedN,
   grandTotalByRarity,
   pendingReceiveByCoord,
   receivableCards,
@@ -31,6 +34,9 @@ const cell = (
   character,
   rarity,
   owned,
+  reserved: 0,
+  available: owned,
+  volume: series === "MP 4TH" ? 2 : 1,
 });
 
 const overview: OverviewResponse = {
@@ -64,11 +70,38 @@ describe("buildMatrix", () => {
     expect(exists(m, 1, 1)).toBe(true);
   });
 
+  it("distinguishes an unissued rarity from a missing issued card", () => {
+    const limited: OverviewResponse = {
+      cells: [
+        cell("LIMITED", "Rei", "SR", 0, 101),
+        cell("LIMITED", "Rei", "UR", 1, 102),
+      ],
+      progress: [],
+    };
+    const m = buildMatrix(limited);
+    expect(existsR(m, 0, 0, 0)).toBe(false);
+    expect(existsR(m, 0, 0, 1)).toBe(true);
+    expect(computeTrade(m).needs).toEqual([{ si: 0, ci: 0, ri: 1, spare: 0 }]);
+  });
+
   it("places owned counts per rarity", () => {
     const m = buildMatrix(overview);
     expect(getN(m, 0, 0, 0)).toBe(3);
     expect(getN(m, 0, 0, 1)).toBe(1);
     expect(getN(m, 1, 1, 0)).toBe(1);
+  });
+
+  it("keeps reserved holdings separate from available holdings", () => {
+    const withReservation: OverviewResponse = {
+      ...overview,
+      cells: overview.cells.map((entry) =>
+        entry.catalogId === 1 ? { ...entry, reserved: 2, available: 1 } : entry,
+      ),
+    };
+    const m = buildMatrix(withReservation);
+    expect(getN(m, 0, 0, 0)).toBe(3);
+    expect(getReservedN(m, 0, 0, 0)).toBe(2);
+    expect(getAvailableN(m, 0, 0, 0)).toBe(1);
   });
 
   it("grand total by rarity sums all owned", () => {
@@ -97,8 +130,14 @@ describe("computeTradeWithPending", () => {
     expect(adj.needs).toHaveLength(base.needs.length);
   });
 
-  it("does NOT change surplus for give lines (handled upstream in getOverview now)", () => {
-    const base = computeTrade(m);
+  it("uses reserved counts to remove unavailable give-side surplus", () => {
+    const reservedOverview: OverviewResponse = {
+      ...overview,
+      cells: overview.cells.map((entry) =>
+        entry.catalogId === 5 ? { ...entry, reserved: 1, available: 1 } : entry,
+      ),
+    };
+    const reservedMatrix = buildMatrix(reservedOverview);
     const pending: PublicPendingTrade[] = [
       {
         id: 1,
@@ -116,8 +155,11 @@ describe("computeTradeWithPending", () => {
         receive: [],
       },
     ];
-    const adj = computeTradeWithPending(m, pending);
-    expect(adj.surplus).toEqual(base.surplus); // unchanged — give subtraction moved to getOverview
+    const adj = computeTradeWithPending(reservedMatrix, pending);
+    expect(adj.surplus.some((entry) => entry.si === 1 && entry.ri === 0)).toBe(
+      false,
+    );
+    expect(getN(reservedMatrix, 1, 0, 0)).toBe(2);
   });
 
   it("a receive line removes the matching need", () => {
@@ -231,8 +273,11 @@ describe("formatTradeList", () => {
   // formatTradeList only reads m.series / m.characters, not cards
   const m: Matrix = {
     series: ["MP 4TH", "MP 5TH"],
+    volumes: [2, 3],
     characters: ["Kirali", "Mococo", "Fuwawa"],
     cards: [],
+    reserved: [],
+    slots: [],
   };
 
   it("groups surplus by rarity (UR→R) as `角色, 系列, 數量`", () => {
@@ -274,8 +319,11 @@ describe("formatTradeList", () => {
   it("can format Chinese series and character names", () => {
     const zhMatrix: Matrix = {
       series: ["MP 4TH", "BUNNY GIRL", "MP 5TH"],
+      volumes: [2, 1, 3],
       characters: ["Kirali", "Mizuki", "Unknown"],
       cards: [],
+      reserved: [],
+      slots: [],
     };
     const items: TradeItem[] = [
       { ri: 2, si: 1, ci: 1, spare: 1 }, // SSR Mizuki BUNNY GIRL

@@ -2,7 +2,9 @@ import type {
   AddCardInput,
   AdminPendingTrade,
   CardRow,
+  CatalogSeries,
   CreateReservationInput,
+  CreateSeriesInput,
   MarketListing,
   MissingEntry,
   OpeningInput,
@@ -40,10 +42,18 @@ export const fetchOverview = () => get<OverviewResponse>("/api/overview");
 export const fetchMissing = () => get<MissingEntry[]>("/api/missing");
 export const fetchMarket = () => get<MarketListing[]>("/api/market");
 export const fetchStats = () => get<StatsResponse>("/api/stats");
+export const fetchCatalog = () => get<CatalogSeries[]>("/api/catalog");
 
 // ---- Admin ----
 export const postCards = (cards: AddCardInput[], opening?: OpeningInput) =>
-  send<{ ids: number[] }>("POST", "/api/admin/cards", { cards, opening });
+  send<{ ids: number[]; opening?: { id: number; packNumber: number } }>(
+    "POST",
+    "/api/admin/cards",
+    { cards, opening },
+  );
+
+export const postSeries = (input: CreateSeriesInput) =>
+  send<CatalogSeries>("POST", "/api/admin/series", input);
 
 export const patchCard = (id: number, update: UpdateCardInput) =>
   send<{ ok: true }>("PATCH", `/api/admin/cards/${id}`, update);
@@ -62,6 +72,10 @@ export const postTransaction = (input: { cardId: number } & RecordTxnInput) =>
   send<{ id: number }>("POST", "/api/admin/transactions", input);
 
 export const fetchOpenings = () => get<OpeningSummary[]>("/api/admin/openings");
+export const fetchNextPackNumber = (series: string) =>
+  get<{ packNumber: number }>(
+    `/api/admin/openings/next?${new URLSearchParams({ series })}`,
+  );
 export const fetchTransactions = () =>
   get<TxnRecord[]>("/api/admin/transactions");
 

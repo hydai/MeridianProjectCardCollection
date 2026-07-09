@@ -7,17 +7,19 @@ import {
   getOverview,
 } from "../../src/worker/db/queries";
 
-const ownedOf = (cells: OverviewCell[], s: string, ch: string, r: string) =>
-  cells.find((c) => c.series === s && c.character === ch && c.rarity === r)
-    ?.owned ?? 0;
+const cellOf = (cells: OverviewCell[], s: string, ch: string, r: string) =>
+  cells.find((c) => c.series === s && c.character === ch && c.rarity === r);
 
-describe("getOverview give-side pre-deduction", () => {
-  it("subtracts a pending give from the displayed owned count", async () => {
+const ownedOf = (cells: OverviewCell[], s: string, ch: string, r: string) =>
+  cellOf(cells, s, ch, r)?.owned ?? 0;
+
+describe("getOverview pending availability", () => {
+  it("preserves physical ownership and reports reserved and available counts", async () => {
     await addCards(env.DB, [
       { series: "KILLER", character: "Yuzumi", rarity: "R" },
       { series: "KILLER", character: "Yuzumi", rarity: "R" },
     ]);
-    const before = ownedOf(
+    const before = cellOf(
       (await getOverview(env.DB)).cells,
       "KILLER",
       "Yuzumi",
@@ -28,13 +30,15 @@ describe("getOverview give-side pre-deduction", () => {
       give: [{ series: "KILLER", character: "Yuzumi", rarity: "R", qty: 1 }],
       receive: [],
     });
-    const after = ownedOf(
+    const after = cellOf(
       (await getOverview(env.DB)).cells,
       "KILLER",
       "Yuzumi",
       "R",
     );
-    expect(after).toBe(before - 1);
+    expect(after?.owned).toBe(before?.owned);
+    expect(after?.reserved).toBe((before?.reserved ?? 0) + 1);
+    expect(after?.available).toBe((before?.available ?? 0) - 1);
   });
 
   it("keeps owned >= 1 and leaves collection progress unchanged (give comes from a duplicate)", async () => {
@@ -57,7 +61,10 @@ describe("getOverview give-side pre-deduction", () => {
     });
 
     const ov2 = await getOverview(env.DB);
-    expect(ownedOf(ov2.cells, "BUNNY GIRL", "Yuzumi", "SSR")).toBe(owned1 - 1);
+    expect(ownedOf(ov2.cells, "BUNNY GIRL", "Yuzumi", "SSR")).toBe(owned1);
+    expect(cellOf(ov2.cells, "BUNNY GIRL", "Yuzumi", "SSR")?.available).toBe(
+      (cellOf(ov1.cells, "BUNNY GIRL", "Yuzumi", "SSR")?.available ?? 0) - 1,
+    );
     expect(
       ownedOf(ov2.cells, "BUNNY GIRL", "Yuzumi", "SSR"),
     ).toBeGreaterThanOrEqual(1);

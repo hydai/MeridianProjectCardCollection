@@ -23,6 +23,8 @@
   --text-quaternary: #46433e;
   --primary: #c9a14a;
   --primary-dim: #8a7438;
+  --reservation: #dfa45c;
+  --reservation-soft: rgba(223, 164, 92, 0.16);
 
   --r-color: #9a958b;
   --sr-color: #d4a857;
@@ -89,6 +91,7 @@
   --color-rarity-sr: var(--rarity-sr);
   --color-rarity-ssr: var(--rarity-ssr);
   --color-rarity-ur: var(--rarity-ur);
+  --color-reservation: var(--reservation);
 
   /* brand: fonts → font-sans / font-serif / font-accent / font-mono */
   --font-sans: "IBM Plex Sans TC", "IBM Plex Sans", -apple-system,

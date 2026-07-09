@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { Fragment } from "react";
-import { type Matrix, RARITIES, exists, getN } from "../collection";
+import { type Matrix, RARITIES, exists, existsR, getN } from "../collection";
 import {
   CARD_COUNT,
   CARD_HEADER,
@@ -17,18 +17,25 @@ export function Wishlist({ m }: { m: Matrix }) {
       .map((_s, si) => si)
       .filter((si) => exists(m, si, ci));
     const missingBySeries = seriesIdxs.map((si) => {
-      const missing = RARITIES.map((name, ri) => ({
-        name,
-        ri,
-        count: getN(m, si, ci, ri),
-      })).filter((x) => x.count === 0);
-      return { seriesName: m.series[si], missing };
+      const slots = RARITIES.flatMap((name, ri) =>
+        existsR(m, si, ci, ri)
+          ? [{ name, ri, count: getN(m, si, ci, ri) }]
+          : [],
+      );
+      return {
+        seriesName: m.series[si],
+        missing: slots.filter((slot) => slot.count === 0),
+        totalSlots: slots.length,
+      };
     });
     const totalMissing = missingBySeries.reduce(
       (sum, x) => sum + x.missing.length,
       0,
     );
-    const totalSlots = seriesIdxs.length * RARITIES.length;
+    const totalSlots = missingBySeries.reduce(
+      (sum, entry) => sum + entry.totalSlots,
+      0,
+    );
     return { charName, missingBySeries, totalMissing, totalSlots };
   });
 
@@ -43,7 +50,7 @@ export function Wishlist({ m }: { m: Matrix }) {
         sum +
         m.characters.reduce(
           (acc, _c, ci) =>
-            acc + (exists(m, si, ci) && getN(m, si, ci, ri) === 0 ? 1 : 0),
+            acc + (existsR(m, si, ci, ri) && getN(m, si, ci, ri) === 0 ? 1 : 0),
           0,
         ),
       0,

@@ -1,11 +1,17 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { todayLocal } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { RARITIES, SERIES, charactersFor } from "../../../seed/catalog-def";
-import type { CardRow, Rarity } from "../../shared/types";
-import { listCards, patchCard, postTransaction } from "../api";
+import type {
+  CardRow,
+  CardStatus,
+  CatalogSeries,
+  Rarity,
+} from "../../shared/types";
+import { fetchCatalog, listCards, patchCard, postTransaction } from "../api";
 import {
   ACTION_FORM,
   BTN_GHOST_SM,
@@ -14,8 +20,8 @@ import {
   ERROR_TEXT,
   FIELD,
   FIELD_LABEL,
-  FILTERS,
   INLINE_FIELDS,
+  OPT_TOGGLE,
   PANEL,
   PANEL_TITLE,
   PILL_BASE,
@@ -30,6 +36,32 @@ import {
 } from "./ui";
 
 type ActionKind = "list_sale" | "list_trade" | "sale" | "trade";
+type StatusFilter = "active" | CardStatus;
+
+type FilterValue = string | number;
+
+interface FilterOption<T extends FilterValue> {
+  value: T;
+  label: string;
+}
+
+const ALL_FILTER_VALUE = "all:";
+const encodeFilterValue = (value: FilterValue) => `value:${String(value)}`;
+const ACTIVE_STATUSES = new Set<CardStatus>(["owned", "for_sale", "for_trade"]);
+const RARITY_ORDER: Rarity[] = ["R", "SR", "SSR", "UR"];
+const FILTER_BUTTON = cn(
+  OPT_TOGGLE,
+  "min-h-8 max-w-full break-words px-3 py-1.5 text-center text-xs whitespace-normal tracking-[0.04em]",
+);
+
+const STATUS_FILTER_OPTIONS: FilterOption<StatusFilter>[] = [
+  { value: "active", label: "持有中（可管理）" },
+  { value: "owned", label: "純持有" },
+  { value: "for_sale", label: "待售" },
+  { value: "for_trade", label: "待換" },
+  { value: "sold", label: "已售出" },
+  { value: "traded", label: "已交換" },
+];
 
 const STATUS_LABEL: Record<string, string> = {
   owned: "持有",
@@ -39,13 +71,65 @@ const STATUS_LABEL: Record<string, string> = {
   traded: "已交換",
 };
 
+function FilterButtonGroup<T extends FilterValue>({
+  label,
+  allLabel,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  allLabel: string;
+  value: T | null;
+  options: FilterOption<T>[];
+  onChange: (value: T | null) => void;
+}) {
+  return (
+    <div className="grid grid-cols-[76px_minmax(0,1fr)] items-start gap-3 max-[600px]:grid-cols-1 max-[600px]:gap-1.5">
+      <span className={cn(FIELD_LABEL, "pt-2 max-[600px]:pt-0")}>{label}</span>
+      <ToggleGroup
+        type="single"
+        value={value === null ? ALL_FILTER_VALUE : encodeFilterValue(value)}
+        onValueChange={(next) => {
+          if (!next) return;
+          if (next === ALL_FILTER_VALUE) {
+            onChange(null);
+            return;
+          }
+          const selected = options.find(
+            (option) => encodeFilterValue(option.value) === next,
+          );
+          if (selected) onChange(selected.value);
+        }}
+        aria-label={`${label}篩選`}
+        className="flex w-full flex-wrap justify-start gap-1.5 rounded-none"
+      >
+        <ToggleGroupItem value={ALL_FILTER_VALUE} className={FILTER_BUTTON}>
+          {allLabel}
+        </ToggleGroupItem>
+        {options.map((option) => (
+          <ToggleGroupItem
+            key={String(option.value)}
+            value={encodeFilterValue(option.value)}
+            className={FILTER_BUTTON}
+          >
+            {option.label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </div>
+  );
+}
+
 function ActionForm({
   card,
+  catalog,
   kind,
   onDone,
   onCancel,
 }: {
   card: CardRow;
+  catalog: CatalogSeries[];
   kind: ActionKind;
   onDone: () => void;
   onCancel: () => void;
@@ -53,13 +137,15 @@ function ActionForm({
   const [price, setPrice] = useState("");
   const [want, setWant] = useState("");
   const [counterparty, setCounterparty] = useState("");
-  const [happenedAt, setHappenedAt] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
-  const [rSeries, setRSeries] = useState(SERIES[0]);
-  const rChars = charactersFor(rSeries);
-  const [rChar, setRChar] = useState(rChars[0]);
-  const [rRarity, setRRarity] = useState<Rarity>("R");
+  const [happenedAt, setHappenedAt] = useState(todayLocal);
+  const firstSeries = catalog[0];
+  const [rSeries, setRSeries] = useState(firstSeries?.name ?? "");
+  const selectedSeries =
+    catalog.find((entry) => entry.name === rSeries) ?? firstSeries;
+  const rChars = selectedSeries?.characters ?? [];
+  const rRarities = selectedSeries?.rarities ?? [];
+  const [rChar, setRChar] = useState(rChars[0] ?? "");
+  const [rRarity, setRRarity] = useState<Rarity>(rRarities[0] ?? "R");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -157,13 +243,17 @@ function ActionForm({
                 className={CONTROL}
                 value={rSeries}
                 onChange={(e) => {
+                  const next = catalog.find(
+                    (entry) => entry.name === e.target.value,
+                  );
                   setRSeries(e.target.value);
-                  setRChar(charactersFor(e.target.value)[0]);
+                  setRChar(next?.characters[0] ?? "");
+                  setRRarity(next?.rarities[0] ?? "R");
                 }}
               >
-                {SERIES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                {catalog.map((entry) => (
+                  <option key={entry.name} value={entry.name}>
+                    {entry.name}
                   </option>
                 ))}
               </select>
@@ -189,7 +279,7 @@ function ActionForm({
                 value={rRarity}
                 onChange={(e) => setRRarity(e.target.value as Rarity)}
               >
-                {RARITIES.map((rr) => (
+                {rRarities.map((rr) => (
                   <option key={rr} value={rr}>
                     {rr}
                   </option>
@@ -221,9 +311,15 @@ function ActionForm({
 }
 
 export function ManageCards() {
-  const [filterSeries, setFilterSeries] = useState("");
-  const [filterStatus, setFilterStatus] = useState("active");
+  const [filterVolume, setFilterVolume] = useState<number | null>(null);
+  const [filterSeries, setFilterSeries] = useState<string | null>(null);
+  const [filterCharacter, setFilterCharacter] = useState<string | null>(null);
+  const [filterRarity, setFilterRarity] = useState<Rarity | null>(null);
+  const [filterStatus, setFilterStatus] = useState<StatusFilter | null>(
+    "active",
+  );
   const [rows, setRows] = useState<CardRow[] | null>(null);
+  const [catalog, setCatalog] = useState<CatalogSeries[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [action, setAction] = useState<{
     cardId: number;
@@ -233,198 +329,311 @@ export function ManageCards() {
   const reload = useCallback(() => {
     setRows(null);
     setError(null);
-    listCards({
-      series: filterSeries || undefined,
-      status: filterStatus || undefined,
-    })
+    listCards()
       .then(setRows)
       .catch((e) => setError(String(e)));
-  }, [filterSeries, filterStatus]);
+  }, []);
 
   useEffect(() => {
     reload();
   }, [reload]);
+
+  useEffect(() => {
+    fetchCatalog()
+      .then(setCatalog)
+      .catch((e) => setError(String(e)));
+  }, []);
 
   const onDone = () => {
     setAction(null);
     reload();
   };
 
+  const allCatalog = catalog ?? [];
+  const volumeOptions: FilterOption<number>[] = Array.from(
+    new Set(allCatalog.map((entry) => entry.volume)),
+  )
+    .sort((a, b) => a - b)
+    .map((volume) => ({ value: volume, label: `第 ${volume} 彈` }));
+  const catalogInVolume = allCatalog.filter(
+    (entry) => filterVolume === null || entry.volume === filterVolume,
+  );
+  const seriesOptions: FilterOption<string>[] = catalogInVolume.map(
+    (entry) => ({ value: entry.name, label: entry.name }),
+  );
+  const catalogInSeries = catalogInVolume.filter(
+    (entry) => filterSeries === null || entry.name === filterSeries,
+  );
+  const characterOptions: FilterOption<string>[] = Array.from(
+    new Set(catalogInSeries.flatMap((entry) => entry.characters)),
+  ).map((character) => ({ value: character, label: character }));
+  const rarityOptions: FilterOption<Rarity>[] = RARITY_ORDER.filter((rarity) =>
+    catalogInSeries.some((entry) => entry.rarities.includes(rarity)),
+  ).map((rarity) => ({ value: rarity, label: rarity }));
+  const volumeBySeries = new Map(
+    allCatalog.map((entry) => [entry.name, entry.volume]),
+  );
+  const filteredRows = (rows ?? []).filter((card) => {
+    const matchesStatus =
+      filterStatus === null ||
+      (filterStatus === "active"
+        ? ACTIVE_STATUSES.has(card.status)
+        : card.status === filterStatus);
+    return (
+      matchesStatus &&
+      (filterVolume === null ||
+        volumeBySeries.get(card.series) === filterVolume) &&
+      (filterSeries === null || card.series === filterSeries) &&
+      (filterCharacter === null || card.character === filterCharacter) &&
+      (filterRarity === null || card.rarity === filterRarity)
+    );
+  });
+
   return (
     <section className={PANEL}>
       <h2 className={PANEL_TITLE}>卡片管理</h2>
-      <div className={FILTERS}>
-        <label className={cn(FIELD, "min-w-[150px]")}>
-          <span className={FIELD_LABEL}>系列</span>
-          <select
-            className={CONTROL}
-            value={filterSeries}
-            onChange={(e) => setFilterSeries(e.target.value)}
-          >
-            <option value="">全部系列</option>
-            {SERIES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={cn(FIELD, "min-w-[150px]")}>
-          <span className={FIELD_LABEL}>狀態</span>
-          <select
-            className={CONTROL}
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="active">持有中（可管理）</option>
-            <option value="for_sale">待售</option>
-            <option value="for_trade">待換</option>
-            <option value="owned">純持有</option>
-            <option value="sold">已售出</option>
-            <option value="traded">已交換</option>
-          </select>
-        </label>
+      <div className="card-filters mb-[18px] flex flex-col gap-3 rounded-[4px] border-[0.5px] border-border bg-[var(--bg-subtle)] p-3.5">
+        <FilterButtonGroup
+          label="彈數"
+          allLabel="全部彈數"
+          value={filterVolume}
+          options={volumeOptions}
+          onChange={(volume) => {
+            setFilterVolume(volume);
+            setFilterSeries(null);
+            setFilterCharacter(null);
+            setFilterRarity(null);
+            setAction(null);
+          }}
+        />
+        <FilterButtonGroup
+          label="系列"
+          allLabel="全部系列"
+          value={filterSeries}
+          options={seriesOptions}
+          onChange={(series) => {
+            setFilterSeries(series);
+            setFilterCharacter(null);
+            setFilterRarity(null);
+            setAction(null);
+          }}
+        />
+        <FilterButtonGroup
+          label="角色"
+          allLabel="全部角色"
+          value={filterCharacter}
+          options={characterOptions}
+          onChange={(character) => {
+            setFilterCharacter(character);
+            setAction(null);
+          }}
+        />
+        <FilterButtonGroup
+          label="級別"
+          allLabel="全部級別"
+          value={filterRarity}
+          options={rarityOptions}
+          onChange={(rarity) => {
+            setFilterRarity(rarity);
+            setAction(null);
+          }}
+        />
+        <FilterButtonGroup
+          label="狀態"
+          allLabel="全部狀態"
+          value={filterStatus}
+          options={STATUS_FILTER_OPTIONS}
+          onChange={(status) => {
+            setFilterStatus(status);
+            setAction(null);
+          }}
+        />
       </div>
 
       {error ? <div className={ERROR_TEXT}>{error}</div> : null}
-      {rows === null ? (
-        <div className={STATE_MSG}>載入中…</div>
-      ) : rows.length === 0 ? (
+      {rows !== null && catalog !== null ? (
+        <output
+          className="mb-3 block font-mono text-[11px] text-[var(--text-tertiary)]"
+          aria-live="polite"
+        >
+          顯示 {filteredRows.length} / {rows.length} 張
+        </output>
+      ) : null}
+      {rows === null || catalog === null ? (
+        error ? null : (
+          <div className={STATE_MSG}>載入中…</div>
+        )
+      ) : filteredRows.length === 0 ? (
         <div className={EMPTY_MSG}>沒有符合的卡片。</div>
       ) : (
-        <table className={TABLE}>
-          <thead>
-            <tr>
-              <th className={TH}>系列</th>
-              <th className={TH}>角色</th>
-              <th className={TH}>稀有度</th>
-              <th className={TH}>狀態</th>
-              <th className={TH}>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((card) => {
-              const isActive =
-                card.status === "owned" ||
-                card.status === "for_sale" ||
-                card.status === "for_trade";
-              const open = action?.cardId === card.id;
-              return (
-                <Fragment key={card.id}>
-                  <tr>
-                    <td className={TD}>{card.series}</td>
-                    <td className={TD}>{card.character}</td>
-                    <td className={TD}>
-                      <span className={cn(PILL_BASE, PILL_RARITY[card.rarity])}>
-                        {card.rarity}
-                      </span>
-                    </td>
-                    <td className={TD}>
-                      <span className={cn(PILL_BASE, PILL_STATUS[card.status])}>
-                        {STATUS_LABEL[card.status]}
-                      </span>
-                      {card.duplicate && isActive ? (
-                        <span className={cn(PILL_BASE, PILL_DUP, "ml-1.5")}>
-                          重複
-                        </span>
-                      ) : null}
-                      {card.reservedGive > 0 && isActive ? (
+        <div className="overflow-x-auto">
+          <table className={cn(TABLE, "min-w-[760px]")}>
+            <thead>
+              <tr>
+                <th className={TH}>系列</th>
+                <th className={TH}>角色</th>
+                <th className={TH}>稀有度</th>
+                <th className={TH}>取得方式</th>
+                <th className={TH}>狀態</th>
+                <th className={TH}>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((card) => {
+                const isActive =
+                  card.status === "owned" ||
+                  card.status === "for_sale" ||
+                  card.status === "for_trade";
+                const open = action?.cardId === card.id;
+                return (
+                  <Fragment key={card.id}>
+                    <tr
+                      className={cn(
+                        card.reserved &&
+                          isActive &&
+                          "[&_td]:bg-[var(--reservation-soft)] hover:[&_td]:bg-reservation/20",
+                      )}
+                    >
+                      <td className={TD}>{card.series}</td>
+                      <td className={TD}>{card.character}</td>
+                      <td className={TD}>
                         <span
-                          className={cn(PILL_BASE, PILL_RESERVED, "ml-1.5")}
+                          className={cn(PILL_BASE, PILL_RARITY[card.rarity])}
                         >
-                          預約中 ×{card.reservedGive}
+                          {card.rarity}
                         </span>
-                      ) : null}
-                      {card.status === "for_sale" &&
-                      card.askingPrice != null ? (
-                        <span className="ml-2">{card.askingPrice} 元</span>
-                      ) : null}
-                      {card.status === "for_trade" && card.wantInReturn ? (
-                        <span className="ml-2 text-[var(--text-tertiary)]">
-                          想換：{card.wantInReturn}
+                      </td>
+                      <td className={TD}>
+                        {card.source === "pull"
+                          ? "開卡"
+                          : card.source === "purchase"
+                            ? `購入${
+                                card.purchasePrice != null
+                                  ? ` · ${card.purchasePrice} 元`
+                                  : ""
+                              }`
+                            : "交換換入"}
+                      </td>
+                      <td className={TD}>
+                        <span
+                          className={cn(PILL_BASE, PILL_STATUS[card.status])}
+                        >
+                          {STATUS_LABEL[card.status]}
                         </span>
-                      ) : null}
-                    </td>
-                    <td className={TD}>
-                      {isActive ? (
-                        <div className={ROW_ACTIONS}>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className={BTN_GHOST_SM}
-                            onClick={() =>
-                              setAction({ cardId: card.id, kind: "list_sale" })
-                            }
+                        {card.duplicate && isActive ? (
+                          <span className={cn(PILL_BASE, PILL_DUP, "ml-1.5")}>
+                            重複
+                          </span>
+                        ) : null}
+                        {card.reserved && isActive ? (
+                          <span
+                            className={cn(PILL_BASE, PILL_RESERVED, "ml-1.5")}
                           >
-                            待售
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className={BTN_GHOST_SM}
-                            onClick={() =>
-                              setAction({ cardId: card.id, kind: "list_trade" })
-                            }
-                          >
-                            待換
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className={BTN_GHOST_SM}
-                            onClick={() =>
-                              setAction({ cardId: card.id, kind: "sale" })
-                            }
-                          >
-                            賣出
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className={BTN_GHOST_SM}
-                            onClick={() =>
-                              setAction({ cardId: card.id, kind: "trade" })
-                            }
-                          >
-                            交換
-                          </Button>
-                          {card.status !== "owned" ? (
+                            暫定換出
+                          </span>
+                        ) : null}
+                        {card.status === "for_sale" &&
+                        card.askingPrice != null ? (
+                          <span className="ml-2">{card.askingPrice} 元</span>
+                        ) : null}
+                        {card.status === "for_trade" && card.wantInReturn ? (
+                          <span className="ml-2 text-[var(--text-tertiary)]">
+                            想換：{card.wantInReturn}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className={TD}>
+                        {isActive && !card.reserved ? (
+                          <div className={ROW_ACTIONS}>
                             <Button
                               type="button"
                               variant="outline"
                               className={BTN_GHOST_SM}
-                              onClick={() => {
-                                patchCard(card.id, { status: "owned" })
-                                  .then(reload)
-                                  .catch(() => {});
-                              }}
+                              onClick={() =>
+                                setAction({
+                                  cardId: card.id,
+                                  kind: "list_sale",
+                                })
+                              }
                             >
-                              取消上架
+                              待售
                             </Button>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <span className="text-[var(--text-quaternary)]">—</span>
-                      )}
-                    </td>
-                  </tr>
-                  {open && action ? (
-                    <tr>
-                      <td className={TD} colSpan={5}>
-                        <ActionForm
-                          card={card}
-                          kind={action.kind}
-                          onDone={onDone}
-                          onCancel={() => setAction(null)}
-                        />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className={BTN_GHOST_SM}
+                              onClick={() =>
+                                setAction({
+                                  cardId: card.id,
+                                  kind: "list_trade",
+                                })
+                              }
+                            >
+                              待換
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className={BTN_GHOST_SM}
+                              onClick={() =>
+                                setAction({ cardId: card.id, kind: "sale" })
+                              }
+                            >
+                              賣出
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className={BTN_GHOST_SM}
+                              onClick={() =>
+                                setAction({ cardId: card.id, kind: "trade" })
+                              }
+                            >
+                              交換
+                            </Button>
+                            {card.status !== "owned" ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className={BTN_GHOST_SM}
+                                onClick={() => {
+                                  patchCard(card.id, { status: "owned" })
+                                    .then(reload)
+                                    .catch(() => {});
+                                }}
+                              >
+                                取消上架
+                              </Button>
+                            ) : null}
+                          </div>
+                        ) : card.reserved && isActive ? (
+                          <span className="text-reservation">已鎖定</span>
+                        ) : (
+                          <span className="text-[var(--text-quaternary)]">
+                            —
+                          </span>
+                        )}
                       </td>
                     </tr>
-                  ) : null}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+                    {open && action ? (
+                      <tr>
+                        <td className={TD} colSpan={6}>
+                          <ActionForm
+                            card={card}
+                            catalog={catalog}
+                            kind={action.kind}
+                            onDone={onDone}
+                            onCancel={() => setAction(null)}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );

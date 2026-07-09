@@ -23,7 +23,7 @@ import {
   type TradeItem,
   type TradeListLanguage,
   computeTradeWithPending,
-  exists,
+  existsR,
   formatTradeLabel,
   formatTradeList,
 } from "../collection";
@@ -44,9 +44,13 @@ type Filter = "all" | RarityKey;
 type TradeMode = "list" | "grid";
 
 interface PendingRow {
+  give: PendingSide | null;
+  receive: PendingSide | null;
+}
+
+interface PendingSide {
   rarity: (typeof RARITIES)[number];
-  give: string | null;
-  receive: string | null;
+  label: string;
 }
 
 // Expand by qty and pair give/receive by rarity for a compact display table.
@@ -72,9 +76,8 @@ function pendingRows(
     const gi = g[i];
     const ri = r[i];
     rows.push({
-      rarity: (gi ?? ri).rarity,
-      give: gi ? label(gi) : null,
-      receive: ri ? label(ri) : null,
+      give: gi ? { rarity: gi.rarity, label: label(gi) } : null,
+      receive: ri ? { rarity: ri.rarity, label: label(ri) } : null,
     });
   }
   return rows;
@@ -86,14 +89,13 @@ function PendingCard({
 }: { p: PublicPendingTrade; language: TradeListLanguage }) {
   const rows = pendingRows(p.give, p.receive, language);
   return (
-    <Card className="mt-3 gap-0 rounded-[10px] border border-border bg-card px-3.5 py-3 ring-0">
+    <Card className="mt-3 gap-0 rounded-[6px] border border-border bg-card px-3.5 py-3 ring-0">
       <div className="mb-1.5 text-xs text-[var(--text-tertiary)]">
         {p.reservedAt}
       </div>
       <Table>
         <TableHeader>
           <TableRow className="border-0 hover:bg-transparent">
-            <TableHead className="h-auto px-2 py-1 text-left">稀有度</TableHead>
             <TableHead className="h-auto px-2 py-1 text-left">給出</TableHead>
             <TableHead className="h-auto px-2 py-1 text-left">換入</TableHead>
           </TableRow>
@@ -101,20 +103,34 @@ function PendingCard({
         <TableBody>
           {rows.map((row, i) => (
             <TableRow
-              key={`${row.rarity}-${i}`}
+              key={`${row.give?.rarity ?? "none"}-${row.receive?.rarity ?? "none"}-${i}`}
               className="border-0 hover:bg-transparent"
             >
-              <TableCell className="px-2 py-1">
-                <MissChip
-                  ri={RARITIES.indexOf(row.rarity)}
-                  label={row.rarity}
-                />
+              <TableCell className="px-2 py-1 text-left text-foreground">
+                {row.give ? (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <MissChip
+                      ri={RARITIES.indexOf(row.give.rarity)}
+                      label={row.give.rarity}
+                    />
+                    {row.give.label}
+                  </span>
+                ) : (
+                  "—"
+                )}
               </TableCell>
               <TableCell className="px-2 py-1 text-left text-foreground">
-                {row.give ?? "—"}
-              </TableCell>
-              <TableCell className="px-2 py-1 text-left text-foreground">
-                {row.receive ?? "—"}
+                {row.receive ? (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <MissChip
+                      ri={RARITIES.indexOf(row.receive.rarity)}
+                      label={row.receive.rarity}
+                    />
+                    {row.receive.label}
+                  </span>
+                ) : (
+                  "—"
+                )}
               </TableCell>
             </TableRow>
           ))}
@@ -273,7 +289,7 @@ function TradeGrid({
                   const si = c.si;
                   const startCls = localRi === 0 ? TG_BORDER_STRONG_L : "";
                   const cellKey = `${m.series[si]}-${RARITIES[ri]}`;
-                  if (!exists(m, si, ci)) {
+                  if (!existsR(m, si, ci, ri)) {
                     return (
                       <td
                         key={cellKey}

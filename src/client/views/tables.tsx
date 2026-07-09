@@ -8,7 +8,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { type Matrix, RARITIES, exists, getN, sumRow } from "../collection";
+import {
+  type Matrix,
+  RARITIES,
+  exists,
+  existsR,
+  getN,
+  getReservedN,
+  sumRow,
+} from "../collection";
 import {
   CARD_COUNT,
   CARD_HEADER,
@@ -32,6 +40,23 @@ const RARITY_TITLE = [
   "text-rarity-ssr",
   "text-rarity-ur",
 ] as const;
+
+function CatalogNumCell({
+  m,
+  si,
+  ci,
+  ri,
+}: { m: Matrix; si: number; ci: number; ri: number }) {
+  return existsR(m, si, ci, ri) ? (
+    <NumCell
+      n={getN(m, si, ci, ri)}
+      ri={ri}
+      reserved={getReservedN(m, si, ci, ri)}
+    />
+  ) : (
+    <TableCell className="text-center text-muted-foreground/40">—</TableCell>
+  );
+}
 
 export function ByCharacter({ m }: { m: Matrix }) {
   return (
@@ -96,9 +121,11 @@ export function ByCharacter({ m }: { m: Matrix }) {
                           {m.series[si]}
                         </TableCell>
                         {RARITIES.map((rarity, ri) => (
-                          <NumCell
+                          <CatalogNumCell
                             key={rarity}
-                            n={getN(m, si, ci, ri)}
+                            m={m}
+                            si={si}
+                            ci={ci}
                             ri={ri}
                           />
                         ))}
@@ -197,9 +224,11 @@ export function BySeries({ m }: { m: Matrix }) {
                           {m.characters[ci]}
                         </TableCell>
                         {RARITIES.map((rarity, ri) => (
-                          <NumCell
+                          <CatalogNumCell
                             key={rarity}
-                            n={getN(m, si, ci, ri)}
+                            m={m}
+                            si={si}
+                            ci={ci}
                             ri={ri}
                           />
                         ))}
@@ -288,18 +317,15 @@ export function ByRarity({ m }: { m: Matrix }) {
                     return (
                       <TableRow key={charName}>
                         <TableCell className={NAME_CELL}>{charName}</TableCell>
-                        {m.series.map((s, si) =>
-                          exists(m, si, ci) ? (
-                            <NumCell key={s} n={getN(m, si, ci, ri)} ri={ri} />
-                          ) : (
-                            <TableCell
-                              key={s}
-                              className="text-center text-muted-foreground/40"
-                            >
-                              —
-                            </TableCell>
-                          ),
-                        )}
+                        {m.series.map((s, si) => (
+                          <CatalogNumCell
+                            key={s}
+                            m={m}
+                            si={si}
+                            ci={ci}
+                            ri={ri}
+                          />
+                        ))}
                         <TableCell
                           className={cn(
                             TOTAL_CELL,

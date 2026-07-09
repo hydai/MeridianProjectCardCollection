@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildCatalog } from "../../seed/catalog-def";
 import { AddCards } from "../../src/client/admin/AddCards";
@@ -14,68 +20,114 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const catalogJson = [
+  {
+    name: "NEW YEAR",
+    volume: 1,
+    sortOrder: 0,
+    characters: ["Mizuki", "Rei"],
+    rarities: ["R", "SR", "SSR", "UR"],
+  },
+  {
+    name: "MP 4TH",
+    volume: 2,
+    sortOrder: 1,
+    characters: ["Mizuki", "KSP"],
+    rarities: ["SSR", "UR"],
+  },
+];
+
+function stubAddCardsFetch(
+  postResult: unknown = {
+    ids: [101],
+    opening: { id: 4, packNumber: 7 },
+  },
+) {
+  return vi.fn(async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST" && url === "/api/admin/cards") {
+      return { ok: true, json: async () => postResult };
+    }
+    if (url.includes("catalog")) {
+      return { ok: true, json: async () => catalogJson };
+    }
+    return {
+      ok: true,
+      json: async () => ({ series: "NEW YEAR", packNumber: 7 }),
+    };
+  });
+}
+
 describe("AddCards", () => {
-  it("disables the submit button while the tally is empty", () => {
+  it("loads card choices from the catalog and disables an empty pack", async () => {
+    vi.stubGlobal("fetch", stubAddCardsFetch());
     render(<AddCards />);
-    expect(screen.getByRole("button", { name: "新增 0 張" })).toBeDisabled();
-    expect(screen.getByText("點上方角色加入卡片")).toBeInTheDocument();
-  });
 
-  it("adds a tapped character at the selected rarity and submits via POST", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
-      ok: true,
-      json: async () => ({ ids: [101] }),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<AddCards />);
-    // Defaults: series "NEW YEAR", rarity "R".
-    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
-    fireEvent.click(screen.getByRole("button", { name: "新增 1 張" }));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("/api/admin/cards");
-    expect(init.method).toBe("POST");
-    const body = JSON.parse(init.body as string);
-    expect(body.cards).toHaveLength(1);
-    expect(body.cards[0]).toMatchObject({
-      series: "NEW YEAR",
-      character: "Mizuki",
-      rarity: "R",
-    });
-
-    await waitFor(() =>
-      expect(screen.getByText(/已新增 1 張/)).toBeInTheDocument(),
-    );
-  });
-
-  it("increments quantity when the same character+rarity is tapped again", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
-      ok: true,
-      json: async () => ({ ids: [1, 2] }),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<AddCards />);
-    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
-    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
-    expect(screen.getByText("×2")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "新增 2 張" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body.cards).toHaveLength(2);
     expect(
-      body.cards.every(
-        (c: { character: string; rarity: string }) =>
-          c.character === "Mizuki" && c.rarity === "R",
-      ),
-    ).toBe(true);
+      await screen.findByRole("button", { name: "NEW YEAR" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mizuki" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Koyuki" })).toBeNull();
+    expect(
+      await screen.findByRole("button", { name: "記錄第 7 包（0 張）" }),
+    ).toBeDisabled();
   });
 
-  it("adds at the chosen rarity and decrements a row with its remove button", () => {
+  it("submits exactly one opening per pack and advances the server pack number", async () => {
+    const fetchMock = stubAddCardsFetch({
+      ids: [101, 102],
+      opening: { id: 4, packNumber: 7 },
+    });
+    vi.stubGlobal("fetch", fetchMock);
     render(<AddCards />);
+
+    await screen.findByRole("button", { name: "記錄第 7 包（0 張）" });
+    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
+    fireEvent.change(screen.getByLabelText("開卡日期"), {
+      target: { value: "2026-07-10" },
+    });
+    fireEvent.change(screen.getByLabelText("本包花費 (TWD)"), {
+      target: { value: "120" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "記錄第 7 包（2 張）" }),
+    );
+
+    await screen.findByText("第 7 包已記錄（2 張）");
+    const posts = fetchMock.mock.calls.filter(
+      ([url, init]) => url === "/api/admin/cards" && init?.method === "POST",
+    );
+    expect(posts).toHaveLength(1);
+    const body = JSON.parse(posts[0][1]?.body as string);
+    expect(body.opening).toEqual({
+      series: "NEW YEAR",
+      openedAt: "2026-07-10",
+      cost: 120,
+    });
+    expect(body.cards).toEqual([
+      {
+        series: "NEW YEAR",
+        character: "Mizuki",
+        rarity: "R",
+        source: "pull",
+      },
+      {
+        series: "NEW YEAR",
+        character: "Mizuki",
+        rarity: "R",
+        source: "pull",
+      },
+    ]);
+    expect(
+      screen.getByRole("button", { name: "記錄第 8 包（0 張）" }),
+    ).toBeDisabled();
+  });
+
+  it("increments and removes cards from the current pack tally", async () => {
+    vi.stubGlobal("fetch", stubAddCardsFetch());
+    render(<AddCards />);
+
+    await screen.findByRole("button", { name: "Rei" });
     fireEvent.click(screen.getByRole("button", { name: "SR" }));
     fireEvent.click(screen.getByRole("button", { name: "Rei" }));
     fireEvent.click(screen.getByRole("button", { name: "Rei" }));
@@ -85,170 +137,104 @@ describe("AddCards", () => {
       screen.getByRole("button", { name: "移除 NEW YEAR Rei SR" }),
     );
     expect(screen.getByText("×1")).toBeInTheDocument();
+  });
+
+  it("locks the pack series until the current tally is empty", async () => {
+    vi.stubGlobal("fetch", stubAddCardsFetch());
+    render(<AddCards />);
+
+    await screen.findByRole("button", { name: "Mizuki" });
+    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
+    expect(screen.getByText("×1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "MP 4TH" })).toBeDisabled();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "移除 NEW YEAR Rei SR" }),
+      screen.getByRole("button", { name: "移除 NEW YEAR Mizuki R" }),
     );
-    expect(screen.queryByText("×1")).toBeNull();
-    expect(screen.getByText("點上方角色加入卡片")).toBeInTheDocument();
-  });
-
-  it("submits each card under the series it was added in, not the last-selected series", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
-      ok: true,
-      json: async () => ({ ids: [1, 2] }),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<AddCards />);
-    // Tally a KILLER SSR, switch series, then tally a NEW YEAR SSR.
-    fireEvent.click(screen.getByRole("button", { name: "SSR" }));
-    fireEvent.click(screen.getByRole("button", { name: "KILLER" }));
-    fireEvent.click(screen.getByRole("button", { name: "Koyuki" }));
-    fireEvent.click(screen.getByRole("button", { name: "NEW YEAR" }));
-    fireEvent.click(screen.getByRole("button", { name: "Hitomi" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "新增 2 張" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body.cards).toContainEqual(
-      expect.objectContaining({
-        series: "KILLER",
-        character: "Koyuki",
-        rarity: "SSR",
-      }),
-    );
-    expect(body.cards).toContainEqual(
-      expect.objectContaining({
-        series: "NEW YEAR",
-        character: "Hitomi",
-        rarity: "SSR",
-      }),
-    );
-  });
-
-  it("keeps tally entries under their own series when the series selector changes", () => {
-    render(<AddCards />);
+    expect(screen.getByRole("button", { name: "MP 4TH" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "MP 4TH" }));
-    fireEvent.click(screen.getByRole("button", { name: "KSP" }));
-    expect(
-      screen.getByRole("button", { name: "新增 1 張" }),
-    ).toBeInTheDocument();
 
-    // Switching the selector must NOT drop the MP 4TH-only KSP row; it stays
-    // tallied under MP 4TH even though NEW YEAR has no KSP.
-    fireEvent.click(screen.getByRole("button", { name: "NEW YEAR" }));
-    expect(screen.getByText("KSP")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "新增 1 張" }),
-    ).toBeInTheDocument();
-  });
-
-  it("records a mixed-series opening with no series (NULL)", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
-      ok: true,
-      json: async () => ({ ids: [1, 2] }),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<AddCards />);
-    fireEvent.click(screen.getByRole("button", { name: "SSR" }));
-    fireEvent.click(screen.getByRole("button", { name: "KILLER" }));
-    fireEvent.click(screen.getByRole("button", { name: "Koyuki" }));
-    fireEvent.click(screen.getByRole("button", { name: "NEW YEAR" }));
-    fireEvent.click(screen.getByRole("button", { name: "Hitomi" }));
-
-    fireEvent.click(screen.getByLabelText(/這是一次開箱/));
-    fireEvent.change(screen.getByLabelText("開箱日期"), {
-      target: { value: "2026-06-28" },
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "新增 2 張" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body.opening.openedAt).toBe("2026-06-28");
-    expect(body.opening.series ?? null).toBeNull();
-  });
-
-  it("records a single-series opening under that series", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
-      ok: true,
-      json: async () => ({ ids: [1] }),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<AddCards />);
-    fireEvent.click(screen.getByRole("button", { name: "SSR" }));
-    fireEvent.click(screen.getByRole("button", { name: "KILLER" }));
-    fireEvent.click(screen.getByRole("button", { name: "Koyuki" }));
-
-    fireEvent.click(screen.getByLabelText(/這是一次開箱/));
-    fireEvent.change(screen.getByLabelText("開箱日期"), {
-      target: { value: "2026-06-28" },
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "新增 1 張" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body.opening.series).toBe("KILLER");
-  });
-
-  it("blocks submit while 開箱 is checked but the date is blank", () => {
-    render(<AddCards />);
-    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
-    expect(screen.getByRole("button", { name: "新增 1 張" })).toBeEnabled();
-
-    // Ticking 開箱 with no date must not silently drop the opening + its cost:
-    // submit stays disabled until 開箱日期 is filled.
-    fireEvent.click(screen.getByLabelText(/這是一次開箱/));
-    expect(screen.getByRole("button", { name: "新增 1 張" })).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText("開箱日期"), {
-      target: { value: "2026-06-28" },
-    });
-    expect(screen.getByRole("button", { name: "新增 1 張" })).toBeEnabled();
-  });
-
-  it("shows a required-date hint while 開箱 is checked but the date is blank", () => {
-    render(<AddCards />);
-    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
-    expect(screen.queryByText("開箱日期為必填")).not.toBeInTheDocument();
-
-    // A disabled submit alone doesn't tell the user why; the inline hint must.
-    fireEvent.click(screen.getByLabelText(/這是一次開箱/));
-    expect(screen.getByText("開箱日期為必填")).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("開箱日期"), {
-      target: { value: "2026-06-28" },
-    });
-    expect(screen.queryByText("開箱日期為必填")).not.toBeInTheDocument();
-  });
-
-  it("marks the selected series and rarity as pressed toggles", () => {
-    render(<AddCards />);
-    // Defaults: series "NEW YEAR", rarity "R".
-    expect(screen.getByRole("button", { name: "NEW YEAR" })).toHaveAttribute(
+    expect(screen.getByText("點上方角色加入本包卡片")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "KSP" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "SSR" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    expect(screen.getByRole("button", { name: "R" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.getByRole("button", { name: "SR" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    expect(screen.queryByRole("button", { name: "R" })).toBeNull();
+  });
+
+  it("requires a nonnegative purchase price and sends one purchased card without an opening", async () => {
+    const fetchMock = stubAddCardsFetch({ ids: [201] });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AddCards />);
+
+    await screen.findByRole("radio", { name: "單卡購入" });
+    fireEvent.click(screen.getByRole("radio", { name: "單卡購入" }));
     fireEvent.click(screen.getByRole("button", { name: "SR" }));
-    expect(screen.getByRole("button", { name: "SR" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    fireEvent.click(screen.getByRole("button", { name: "Rei" }));
+
+    const submit = screen.getByRole("button", { name: "記錄購入" });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("購入價格 (TWD)"), {
+      target: { value: "-1" },
+    });
+    expect(submit).toBeDisabled();
+    expect(screen.getByText("購入價格必須為 0 或正數")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("購入價格 (TWD)"), {
+      target: { value: "0" },
+    });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+
+    await screen.findByText("已記錄購入 NEW YEAR Rei SR（0 元）");
+    const post = fetchMock.mock.calls.find(
+      ([url, init]) => url === "/api/admin/cards" && init?.method === "POST",
     );
-    expect(screen.getByRole("button", { name: "R" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    const body = JSON.parse(post?.[1]?.body as string);
+    expect(body).not.toHaveProperty("opening");
+    expect(body.cards).toEqual([
+      {
+        series: "NEW YEAR",
+        character: "Rei",
+        rarity: "SR",
+        source: "purchase",
+        purchasePrice: 0,
+      },
+    ]);
+  });
+
+  it("still submits when the next-pack preview request fails", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            ids: [301],
+            opening: { id: 9, packNumber: 4 },
+          }),
+        };
+      }
+      if (url.includes("catalog")) {
+        return { ok: true, json: async () => catalogJson };
+      }
+      return { ok: false, status: 503, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AddCards />);
+
+    await screen.findByText(/503/);
+    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
+    const submit = screen.getByRole("button", { name: "記錄本包（1 張）" });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+
+    await screen.findByText("第 4 包已記錄（1 張）");
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) => url === "/api/admin/cards" && init?.method === "POST",
+      ),
+    ).toBe(true);
   });
 });
 
@@ -262,27 +248,37 @@ describe("ManageCards", () => {
         rarity: "UR",
         status: "owned",
         source: "pull",
+        purchasePrice: null,
         askingPrice: null,
         wantInReturn: null,
         note: null,
         duplicate: true,
+        reserved: false,
+        reservedGive: 0,
       },
     ];
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ ok: true, json: async () => rows })),
+      vi.fn(async (url: string) => ({
+        ok: true,
+        json: async () => (url.includes("catalog") ? catalogJson : rows),
+      })),
     );
 
     render(<ManageCards />);
-    await waitFor(() => expect(screen.getByText("Rei")).toBeInTheDocument());
-    expect(screen.getByText("重複")).toBeInTheDocument();
+    const table = await screen.findByRole("table");
+    const row = within(table).getByText("Rei").closest("tr");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText("重複")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "賣出" }));
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", { name: "賣出" }),
+    );
     expect(screen.getByText("價格 (TWD)")).toBeInTheDocument();
     expect(screen.getByText("對象")).toBeInTheDocument();
   });
 
-  it("shows a 預約中 badge for cards whose type has a pending give", async () => {
+  it("shows a 暫定換出 badge only on the allocated physical card", async () => {
     const rows = [
       {
         id: 1,
@@ -291,23 +287,33 @@ describe("ManageCards", () => {
         rarity: "SSR",
         status: "owned",
         source: "pull",
+        purchasePrice: null,
         askingPrice: null,
         wantInReturn: null,
         note: null,
         duplicate: false,
+        reserved: true,
         reservedGive: 1,
       },
     ];
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ ok: true, json: async () => rows })),
+      vi.fn(async (url: string) => ({
+        ok: true,
+        json: async () => (url.includes("catalog") ? catalogJson : rows),
+      })),
     );
     render(<ManageCards />);
-    await waitFor(() => expect(screen.getByText("Iruni")).toBeInTheDocument());
-    expect(screen.getByText(/預約中/)).toBeInTheDocument();
+    const table = await screen.findByRole("table");
+    const row = within(table).getByText("Iruni").closest("tr");
+    expect(row).not.toBeNull();
+    expect(
+      within(row as HTMLElement).getByText("暫定換出"),
+    ).toBeInTheDocument();
+    expect(within(row as HTMLElement).getByText("已鎖定")).toBeInTheDocument();
   });
 
-  it("hides the 預約中 badge on a sold/traded row even when its type is reserved", async () => {
+  it("hides the 暫定換出 badge on completed rows", async () => {
     const rows = [
       {
         id: 1,
@@ -316,20 +322,33 @@ describe("ManageCards", () => {
         rarity: "SSR",
         status: "traded",
         source: "pull",
+        purchasePrice: null,
         askingPrice: null,
         wantInReturn: null,
         note: null,
         duplicate: false,
+        reserved: true,
         reservedGive: 1,
       },
     ];
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ ok: true, json: async () => rows })),
+      vi.fn(async (url: string) => ({
+        ok: true,
+        json: async () => (url.includes("catalog") ? catalogJson : rows),
+      })),
     );
     render(<ManageCards />);
-    await waitFor(() => expect(screen.getByText("Iruni")).toBeInTheDocument());
-    expect(screen.queryByText(/預約中/)).toBeNull();
+    await screen.findByText("顯示 0 / 1 張");
+    const statusFilter = screen.getByRole("radiogroup", {
+      name: "狀態篩選",
+    });
+    fireEvent.click(
+      within(statusFilter).getByRole("radio", { name: "已交換" }),
+    );
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Iruni")).toBeInTheDocument();
+    expect(within(table).queryByText("暫定換出")).toBeNull();
   });
 });
 
@@ -542,6 +561,7 @@ describe("Openings", () => {
     const rows = [
       {
         id: 1,
+        packNumber: 12,
         series: "NEW YEAR",
         openedAt: "2026-06-01",
         cost: 600,
@@ -558,12 +578,13 @@ describe("Openings", () => {
 
     // Summary line: 1 opening, 600 spent, 600/10 = 60.0 avg per card.
     await waitFor(() => expect(screen.getByText(/共/)).toBeInTheDocument());
-    expect(screen.getByText("開箱成本")).toBeInTheDocument();
+    expect(screen.getByText("開卡成本")).toBeInTheDocument();
     // Row cells (the mono columns): date, count, cost, avg-cost.
+    expect(screen.getByText("第 12 包")).toBeInTheDocument();
     expect(screen.getByText("2026-06-01")).toBeInTheDocument();
     expect(screen.getByText("NEW YEAR")).toBeInTheDocument();
     expect(screen.getByText("600 元")).toBeInTheDocument();
-    expect(screen.getByText("60.0 元")).toBeInTheDocument();
+    expect(screen.getAllByText("60.0 元")).toHaveLength(2);
   });
 
   it("shows the empty state when there are no openings", async () => {
@@ -573,8 +594,41 @@ describe("Openings", () => {
     );
     render(<Openings />);
     await waitFor(() =>
-      expect(screen.getByText(/尚無開箱紀錄/)).toBeInTheDocument(),
+      expect(screen.getByText(/尚無開卡紀錄/)).toBeInTheDocument(),
     );
+  });
+
+  it("excludes unpriced packs from the known-cost average", async () => {
+    const rows = [
+      {
+        id: 1,
+        packNumber: 1,
+        series: "NEW YEAR",
+        openedAt: "2026-06-01",
+        cost: 600,
+        cardCount: 10,
+        avgCost: 60,
+      },
+      {
+        id: 2,
+        packNumber: 2,
+        series: "NEW YEAR",
+        openedAt: "2026-06-02",
+        cost: null,
+        cardCount: 10,
+        avgCost: null,
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => rows })),
+    );
+
+    render(<Openings />);
+    const summary = await screen.findByText(/已知成本平均每張/);
+    expect(summary).toHaveTextContent("已記成本 1 包");
+    expect(summary).toHaveTextContent("60.0 元");
+    expect(summary).not.toHaveTextContent("30.0 元");
   });
 });
 

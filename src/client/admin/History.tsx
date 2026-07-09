@@ -56,46 +56,48 @@ export function History() {
             共 <strong>{rows.length}</strong> 筆 · 賣出收入合計{" "}
             <strong>{income}</strong> 元
           </div>
-          <table className={TABLE}>
-            <thead>
-              <tr>
-                <th className={TH}>日期</th>
-                <th className={TH}>類型</th>
-                <th className={TH}>卡片</th>
-                <th className={TH}>對象</th>
-                <th className={TH}>金額</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((t) => (
-                <tr key={t.id}>
-                  <td className={TD_MONO}>{t.happenedAt}</td>
-                  <td className={TD}>
-                    <span
-                      className={cn(
-                        PILL_BASE,
-                        t.type === "sale" ? PILL_RARITY.SR : PILL_RARITY.SSR,
-                      )}
-                    >
-                      {t.type === "sale" ? "賣出" : "交換"}
-                    </span>
-                  </td>
-                  <td className={TD}>
-                    {t.series} · {t.character}{" "}
-                    <span
-                      className={cn(PILL_BASE, PILL_RARITY[t.rarity], "ml-1")}
-                    >
-                      {t.rarity}
-                    </span>
-                  </td>
-                  <td className={TD}>{t.counterparty ?? "—"}</td>
-                  <td className={TD_MONO}>
-                    {t.price != null ? `${t.price} 元` : "—"}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className={cn(TABLE, "min-w-[620px]")}>
+              <thead>
+                <tr>
+                  <th className={TH}>日期</th>
+                  <th className={TH}>類型</th>
+                  <th className={TH}>卡片</th>
+                  <th className={TH}>對象</th>
+                  <th className={TH}>金額</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((t) => (
+                  <tr key={t.id}>
+                    <td className={TD_MONO}>{t.happenedAt}</td>
+                    <td className={TD}>
+                      <span
+                        className={cn(
+                          PILL_BASE,
+                          t.type === "sale" ? PILL_RARITY.SR : PILL_RARITY.SSR,
+                        )}
+                      >
+                        {t.type === "sale" ? "賣出" : "交換"}
+                      </span>
+                    </td>
+                    <td className={TD}>
+                      {t.series} · {t.character}{" "}
+                      <span
+                        className={cn(PILL_BASE, PILL_RARITY[t.rarity], "ml-1")}
+                      >
+                        {t.rarity}
+                      </span>
+                    </td>
+                    <td className={TD}>{t.counterparty ?? "—"}</td>
+                    <td className={TD_MONO}>
+                      {t.price != null ? `${t.price} 元` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
     </section>
