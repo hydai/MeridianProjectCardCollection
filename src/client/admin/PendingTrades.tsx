@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { todayLocal } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
@@ -47,6 +48,24 @@ import {
 
 // Already-owned cards have no natural receive cap; clamp the number input here.
 const RECEIVE_QTY_CAP = 99;
+const PRIVATE_DETAILS_STORAGE_KEY =
+  "mpc:admin:pendingTrades:showPrivateDetails";
+
+function loadPrivateDetailsPreference(): boolean {
+  try {
+    return sessionStorage.getItem(PRIVATE_DETAILS_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function savePrivateDetailsPreference(show: boolean): void {
+  try {
+    sessionStorage.setItem(PRIVATE_DETAILS_STORAGE_KEY, String(show));
+  } catch {
+    // Storage can be unavailable in sandboxed or privacy-restricted contexts.
+  }
+}
 
 interface Opt {
   value: string; // "si|ci|ri"
@@ -160,10 +179,12 @@ function LineEditor({
 function ReservationForm({
   giveOpts,
   recvOpts,
+  showPrivateDetails,
   onDone,
 }: {
   giveOpts: Opt[];
   recvOpts: Opt[];
+  showPrivateDetails: boolean;
   onDone: () => void;
 }) {
   const [counterparty, setCounterparty] = useState("");
@@ -220,14 +241,16 @@ function ReservationForm({
   return (
     <div className={ACTION_FORM}>
       <div className={INLINE_FIELDS}>
-        <label className={FIELD}>
-          <span className={FIELD_LABEL}>對象</span>
-          <Input
-            className={CONTROL}
-            value={counterparty}
-            onChange={(e) => setCounterparty(e.target.value)}
-          />
-        </label>
+        {showPrivateDetails ? (
+          <label className={FIELD}>
+            <span className={FIELD_LABEL}>對象</span>
+            <Input
+              className={CONTROL}
+              value={counterparty}
+              onChange={(e) => setCounterparty(e.target.value)}
+            />
+          </label>
+        ) : null}
         <label className={FIELD}>
           <span className={FIELD_LABEL}>日期</span>
           <Input
@@ -237,14 +260,16 @@ function ReservationForm({
             onChange={(e) => setReservedAt(e.target.value)}
           />
         </label>
-        <label className={FIELD}>
-          <span className={FIELD_LABEL}>備註</span>
-          <Input
-            className={CONTROL}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-        </label>
+        {showPrivateDetails ? (
+          <label className={FIELD}>
+            <span className={FIELD_LABEL}>備註</span>
+            <Input
+              className={CONTROL}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </label>
+        ) : null}
       </div>
       <LineEditor
         title="給出"
@@ -275,9 +300,11 @@ function ReservationForm({
 
 function PendingRowItem({
   p,
+  showPrivateDetails,
   onChange,
 }: {
   p: AdminPendingTrade;
+  showPrivateDetails: boolean;
   onChange: () => void;
 }) {
   const [completing, setCompleting] = useState(false);
@@ -304,7 +331,16 @@ function PendingRowItem({
   return (
     <tr>
       <td className={TD}>{p.reservedAt}</td>
-      <td className={TD}>{p.counterparty ?? "—"}</td>
+      {showPrivateDetails ? (
+        <>
+          <td className={TD}>{p.counterparty ?? "—"}</td>
+          <td
+            className={cn(TD, "max-w-[240px] whitespace-pre-wrap break-words")}
+          >
+            {p.note ?? "—"}
+          </td>
+        </>
+      ) : null}
       <td className={TD}>{summary(p.give)}</td>
       <td className={TD}>{summary(p.receive)}</td>
       <td className={TD}>
@@ -364,6 +400,14 @@ export function PendingTrades() {
   const [m, setM] = useState<Matrix | null>(null);
   const [pending, setPending] = useState<AdminPendingTrade[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showPrivateDetails, setShowPrivateDetails] = useState(
+    loadPrivateDetailsPreference,
+  );
+
+  const updatePrivateDetailsVisibility = (show: boolean) => {
+    setShowPrivateDetails(show);
+    savePrivateDetailsPreference(show);
+  };
 
   const reload = useCallback(() => {
     setError(null);
@@ -401,7 +445,20 @@ export function PendingTrades() {
 
   return (
     <section className={PANEL}>
-      <h2 className={PANEL_TITLE}>交換預約</h2>
+      <div className="mb-[18px] flex flex-wrap items-center justify-between gap-3">
+        <h2 className={cn(PANEL_TITLE, "mb-0")}>交換預約</h2>
+        <label
+          className="flex cursor-pointer items-center gap-2 text-xs tracking-[0.04em] text-muted-foreground"
+          htmlFor="show-pending-trade-private-details"
+        >
+          <Switch
+            id="show-pending-trade-private-details"
+            checked={showPrivateDetails}
+            onCheckedChange={updatePrivateDetailsVisibility}
+          />
+          <span>顯示對象與備註</span>
+        </label>
+      </div>
       {error ? <div className={ERROR_TEXT}>{error}</div> : null}
       {!m || !pending ? (
         <div className={STATE_MSG}>載入中…</div>
@@ -410,17 +467,26 @@ export function PendingTrades() {
           <ReservationForm
             giveOpts={giveOpts}
             recvOpts={recvOpts}
+            showPrivateDetails={showPrivateDetails}
             onDone={reload}
           />
           {pending.length === 0 ? (
             <div className={EMPTY_MSG}>目前沒有暫定交換。</div>
           ) : (
             <div className="mt-4 overflow-x-auto">
-              <table className={cn(TABLE, "min-w-[760px]")}>
+              <table
+                className={cn(TABLE, "min-w-[760px]")}
+                aria-label="交換預約清單"
+              >
                 <thead>
                   <tr>
                     <th className={TH}>日期</th>
-                    <th className={TH}>對象</th>
+                    {showPrivateDetails ? (
+                      <>
+                        <th className={TH}>對象</th>
+                        <th className={TH}>備註</th>
+                      </>
+                    ) : null}
                     <th className={TH}>給出</th>
                     <th className={TH}>換入</th>
                     <th className={TH}>操作</th>
@@ -428,7 +494,12 @@ export function PendingTrades() {
                 </thead>
                 <tbody>
                   {pending.map((p) => (
-                    <PendingRowItem key={p.id} p={p} onChange={reload} />
+                    <PendingRowItem
+                      key={p.id}
+                      p={p}
+                      showPrivateDetails={showPrivateDetails}
+                      onChange={reload}
+                    />
                   ))}
                 </tbody>
               </table>

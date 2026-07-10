@@ -5,13 +5,15 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildCatalog } from "../../seed/catalog-def";
 import { AddCards } from "../../src/client/admin/AddCards";
 import { History } from "../../src/client/admin/History";
 import { ManageCards } from "../../src/client/admin/ManageCards";
 import { Openings } from "../../src/client/admin/Openings";
 import { PendingTrades } from "../../src/client/admin/PendingTrades";
+
+beforeEach(() => sessionStorage.clear());
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -426,12 +428,77 @@ describe("PendingTrades", () => {
     vi.stubGlobal("fetch", stubFetchFor([sampleReservation]));
 
     render(<PendingTrades />);
-    await waitFor(() =>
-      expect(screen.getByText("交換預約")).toBeInTheDocument(),
-    );
-    expect(screen.getByText("阿明")).toBeInTheDocument();
+    const table = await screen.findByRole("table", {
+      name: "交換預約清單",
+    });
+    expect(
+      within(table).getByRole("columnheader", { name: "對象" }),
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "備註" }),
+    ).toBeInTheDocument();
+    expect(within(table).getByText("阿明")).toBeInTheDocument();
+    expect(within(table).getByText("面交")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "完成" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
+  });
+
+  it("hides and restores counterparty and note for privacy", async () => {
+    vi.stubGlobal("fetch", stubFetchFor([sampleReservation]));
+
+    const view = render(<PendingTrades />);
+    const table = await screen.findByRole("table", {
+      name: "交換預約清單",
+    });
+    const privacySwitch = screen.getByRole("switch", {
+      name: "顯示對象與備註",
+    });
+    expect(privacySwitch).toBeChecked();
+    fireEvent.change(screen.getByLabelText("對象"), {
+      target: { value: "展示私密對象" },
+    });
+    fireEvent.change(screen.getByLabelText("備註"), {
+      target: { value: "展示私密備註" },
+    });
+
+    fireEvent.click(privacySwitch);
+    expect(privacySwitch).not.toBeChecked();
+    expect(
+      within(table).queryByRole("columnheader", { name: "對象" }),
+    ).toBeNull();
+    expect(
+      within(table).queryByRole("columnheader", { name: "備註" }),
+    ).toBeNull();
+    expect(within(table).queryByText("阿明")).toBeNull();
+    expect(within(table).queryByText("面交")).toBeNull();
+    expect(within(table).getByText("MP 4TH Mizuki R×1")).toBeInTheDocument();
+    expect(within(table).getByText("KILLER Rei SR×1")).toBeInTheDocument();
+    expect(
+      within(table).getByRole("button", { name: "完成" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("對象")).toBeNull();
+    expect(screen.queryByLabelText("備註")).toBeNull();
+    expect(screen.queryByDisplayValue("展示私密對象")).toBeNull();
+    expect(screen.queryByDisplayValue("展示私密備註")).toBeNull();
+
+    fireEvent.click(privacySwitch);
+    expect(privacySwitch).toBeChecked();
+    expect(within(table).getByText("阿明")).toBeInTheDocument();
+    expect(within(table).getByText("面交")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("展示私密對象")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("展示私密備註")).toBeInTheDocument();
+
+    fireEvent.click(privacySwitch);
+    view.unmount();
+    render(<PendingTrades />);
+    const remountedTable = await screen.findByRole("table", {
+      name: "交換預約清單",
+    });
+    expect(
+      screen.getByRole("switch", { name: "顯示對象與備註" }),
+    ).not.toBeChecked();
+    expect(within(remountedTable).queryByText("阿明")).toBeNull();
+    expect(within(remountedTable).queryByText("面交")).toBeNull();
   });
 
   it("completing a reservation POSTs to /complete", async () => {
