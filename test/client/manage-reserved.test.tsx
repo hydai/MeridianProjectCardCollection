@@ -47,9 +47,17 @@ describe("ManageCards acquisition and reservation state", () => {
     );
 
     render(<ManageCards />);
-    const table = await screen.findByRole("table");
+    const table = await screen.findByRole("table", { name: "卡片群組" });
+    fireEvent.click(
+      within(table).getByRole("button", {
+        name: "展開 KILLER Rei UR，1 張明細",
+      }),
+    );
+    const details = screen.getByRole("table", {
+      name: "KILLER Rei UR 實體卡明細",
+    });
 
-    const row = within(table).getByText("購入 · 880 元").closest("tr");
+    const row = within(details).getByText("購入 · 880 元").closest("tr");
     expect(row).not.toBeNull();
     expect(row?.className).toContain("reservation-soft");
     expect(
@@ -126,7 +134,9 @@ describe("ManageCards acquisition and reservation state", () => {
     ).getByRole("radio", { name: "__all__" });
     fireEvent.click(characterOption);
     expect(characterOption).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("status")).toHaveTextContent("顯示 1 / 1 張");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "顯示 1 種卡 · 1 / 1 張",
+    );
   });
 
   it("filters cards through dependent button groups", async () => {
@@ -216,10 +226,12 @@ describe("ManageCards acquisition and reservation state", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { container } = render(<ManageCards />);
-    await screen.findByText("顯示 3 / 4 張");
+    await screen.findByText("顯示 3 種卡 · 3 / 4 張");
 
     expect(container.querySelector(".card-filters select")).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent("顯示 3 / 4 張");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "顯示 3 種卡 · 3 / 4 張",
+    );
     for (const label of ["彈數", "系列", "角色", "級別", "狀態"]) {
       expect(
         screen.getByRole("radiogroup", { name: `${label}篩選` }),
@@ -246,7 +258,7 @@ describe("ManageCards acquisition and reservation state", () => {
     fireEvent.click(
       within(volumeFilter).getByRole("radio", { name: "第 2 彈" }),
     );
-    expect(screen.getByText("顯示 2 / 4 張")).toBeInTheDocument();
+    expect(screen.getByText("顯示 2 種卡 · 2 / 4 張")).toBeInTheDocument();
     const seriesFilter = screen.getByRole("radiogroup", {
       name: "系列篩選",
     });
@@ -265,13 +277,24 @@ describe("ManageCards acquisition and reservation state", () => {
     });
     fireEvent.click(within(rarityFilter).getByRole("radio", { name: "SSR" }));
 
-    expect(screen.getByText("顯示 1 / 4 張")).toBeInTheDocument();
-    let table = screen.getByRole("table");
+    expect(screen.getByText("顯示 1 種卡 · 1 / 4 張")).toBeInTheDocument();
+    let table = screen.getByRole("table", { name: "卡片群組" });
     expect(within(table).getByText("Bob")).toBeInTheDocument();
     expect(within(table).queryByText("Alice")).toBeNull();
     expect(within(table).queryByText("Carol")).toBeNull();
 
-    const row = within(table).getByText("Bob").closest("tr");
+    fireEvent.click(
+      within(table).getByRole("button", {
+        name: "展開 SECOND Bob SSR，1 張明細",
+      }),
+    );
+    const row = within(
+      screen.getByRole("table", {
+        name: "SECOND Bob SSR 實體卡明細",
+      }),
+    )
+      .getByText("#52")
+      .closest("tr");
     fireEvent.click(
       within(row as HTMLElement).getByRole("button", { name: "賣出" }),
     );
@@ -280,8 +303,8 @@ describe("ManageCards acquisition and reservation state", () => {
       within(statusFilter).getByRole("radio", { name: "已售出" }),
     );
     expect(screen.queryByText("價格 (TWD)")).toBeNull();
-    table = screen.getByRole("table");
-    expect(within(table).getByText("已售出")).toBeInTheDocument();
+    table = screen.getByRole("table", { name: "卡片群組" });
+    expect(within(table).getByText("已售出 1")).toBeInTheDocument();
 
     fireEvent.click(
       within(volumeFilter).getByRole("radio", { name: "第 1 彈" }),
@@ -310,7 +333,7 @@ describe("ManageCards acquisition and reservation state", () => {
         name: "持有中（可管理）",
       }),
     );
-    table = screen.getByRole("table");
+    table = screen.getByRole("table", { name: "卡片群組" });
     expect(within(table).getByText("Alice")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });

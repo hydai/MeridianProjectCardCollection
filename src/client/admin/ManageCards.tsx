@@ -4,7 +4,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { todayLocal } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Fragment, useCallback, useEffect, useId, useState } from "react";
 import type {
   CardRow,
   CardStatus,
@@ -45,9 +46,27 @@ interface FilterOption<T extends FilterValue> {
   label: string;
 }
 
+interface CardGroup {
+  key: string;
+  series: string;
+  character: string;
+  rarity: Rarity;
+  cards: CardRow[];
+  inventoryCount: number;
+  reservedCount: number;
+  statusCounts: Record<CardStatus, number>;
+}
+
 const ALL_FILTER_VALUE = "all:";
 const encodeFilterValue = (value: FilterValue) => `value:${String(value)}`;
 const ACTIVE_STATUSES = new Set<CardStatus>(["owned", "for_sale", "for_trade"]);
+const CARD_STATUSES: CardStatus[] = [
+  "owned",
+  "for_sale",
+  "for_trade",
+  "sold",
+  "traded",
+];
 const RARITY_ORDER: Rarity[] = ["R", "SR", "SSR", "UR"];
 const FILTER_BUTTON = cn(
   OPT_TOGGLE,
@@ -70,6 +89,50 @@ const STATUS_LABEL: Record<string, string> = {
   sold: "已售出",
   traded: "已交換",
 };
+
+const cardGroupKey = (card: Pick<CardRow, "series" | "character" | "rarity">) =>
+  JSON.stringify([card.series, card.character, card.rarity]);
+
+function groupCards(visibleRows: CardRow[], allRows: CardRow[]): CardGroup[] {
+  const inventoryCounts = new Map<string, number>();
+  for (const card of allRows) {
+    if (!ACTIVE_STATUSES.has(card.status)) continue;
+    const key = cardGroupKey(card);
+    inventoryCounts.set(key, (inventoryCounts.get(key) ?? 0) + 1);
+  }
+
+  const groups = new Map<string, CardGroup>();
+  for (const card of visibleRows) {
+    const key = cardGroupKey(card);
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        key,
+        series: card.series,
+        character: card.character,
+        rarity: card.rarity,
+        cards: [],
+        inventoryCount: inventoryCounts.get(key) ?? 0,
+        reservedCount: 0,
+        statusCounts: {
+          owned: 0,
+          for_sale: 0,
+          for_trade: 0,
+          sold: 0,
+          traded: 0,
+        },
+      };
+      groups.set(key, group);
+    }
+    group.cards.push(card);
+    group.statusCounts[card.status] += 1;
+    if (card.reserved && ACTIVE_STATUSES.has(card.status)) {
+      group.reservedCount += 1;
+    }
+  }
+
+  return Array.from(groups.values());
+}
 
 function FilterButtonGroup<T extends FilterValue>({
   label,
@@ -311,6 +374,7 @@ function ActionForm({
 }
 
 export function ManageCards() {
+  const detailsIdPrefix = useId();
   const [filterVolume, setFilterVolume] = useState<number | null>(null);
   const [filterSeries, setFilterSeries] = useState<string | null>(null);
   const [filterCharacter, setFilterCharacter] = useState<string | null>(null);
@@ -325,6 +389,9 @@ export function ManageCards() {
     cardId: number;
     kind: ActionKind;
   } | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const reload = useCallback(() => {
     setRows(null);
@@ -347,6 +414,11 @@ export function ManageCards() {
   const onDone = () => {
     setAction(null);
     reload();
+  };
+
+  const clearOpenState = () => {
+    setAction(null);
+    setExpandedGroups(new Set());
   };
 
   const allCatalog = catalog ?? [];
@@ -388,6 +460,7 @@ export function ManageCards() {
       (filterRarity === null || card.rarity === filterRarity)
     );
   });
+  const cardGroups = groupCards(filteredRows, rows ?? []);
 
   return (
     <section className={PANEL}>
@@ -403,7 +476,7 @@ export function ManageCards() {
             setFilterSeries(null);
             setFilterCharacter(null);
             setFilterRarity(null);
-            setAction(null);
+            clearOpenState();
           }}
         />
         <FilterButtonGroup
@@ -415,7 +488,7 @@ export function ManageCards() {
             setFilterSeries(series);
             setFilterCharacter(null);
             setFilterRarity(null);
-            setAction(null);
+            clearOpenState();
           }}
         />
         <FilterButtonGroup
@@ -425,7 +498,7 @@ export function ManageCards() {
           options={characterOptions}
           onChange={(character) => {
             setFilterCharacter(character);
-            setAction(null);
+            clearOpenState();
           }}
         />
         <FilterButtonGroup
@@ -435,7 +508,7 @@ export function ManageCards() {
           options={rarityOptions}
           onChange={(rarity) => {
             setFilterRarity(rarity);
-            setAction(null);
+            clearOpenState();
           }}
         />
         <FilterButtonGroup
@@ -445,7 +518,7 @@ export function ManageCards() {
           options={STATUS_FILTER_OPTIONS}
           onChange={(status) => {
             setFilterStatus(status);
-            setAction(null);
+            clearOpenState();
           }}
         />
       </div>
@@ -456,7 +529,8 @@ export function ManageCards() {
           className="mb-3 block font-mono text-[11px] text-[var(--text-tertiary)]"
           aria-live="polite"
         >
-          顯示 {filteredRows.length} / {rows.length} 張
+          顯示 {cardGroups.length} 種卡 · {filteredRows.length} / {rows.length}{" "}
+          張
         </output>
       ) : null}
       {rows === null || catalog === null ? (
@@ -467,187 +541,322 @@ export function ManageCards() {
         <div className={EMPTY_MSG}>沒有符合的卡片。</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className={cn(TABLE, "min-w-[760px]")}>
+          <table className={cn(TABLE, "min-w-[760px]")} aria-label="卡片群組">
             <thead>
               <tr>
                 <th className={TH}>系列</th>
                 <th className={TH}>角色</th>
                 <th className={TH}>稀有度</th>
-                <th className={TH}>取得方式</th>
-                <th className={TH}>狀態</th>
-                <th className={TH}>操作</th>
+                <th className={TH}>庫存</th>
+                <th className={TH}>狀態概況</th>
+                <th className={TH}>實體卡明細</th>
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((card) => {
-                const isActive =
-                  card.status === "owned" ||
-                  card.status === "for_sale" ||
-                  card.status === "for_trade";
-                const open = action?.cardId === card.id;
-                const purchaseMeta = [
-                  card.purchaseSeller ? `賣家 ${card.purchaseSeller}` : "",
-                  card.purchaseOrderedAt
-                    ? `訂購 ${card.purchaseOrderedAt}`
-                    : "",
-                ]
-                  .filter(Boolean)
-                  .join(" · ");
+              {cardGroups.map((group, groupIndex) => {
+                const expanded = expandedGroups.has(group.key);
+                const detailsId = `${detailsIdPrefix}-group-${groupIndex}`;
                 return (
-                  <Fragment key={card.id}>
-                    <tr
-                      className={cn(
-                        card.reserved &&
-                          isActive &&
-                          "[&_td]:bg-[var(--reservation-soft)] hover:[&_td]:bg-reservation/20",
-                      )}
-                    >
-                      <td className={TD}>{card.series}</td>
-                      <td className={TD}>{card.character}</td>
+                  <Fragment key={group.key}>
+                    <tr>
+                      <td className={TD}>{group.series}</td>
+                      <td className={TD}>{group.character}</td>
                       <td className={TD}>
                         <span
-                          className={cn(PILL_BASE, PILL_RARITY[card.rarity])}
+                          className={cn(PILL_BASE, PILL_RARITY[group.rarity])}
                         >
-                          {card.rarity}
+                          {group.rarity}
                         </span>
                       </td>
                       <td className={TD}>
-                        {card.source === "pull" ? (
-                          "開卡"
-                        ) : card.source === "purchase" ? (
-                          <>
-                            <span>
-                              購入
-                              {card.purchasePrice != null
-                                ? ` · ${card.purchasePrice} 元`
-                                : ""}
-                            </span>
-                            {purchaseMeta ? (
-                              <span className="mt-1 block text-xs text-[var(--text-tertiary)]">
-                                {purchaseMeta}
-                              </span>
-                            ) : null}
-                            {card.purchaseNote ? (
-                              <span className="mt-1 block text-xs text-[var(--text-tertiary)]">
-                                {card.purchaseNote}
-                              </span>
-                            ) : null}
-                          </>
-                        ) : (
-                          "交換換入"
-                        )}
-                      </td>
-                      <td className={TD}>
                         <span
-                          className={cn(PILL_BASE, PILL_STATUS[card.status])}
+                          aria-label={`目前庫存 ${group.inventoryCount} 張`}
                         >
-                          {STATUS_LABEL[card.status]}
+                          <strong className="font-mono text-base font-medium text-foreground">
+                            {group.inventoryCount}
+                          </strong>{" "}
+                          張
                         </span>
-                        {card.duplicate && isActive ? (
-                          <span className={cn(PILL_BASE, PILL_DUP, "ml-1.5")}>
-                            重複
-                          </span>
-                        ) : null}
-                        {card.reserved && isActive ? (
-                          <span
-                            className={cn(PILL_BASE, PILL_RESERVED, "ml-1.5")}
-                          >
-                            暫定換出
-                          </span>
-                        ) : null}
-                        {card.status === "for_sale" &&
-                        card.askingPrice != null ? (
-                          <span className="ml-2">{card.askingPrice} 元</span>
-                        ) : null}
-                        {card.status === "for_trade" && card.wantInReturn ? (
-                          <span className="ml-2 text-[var(--text-tertiary)]">
-                            想換：{card.wantInReturn}
-                          </span>
-                        ) : null}
                       </td>
                       <td className={TD}>
-                        {isActive && !card.reserved ? (
-                          <div className={ROW_ACTIONS}>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className={BTN_GHOST_SM}
-                              onClick={() =>
-                                setAction({
-                                  cardId: card.id,
-                                  kind: "list_sale",
-                                })
-                              }
-                            >
-                              待售
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className={BTN_GHOST_SM}
-                              onClick={() =>
-                                setAction({
-                                  cardId: card.id,
-                                  kind: "list_trade",
-                                })
-                              }
-                            >
-                              待換
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className={BTN_GHOST_SM}
-                              onClick={() =>
-                                setAction({ cardId: card.id, kind: "sale" })
-                              }
-                            >
-                              賣出
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className={BTN_GHOST_SM}
-                              onClick={() =>
-                                setAction({ cardId: card.id, kind: "trade" })
-                              }
-                            >
-                              交換
-                            </Button>
-                            {card.status !== "owned" ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className={BTN_GHOST_SM}
-                                onClick={() => {
-                                  patchCard(card.id, { status: "owned" })
-                                    .then(reload)
-                                    .catch(() => {});
-                                }}
+                        <div className="flex flex-wrap gap-1.5">
+                          {CARD_STATUSES.map((status) =>
+                            group.statusCounts[status] > 0 ? (
+                              <span
+                                key={status}
+                                className={cn(PILL_BASE, PILL_STATUS[status])}
                               >
-                                取消上架
-                              </Button>
-                            ) : null}
-                          </div>
-                        ) : card.reserved && isActive ? (
-                          <span className="text-reservation">已鎖定</span>
-                        ) : (
-                          <span className="text-[var(--text-quaternary)]">
-                            —
-                          </span>
-                        )}
+                                {STATUS_LABEL[status]}{" "}
+                                {group.statusCounts[status]}
+                              </span>
+                            ) : null,
+                          )}
+                          {group.reservedCount > 0 ? (
+                            <span className={cn(PILL_BASE, PILL_RESERVED)}>
+                              暫定換出 {group.reservedCount}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className={TD}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={BTN_GHOST_SM}
+                          aria-expanded={expanded}
+                          aria-controls={detailsId}
+                          aria-label={`${expanded ? "收合" : "展開"} ${group.series} ${group.character} ${group.rarity}，${group.cards.length} 張明細`}
+                          onClick={() => {
+                            setExpandedGroups((current) => {
+                              const next = new Set(current);
+                              if (next.has(group.key)) next.delete(group.key);
+                              else next.add(group.key);
+                              return next;
+                            });
+                            if (
+                              expanded &&
+                              action &&
+                              group.cards.some(
+                                (card) => card.id === action.cardId,
+                              )
+                            ) {
+                              setAction(null);
+                            }
+                          }}
+                        >
+                          {expanded ? (
+                            <ChevronDown data-icon="inline-start" />
+                          ) : (
+                            <ChevronRight data-icon="inline-start" />
+                          )}
+                          {expanded ? "收合" : "展開"} {group.cards.length} 張
+                        </Button>
                       </td>
                     </tr>
-                    {open && action ? (
-                      <tr>
-                        <td className={TD} colSpan={6}>
-                          <ActionForm
-                            card={card}
-                            catalog={catalog}
-                            kind={action.kind}
-                            onDone={onDone}
-                            onCancel={() => setAction(null)}
-                          />
+                    {expanded ? (
+                      <tr id={detailsId}>
+                        <td
+                          className={cn(TD, "bg-[var(--bg-subtle)] px-4 py-3")}
+                          colSpan={6}
+                        >
+                          <div className="overflow-x-auto">
+                            <table
+                              className={cn(TABLE, "min-w-[650px]")}
+                              aria-label={`${group.series} ${group.character} ${group.rarity} 實體卡明細`}
+                            >
+                              <thead>
+                                <tr>
+                                  <th className={TH}>實體卡</th>
+                                  <th className={TH}>取得方式</th>
+                                  <th className={TH}>狀態</th>
+                                  <th className={TH}>操作</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {group.cards.map((card) => {
+                                  const isActive = ACTIVE_STATUSES.has(
+                                    card.status,
+                                  );
+                                  const open = action?.cardId === card.id;
+                                  const purchaseMeta = [
+                                    card.purchaseSeller
+                                      ? `賣家 ${card.purchaseSeller}`
+                                      : "",
+                                    card.purchaseOrderedAt
+                                      ? `訂購 ${card.purchaseOrderedAt}`
+                                      : "",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ");
+                                  return (
+                                    <Fragment key={card.id}>
+                                      <tr
+                                        className={cn(
+                                          card.reserved &&
+                                            isActive &&
+                                            "[&_td]:bg-[var(--reservation-soft)] hover:[&_td]:bg-reservation/20",
+                                        )}
+                                      >
+                                        <td
+                                          className={cn(
+                                            TD,
+                                            "font-mono text-foreground",
+                                          )}
+                                        >
+                                          #{card.id}
+                                        </td>
+                                        <td className={TD}>
+                                          {card.source === "pull" ? (
+                                            "開卡"
+                                          ) : card.source === "purchase" ? (
+                                            <>
+                                              <span>
+                                                購入
+                                                {card.purchasePrice != null
+                                                  ? ` · ${card.purchasePrice} 元`
+                                                  : ""}
+                                              </span>
+                                              {purchaseMeta ? (
+                                                <span className="mt-1 block text-xs text-[var(--text-tertiary)]">
+                                                  {purchaseMeta}
+                                                </span>
+                                              ) : null}
+                                              {card.purchaseNote ? (
+                                                <span className="mt-1 block text-xs text-[var(--text-tertiary)]">
+                                                  {card.purchaseNote}
+                                                </span>
+                                              ) : null}
+                                            </>
+                                          ) : (
+                                            "交換換入"
+                                          )}
+                                        </td>
+                                        <td className={TD}>
+                                          <span
+                                            className={cn(
+                                              PILL_BASE,
+                                              PILL_STATUS[card.status],
+                                            )}
+                                          >
+                                            {STATUS_LABEL[card.status]}
+                                          </span>
+                                          {card.duplicate && isActive ? (
+                                            <span
+                                              className={cn(
+                                                PILL_BASE,
+                                                PILL_DUP,
+                                                "ml-1.5",
+                                              )}
+                                            >
+                                              重複
+                                            </span>
+                                          ) : null}
+                                          {card.reserved && isActive ? (
+                                            <span
+                                              className={cn(
+                                                PILL_BASE,
+                                                PILL_RESERVED,
+                                                "ml-1.5",
+                                              )}
+                                            >
+                                              暫定換出
+                                            </span>
+                                          ) : null}
+                                          {card.status === "for_sale" &&
+                                          card.askingPrice != null ? (
+                                            <span className="ml-2">
+                                              {card.askingPrice} 元
+                                            </span>
+                                          ) : null}
+                                          {card.status === "for_trade" &&
+                                          card.wantInReturn ? (
+                                            <span className="ml-2 text-[var(--text-tertiary)]">
+                                              想換：{card.wantInReturn}
+                                            </span>
+                                          ) : null}
+                                        </td>
+                                        <td className={TD}>
+                                          {isActive && !card.reserved ? (
+                                            <div className={ROW_ACTIONS}>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                className={BTN_GHOST_SM}
+                                                onClick={() =>
+                                                  setAction({
+                                                    cardId: card.id,
+                                                    kind: "list_sale",
+                                                  })
+                                                }
+                                              >
+                                                待售
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                className={BTN_GHOST_SM}
+                                                onClick={() =>
+                                                  setAction({
+                                                    cardId: card.id,
+                                                    kind: "list_trade",
+                                                  })
+                                                }
+                                              >
+                                                待換
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                className={BTN_GHOST_SM}
+                                                onClick={() =>
+                                                  setAction({
+                                                    cardId: card.id,
+                                                    kind: "sale",
+                                                  })
+                                                }
+                                              >
+                                                賣出
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                className={BTN_GHOST_SM}
+                                                onClick={() =>
+                                                  setAction({
+                                                    cardId: card.id,
+                                                    kind: "trade",
+                                                  })
+                                                }
+                                              >
+                                                交換
+                                              </Button>
+                                              {card.status !== "owned" ? (
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  className={BTN_GHOST_SM}
+                                                  onClick={() => {
+                                                    patchCard(card.id, {
+                                                      status: "owned",
+                                                    })
+                                                      .then(onDone)
+                                                      .catch(() => {});
+                                                  }}
+                                                >
+                                                  取消上架
+                                                </Button>
+                                              ) : null}
+                                            </div>
+                                          ) : card.reserved && isActive ? (
+                                            <span className="text-reservation">
+                                              已鎖定
+                                            </span>
+                                          ) : (
+                                            <span className="text-[var(--text-quaternary)]">
+                                              —
+                                            </span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                      {open && action ? (
+                                        <tr>
+                                          <td className={TD} colSpan={4}>
+                                            <ActionForm
+                                              card={card}
+                                              catalog={catalog}
+                                              kind={action.kind}
+                                              onDone={onDone}
+                                              onCancel={() => setAction(null)}
+                                            />
+                                          </td>
+                                        </tr>
+                                      ) : null}
+                                    </Fragment>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
                         </td>
                       </tr>
                     ) : null}

@@ -266,8 +266,16 @@ describe("ManageCards", () => {
     );
 
     render(<ManageCards />);
-    const table = await screen.findByRole("table");
-    const row = within(table).getByText("Rei").closest("tr");
+    const table = await screen.findByRole("table", { name: "卡片群組" });
+    fireEvent.click(
+      within(table).getByRole("button", {
+        name: "展開 KILLER Rei UR，1 張明細",
+      }),
+    );
+    const details = screen.getByRole("table", {
+      name: "KILLER Rei UR 實體卡明細",
+    });
+    const row = within(details).getByText("#1").closest("tr");
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getByText("重複")).toBeInTheDocument();
 
@@ -304,8 +312,17 @@ describe("ManageCards", () => {
       })),
     );
     render(<ManageCards />);
-    const table = await screen.findByRole("table");
-    const row = within(table).getByText("Iruni").closest("tr");
+    const table = await screen.findByRole("table", { name: "卡片群組" });
+    expect(within(table).getByText("暫定換出 1")).toBeInTheDocument();
+    fireEvent.click(
+      within(table).getByRole("button", {
+        name: "展開 KILLER Iruni SSR，1 張明細",
+      }),
+    );
+    const details = screen.getByRole("table", {
+      name: "KILLER Iruni SSR 實體卡明細",
+    });
+    const row = within(details).getByText("#1").closest("tr");
     expect(row).not.toBeNull();
     expect(
       within(row as HTMLElement).getByText("暫定換出"),
@@ -339,14 +356,14 @@ describe("ManageCards", () => {
       })),
     );
     render(<ManageCards />);
-    await screen.findByText("顯示 0 / 1 張");
+    await screen.findByText("顯示 0 種卡 · 0 / 1 張");
     const statusFilter = screen.getByRole("radiogroup", {
       name: "狀態篩選",
     });
     fireEvent.click(
       within(statusFilter).getByRole("radio", { name: "已交換" }),
     );
-    const table = await screen.findByRole("table");
+    const table = await screen.findByRole("table", { name: "卡片群組" });
     expect(within(table).getByText("Iruni")).toBeInTheDocument();
     expect(within(table).queryByText("暫定換出")).toBeNull();
   });
