@@ -1,9 +1,19 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRovingTablist } from "@/lib/tablist";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
-import type { MarketListing, PublicPendingTrade } from "../shared/types";
-import { fetchMarket, fetchOverview, fetchPendingTrades } from "./api";
+import type {
+  MarketListing,
+  PublicPendingPurchase,
+  PublicPendingTrade,
+} from "../shared/types";
+import {
+  fetchMarket,
+  fetchOverview,
+  fetchPendingPurchases,
+  fetchPendingTrades,
+} from "./api";
 import { type Matrix, buildMatrix } from "./collection";
 import { Glance } from "./views/Glance";
 import { Grid } from "./views/Grid";
@@ -34,13 +44,34 @@ function ActiveView({
   listings,
   marketError,
   pending,
+  pendingError,
+  pendingPurchases,
+  pendingPurchaseError,
 }: {
   id: TabId;
   m: Matrix;
   listings: MarketListing[] | null;
   marketError: string | null;
-  pending: PublicPendingTrade[];
+  pending: PublicPendingTrade[] | null;
+  pendingError: string | null;
+  pendingPurchases: PublicPendingPurchase[] | null;
+  pendingPurchaseError: string | null;
 }) {
+  const incomingUnavailable = (error: string | null) =>
+    error ? (
+      <Alert variant="destructive">
+        <AlertTitle>無法載入待收件資料</AlertTitle>
+        <AlertDescription>
+          為避免重複購入或交換，缺卡需求暫不顯示：{error}
+        </AlertDescription>
+      </Alert>
+    ) : (
+      <output className="flex flex-col gap-3 py-12">
+        <Skeleton className="mx-auto h-6 w-40" />
+        <Skeleton className="h-24 w-full" />
+      </output>
+    );
+
   switch (id) {
     case "char":
       return <ByCharacter m={m} />;
@@ -49,13 +80,21 @@ function ActiveView({
     case "rarity":
       return <ByRarity m={m} />;
     case "wishlist":
-      return <Wishlist m={m} />;
+      if (pendingPurchases === null) {
+        return incomingUnavailable(pendingPurchaseError);
+      }
+      return <Wishlist m={m} pendingPurchases={pendingPurchases} />;
     case "glance":
       return <Glance m={m} />;
     case "grid":
       return <Grid m={m} />;
     case "trade":
-      return <Trade m={m} pending={pending} />;
+      if (pending === null || pendingPurchases === null) {
+        return incomingUnavailable(pendingError ?? pendingPurchaseError);
+      }
+      return (
+        <Trade m={m} pending={pending} pendingPurchases={pendingPurchases} />
+      );
     case "market":
       return <MarketBoard listings={listings} error={marketError} />;
     default:
@@ -74,7 +113,14 @@ export default function PublicViewer() {
   const [tab, setTab] = useState<TabId>(initialTab);
   const [listings, setListings] = useState<MarketListing[] | null>(null);
   const [marketError, setMarketError] = useState<string | null>(null);
-  const [pending, setPending] = useState<PublicPendingTrade[]>([]);
+  const [pending, setPending] = useState<PublicPendingTrade[] | null>(null);
+  const [pendingError, setPendingError] = useState<string | null>(null);
+  const [pendingPurchases, setPendingPurchases] = useState<
+    PublicPendingPurchase[] | null
+  >(null);
+  const [pendingPurchaseError, setPendingPurchaseError] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     fetchOverview()
@@ -91,9 +137,13 @@ export default function PublicViewer() {
   useEffect(() => {
     fetchPendingTrades()
       .then(setPending)
-      .catch(() => {
-        // pending overlay is non-critical; the rest of the Trade tab still works.
-      });
+      .catch((e) => setPendingError(String(e)));
+  }, []);
+
+  useEffect(() => {
+    fetchPendingPurchases()
+      .then(setPendingPurchases)
+      .catch((e) => setPendingPurchaseError(String(e)));
   }, []);
 
   const selectTab = (id: TabId) => {
@@ -168,6 +218,9 @@ export default function PublicViewer() {
             listings={listings}
             marketError={marketError}
             pending={pending}
+            pendingError={pendingError}
+            pendingPurchases={pendingPurchases}
+            pendingPurchaseError={pendingPurchaseError}
           />
         ) : (
           <div className="flex flex-col gap-3 py-12">

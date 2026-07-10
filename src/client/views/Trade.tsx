@@ -1,6 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -14,7 +14,12 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { Check, Copy, TriangleAlert } from "lucide-react";
 import { useRef, useState } from "react";
-import type { PublicPendingTrade, ReservationLine } from "../../shared/types";
+import type {
+  PublicPendingPurchase,
+  PublicPendingTrade,
+  PurchaseReservationLine,
+  ReservationLine,
+} from "../../shared/types";
 import {
   type Matrix,
   RARITIES,
@@ -136,6 +141,72 @@ function PendingCard({
           ))}
         </TableBody>
       </Table>
+    </Card>
+  );
+}
+
+function PendingPurchaseCard({
+  purchase,
+  language,
+}: {
+  purchase: PublicPendingPurchase;
+  language: TradeListLanguage;
+}) {
+  const label = (line: PurchaseReservationLine) =>
+    `${formatTradeLabel(line.series, language, "series")} ${formatTradeLabel(
+      line.character,
+      language,
+      "character",
+    )}`;
+
+  return (
+    <Card className="mt-3 gap-0 rounded-[6px] border border-border bg-card px-3.5 py-3 ring-0">
+      <CardHeader className="mb-1.5 px-0">
+        <CardTitle asChild>
+          <time
+            dateTime={purchase.orderedAt}
+            className="text-xs font-normal text-[var(--text-tertiary)]"
+          >
+            {purchase.orderedAt}
+          </time>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-0">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-0 hover:bg-transparent">
+              <TableHead className="h-auto px-2 py-1 text-left">卡片</TableHead>
+              <TableHead className="h-auto px-2 py-1 text-right">
+                數量
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {purchase.lines.map((line, index) => (
+              <TableRow
+                key={`${line.catalogId}-${index}`}
+                className="border-0 hover:bg-transparent"
+              >
+                <TableCell className="px-2 py-1 text-left text-foreground">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <MissChip
+                      ri={RARITIES.indexOf(line.rarity)}
+                      label={line.rarity}
+                    />
+                    {label(line)}
+                  </span>
+                </TableCell>
+                <TableCell
+                  className="px-2 py-1 text-right font-mono text-reservation"
+                  aria-label={`${line.qty} 張`}
+                >
+                  ×{line.qty}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
     </Card>
   );
 }
@@ -329,11 +400,20 @@ function TradeGrid({
 export function Trade({
   m,
   pending,
-}: { m: Matrix; pending?: PublicPendingTrade[] }) {
+  pendingPurchases,
+}: {
+  m: Matrix;
+  pending?: PublicPendingTrade[];
+  pendingPurchases?: PublicPendingPurchase[];
+}) {
   const [rarities, setRarities] = useState<Set<RarityKey>>(new Set());
   const [mode, setMode] = useState<TradeMode>("list");
   const [language, setLanguage] = useState<TradeListLanguage>("en");
-  const { surplus, needs } = computeTradeWithPending(m, pending ?? []);
+  const { surplus, needs } = computeTradeWithPending(
+    m,
+    pending ?? [],
+    pendingPurchases ?? [],
+  );
   const totalSpare = surplus.reduce((s, x) => s + x.spare, 0);
 
   // Empty selection = 顯示全部；否則只顯示所選稀有度的聯集。
@@ -637,6 +717,25 @@ export function Trade({
           </h3>
           {pending.map((p) => (
             <PendingCard key={p.id} p={p} language={language} />
+          ))}
+        </section>
+      ) : null}
+      {pendingPurchases && pendingPurchases.length > 0 ? (
+        <section className="mt-6">
+          <h3
+            className={cn(
+              PANEL_TITLE,
+              "mb-4 border-b-[0.5px] border-border pb-3",
+            )}
+          >
+            預定購入（待收件）
+          </h3>
+          {pendingPurchases.map((purchase) => (
+            <PendingPurchaseCard
+              key={purchase.id}
+              purchase={purchase}
+              language={language}
+            />
           ))}
         </section>
       ) : null}

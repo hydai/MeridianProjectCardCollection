@@ -161,21 +161,38 @@ export function MissChip({
   label,
   count,
   reserved,
-}: { ri: number; label: string; count?: number; reserved?: number }) {
+  pendingPurchase,
+}: {
+  ri: number;
+  label: string;
+  count?: number;
+  reserved?: number;
+  pendingPurchase?: number;
+}) {
+  const isPendingPurchase = pendingPurchase != null && pendingPurchase > 0;
+  const isReserved = reserved != null && reserved > 0;
   return (
     <Badge
       variant="outline"
       className={cn(
         "gap-1 rounded-full border-[0.5px] font-mono text-[11px] font-medium tracking-[0.12em]",
-        reserved && reserved > 0
+        isPendingPurchase || isReserved
           ? "border-reservation/45 bg-[var(--reservation-soft)] text-reservation"
           : RARITY_CHIP[ri],
       )}
-      title={reserved ? `暫定換出 ${reserved} 張` : undefined}
+      title={
+        isPendingPurchase
+          ? `預定購入 ${pendingPurchase} 張（待收件）`
+          : isReserved
+            ? `暫定換出 ${reserved} 張`
+            : undefined
+      }
     >
       {label}
       {count && count > 1 ? <span className="opacity-70">{count}</span> : null}
-      {reserved && reserved > 0 ? (
+      {isPendingPurchase ? (
+        <span className="opacity-80">預定購入 ×{pendingPurchase}</span>
+      ) : isReserved ? (
         <span className="opacity-80">預{reserved}</span>
       ) : null}
     </Badge>

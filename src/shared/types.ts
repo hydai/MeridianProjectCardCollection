@@ -161,6 +161,9 @@ export interface CardRow {
   status: CardStatus;
   source: CardSource;
   purchasePrice: number | null;
+  purchaseSeller?: string | null;
+  purchaseOrderedAt?: string | null;
+  purchaseNote?: string | null;
   askingPrice: number | null;
   wantInReturn: string | null;
   note: string | null;
@@ -211,4 +214,46 @@ export interface CreateReservationInput {
 
 export interface CompleteReservationInput {
   happenedAt: string;
+}
+
+// ---- Pending purchase reservations ----
+
+export interface PurchaseReservationLine {
+  catalogId: number;
+  series: string;
+  character: string;
+  rarity: Rarity;
+  qty: number;
+}
+
+export interface AdminPurchaseReservationLine extends PurchaseReservationLine {
+  unitPrice: number;
+}
+
+// Public DTO: never includes seller, note, or unit price.
+export interface PublicPendingPurchase {
+  id: number;
+  orderedAt: string;
+  lines: PurchaseReservationLine[];
+}
+
+export interface AdminPendingPurchase extends PublicPendingPurchase {
+  seller: string | null;
+  note: string | null;
+  lines: AdminPurchaseReservationLine[];
+}
+
+export interface PurchaseReservationLineInput {
+  series: string;
+  character: string;
+  rarity: Rarity;
+  qty: number;
+  unitPrice: number;
+}
+
+export interface CreatePurchaseReservationInput {
+  seller?: string;
+  orderedAt: string;
+  note?: string;
+  lines: PurchaseReservationLineInput[];
 }

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type {
   AddCardInput,
   CompleteReservationInput,
+  CreatePurchaseReservationInput,
   CreateReservationInput,
   CreateSeriesInput,
   OpeningInput,
@@ -12,11 +13,15 @@ import { accessGuard } from "./auth";
 import {
   addCards,
   addPack,
+  cancelPurchaseReservation,
   cancelReservation,
+  completePurchaseReservation,
   completeReservation,
   createOpening,
+  createPurchaseReservation,
   createReservation,
   createSeries,
+  getAdminPendingPurchases,
   getAdminPendingTrades,
   getCatalog,
   getMarket,
@@ -24,6 +29,7 @@ import {
   getNextPackNumber,
   getOpenings,
   getOverview,
+  getPublicPendingPurchases,
   getPublicPendingTrades,
   getStats,
   getTransactions,
@@ -131,6 +137,100 @@ function validateCards(
   return null;
 }
 
+function validIsoDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const date = new Date(`${value}T00:00:00Z`);
+  return (
+    !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value
+  );
+}
+
+function normalizePurchaseReservationInput(body: unknown): {
+  value?: CreatePurchaseReservationInput;
+  error?: string;
+} {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { error: "invalid purchase reservation" };
+  }
+  const input = body as Record<string, unknown>;
+  if (!validIsoDate(input.orderedAt)) {
+    return { error: "orderedAt must be a valid YYYY-MM-DD date" };
+  }
+  if (input.seller !== undefined && typeof input.seller !== "string") {
+    return { error: "seller must be a string" };
+  }
+  if (input.note !== undefined && typeof input.note !== "string") {
+    return { error: "note must be a string" };
+  }
+  if (!Array.isArray(input.lines) || input.lines.length === 0) {
+    return { error: "at least one purchase line required" };
+  }
+  if (input.lines.length > 50) {
+    return { error: "at most 50 purchase lines are allowed" };
+  }
+
+  const lines: CreatePurchaseReservationInput["lines"] = [];
+  let totalQty = 0;
+  for (const candidate of input.lines) {
+    if (
+      !candidate ||
+      typeof candidate !== "object" ||
+      Array.isArray(candidate)
+    ) {
+      return { error: "invalid purchase line" };
+    }
+    const line = candidate as Record<string, unknown>;
+    if (typeof line.series !== "string" || !line.series.trim()) {
+      return { error: "every purchase line needs a series" };
+    }
+    if (typeof line.character !== "string" || !line.character.trim()) {
+      return { error: "every purchase line needs a character" };
+    }
+    if (typeof line.rarity !== "string" || !RARITIES.has(line.rarity)) {
+      return { error: "every purchase line needs a supported rarity" };
+    }
+    if (
+      !Number.isInteger(line.qty) ||
+      (line.qty as number) < 1 ||
+      (line.qty as number) > 99
+    ) {
+      return { error: "qty must be an integer between 1 and 99" };
+    }
+    totalQty += line.qty as number;
+    if (totalQty > 500) {
+      return { error: "at most 500 cards are allowed per purchase" };
+    }
+    if (
+      typeof line.unitPrice !== "number" ||
+      !Number.isFinite(line.unitPrice) ||
+      line.unitPrice < 0
+    ) {
+      return { error: "unitPrice must be finite and nonnegative" };
+    }
+    lines.push({
+      series: line.series.trim(),
+      character: line.character.trim(),
+      rarity:
+        line.rarity as CreatePurchaseReservationInput["lines"][number]["rarity"],
+      qty: line.qty as number,
+      unitPrice: line.unitPrice,
+    });
+  }
+
+  const seller = (input.seller as string | undefined)?.trim();
+  const note = (input.note as string | undefined)?.trim();
+  return {
+    value: {
+      orderedAt: input.orderedAt,
+      lines,
+      ...(seller ? { seller } : {}),
+      ...(note ? { note } : {}),
+    },
+  };
+}
+
 // ---- Public read API (no auth) ----
 app.get("/api/catalog", async (c) => c.json(await getCatalog(c.env.DB)));
 app.get("/api/overview", async (c) => c.json(await getOverview(c.env.DB)));
@@ -138,6 +238,9 @@ app.get("/api/missing", async (c) => c.json(await getMissing(c.env.DB)));
 app.get("/api/market", async (c) => c.json(await getMarket(c.env.DB)));
 app.get("/api/pending-trades", async (c) =>
   c.json(await getPublicPendingTrades(c.env.DB)),
+);
+app.get("/api/pending-purchases", async (c) =>
+  c.json(await getPublicPendingPurchases(c.env.DB)),
 );
 app.get("/api/stats", async (c) => c.json(await getStats(c.env.DB)));
 
@@ -261,6 +364,58 @@ admin.get("/transactions", async (c) =>
 admin.get("/pending-trades", async (c) =>
   c.json(await getAdminPendingTrades(c.env.DB)),
 );
+
+admin.get("/pending-purchases", async (c) =>
+  c.json(await getAdminPendingPurchases(c.env.DB)),
+);
+
+admin.post("/pending-purchases", async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const normalized = normalizePurchaseReservationInput(body);
+  if (!normalized.value) {
+    return c.json(
+      { error: normalized.error ?? "invalid purchase reservation" },
+      400,
+    );
+  }
+  try {
+    const id = await createPurchaseReservation(c.env.DB, normalized.value);
+    return c.json({ id });
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+});
+
+admin.post("/pending-purchases/:id/complete", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) {
+    return c.json({ error: "bad id" }, 400);
+  }
+  try {
+    await completePurchaseReservation(c.env.DB, id);
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+  return c.json({ ok: true });
+});
+
+admin.delete("/pending-purchases/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) {
+    return c.json({ error: "bad id" }, 400);
+  }
+  try {
+    await cancelPurchaseReservation(c.env.DB, id);
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+  return c.json({ ok: true });
+});
 
 admin.post("/pending-trades", async (c) => {
   const body = await c.req.json<CreateReservationInput>();

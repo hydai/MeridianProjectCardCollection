@@ -1,5 +1,6 @@
 import type {
   OverviewResponse,
+  PublicPendingPurchase,
   PublicPendingTrade,
   Rarity,
 } from "../shared/types";
@@ -235,6 +236,7 @@ export function computeTrade(m: Matrix): {
 export function computeTradeWithPending(
   m: Matrix,
   pending: PublicPendingTrade[],
+  pendingPurchases: PublicPendingPurchase[] = [],
 ): { surplus: TradeItem[]; needs: TradeItem[] } {
   const { surplus, needs } = computeTrade(m);
   const key = (si: number, ci: number, ri: number) => `${si}|${ci}|${ri}`;
@@ -253,8 +255,12 @@ export function computeTradeWithPending(
     }
   }
 
+  const purchaseKeys = pendingPurchaseByCoord(m, pendingPurchases);
+
   const adjustedNeeds = needs.filter(
-    (n) => !receiveKeys.has(key(n.si, n.ci, n.ri)),
+    (n) =>
+      !receiveKeys.has(key(n.si, n.ci, n.ri)) &&
+      !purchaseKeys.has(key(n.si, n.ci, n.ri)),
   );
   return { surplus, needs: adjustedNeeds };
 }
@@ -293,6 +299,27 @@ export function pendingReceiveByCoord(
       if (si < 0 || ci < 0 || ri < 0) continue;
       const k = `${si}|${ci}|${ri}`;
       out.set(k, (out.get(k) ?? 0) + r.qty);
+    }
+  }
+  return out;
+}
+
+// Sum of pending purchase qty per matrix coordinate "si|ci|ri". Pending
+// purchases are intentionally kept outside Matrix.cards: they do not count as
+// physically owned until the owner confirms receipt.
+export function pendingPurchaseByCoord(
+  m: Matrix,
+  pendingPurchases: PublicPendingPurchase[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const purchase of pendingPurchases) {
+    for (const line of purchase.lines) {
+      const si = m.series.indexOf(line.series);
+      const ci = m.characters.indexOf(line.character);
+      const ri = RARITIES.indexOf(line.rarity);
+      if (si < 0 || ci < 0 || ri < 0) continue;
+      const key = `${si}|${ci}|${ri}`;
+      out.set(key, (out.get(key) ?? 0) + line.qty);
     }
   }
   return out;

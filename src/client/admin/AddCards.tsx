@@ -386,19 +386,24 @@ export function AddCards() {
           </div>
         </>
       ) : (
-        <label className={cn(FIELD, "mt-5 max-w-[260px]")}>
-          <span className={FIELD_LABEL}>購入價格 (TWD)</span>
-          <Input
-            type="number"
-            min={0}
-            inputMode="decimal"
-            className={CONTROL}
-            value={purchasePrice}
-            onChange={(event) => setPurchasePrice(event.target.value)}
-            placeholder="必填"
-            aria-invalid={purchasePrice !== "" && !purchasePriceValid}
-          />
-        </label>
+        <>
+          <p className={TALLY_EMPTY}>
+            僅適用於已收到的卡片，送出後會立即計入收藏；尚未收貨請使用「購入預約」。
+          </p>
+          <label className={cn(FIELD, "mt-5 max-w-[260px]")}>
+            <span className={FIELD_LABEL}>購入價格 (TWD)</span>
+            <Input
+              type="number"
+              min={0}
+              inputMode="decimal"
+              className={CONTROL}
+              value={purchasePrice}
+              onChange={(event) => setPurchasePrice(event.target.value)}
+              placeholder="必填"
+              aria-invalid={purchasePrice !== "" && !purchasePriceValid}
+            />
+          </label>
+        </>
       )}
 
       <div className={ADD_ACTIONS}>

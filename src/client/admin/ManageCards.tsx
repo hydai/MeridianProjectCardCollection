@@ -485,6 +485,14 @@ export function ManageCards() {
                   card.status === "for_sale" ||
                   card.status === "for_trade";
                 const open = action?.cardId === card.id;
+                const purchaseMeta = [
+                  card.purchaseSeller ? `賣家 ${card.purchaseSeller}` : "",
+                  card.purchaseOrderedAt
+                    ? `訂購 ${card.purchaseOrderedAt}`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
                 return (
                   <Fragment key={card.id}>
                     <tr
@@ -504,15 +512,30 @@ export function ManageCards() {
                         </span>
                       </td>
                       <td className={TD}>
-                        {card.source === "pull"
-                          ? "開卡"
-                          : card.source === "purchase"
-                            ? `購入${
-                                card.purchasePrice != null
-                                  ? ` · ${card.purchasePrice} 元`
-                                  : ""
-                              }`
-                            : "交換換入"}
+                        {card.source === "pull" ? (
+                          "開卡"
+                        ) : card.source === "purchase" ? (
+                          <>
+                            <span>
+                              購入
+                              {card.purchasePrice != null
+                                ? ` · ${card.purchasePrice} 元`
+                                : ""}
+                            </span>
+                            {purchaseMeta ? (
+                              <span className="mt-1 block text-xs text-[var(--text-tertiary)]">
+                                {purchaseMeta}
+                              </span>
+                            ) : null}
+                            {card.purchaseNote ? (
+                              <span className="mt-1 block text-xs text-[var(--text-tertiary)]">
+                                {card.purchaseNote}
+                              </span>
+                            ) : null}
+                          </>
+                        ) : (
+                          "交換換入"
+                        )}
                       </td>
                       <td className={TD}>
                         <span

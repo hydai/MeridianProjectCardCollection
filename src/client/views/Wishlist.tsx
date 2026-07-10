@@ -2,7 +2,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { Fragment } from "react";
-import { type Matrix, RARITIES, exists, existsR, getN } from "../collection";
+import type { PublicPendingPurchase } from "../../shared/types";
+import {
+  type Matrix,
+  RARITIES,
+  exists,
+  existsR,
+  getN,
+  pendingPurchaseByCoord,
+} from "../collection";
 import {
   CARD_COUNT,
   CARD_HEADER,
@@ -11,7 +19,11 @@ import {
   MissChip,
 } from "./shared";
 
-export function Wishlist({ m }: { m: Matrix }) {
+export function Wishlist({
+  m,
+  pendingPurchases = [],
+}: { m: Matrix; pendingPurchases?: PublicPendingPurchase[] }) {
+  const pendingByCoord = pendingPurchaseByCoord(m, pendingPurchases);
   const charMissing = m.characters.map((charName, ci) => {
     const seriesIdxs = m.series
       .map((_s, si) => si)
@@ -19,7 +31,14 @@ export function Wishlist({ m }: { m: Matrix }) {
     const missingBySeries = seriesIdxs.map((si) => {
       const slots = RARITIES.flatMap((name, ri) =>
         existsR(m, si, ci, ri)
-          ? [{ name, ri, count: getN(m, si, ci, ri) }]
+          ? [
+              {
+                name,
+                ri,
+                count: getN(m, si, ci, ri),
+                pendingPurchase: pendingByCoord.get(`${si}|${ci}|${ri}`) ?? 0,
+              },
+            ]
           : [],
       );
       return {
@@ -43,6 +62,20 @@ export function Wishlist({ m }: { m: Matrix }) {
   const totalMissing = charMissing.reduce((s, c) => s + c.totalMissing, 0);
   const totalCollected = totalSlots - totalMissing;
   const pct = totalSlots ? Math.round((totalCollected / totalSlots) * 100) : 0;
+  const totalPendingPurchase = charMissing.reduce(
+    (sum, character) =>
+      sum +
+      character.missingBySeries.reduce(
+        (seriesSum, series) =>
+          seriesSum +
+          series.missing.reduce(
+            (cardSum, card) => cardSum + card.pendingPurchase,
+            0,
+          ),
+        0,
+      ),
+    0,
+  );
 
   const missingByRarity = RARITIES.map((_r, ri) =>
     m.series.reduce(
@@ -80,6 +113,9 @@ export function Wishlist({ m }: { m: Matrix }) {
         />
         <div className="mt-3.5 text-xs tracking-[0.08em] text-muted-foreground">
           {pct}% 完成 · 尚缺 {totalMissing} 張 &nbsp;·&nbsp; {breakdownText}
+          {totalPendingPurchase > 0 ? (
+            <> · 預定購入 {totalPendingPurchase} 張（待收件）</>
+          ) : null}
         </div>
       </Card>
 
@@ -121,7 +157,12 @@ export function Wishlist({ m }: { m: Matrix }) {
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {s.missing.map((r) => (
-                            <MissChip key={r.name} ri={r.ri} label={r.name} />
+                            <MissChip
+                              key={r.name}
+                              ri={r.ri}
+                              label={r.name}
+                              pendingPurchase={r.pendingPurchase}
+                            />
                           ))}
                         </div>
                       </Fragment>

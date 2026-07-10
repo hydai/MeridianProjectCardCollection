@@ -1,9 +1,12 @@
 import type {
   AddCardInput,
+  AdminPendingPurchase,
   AdminPendingTrade,
+  AdminPurchaseReservationLine,
   CardRow,
   CatalogSeries,
   CharacterStat,
+  CreatePurchaseReservationInput,
   CreateReservationInput,
   CreateSeriesInput,
   MarketListing,
@@ -13,7 +16,9 @@ import type {
   OpeningSummary,
   OverviewCell,
   OverviewResponse,
+  PublicPendingPurchase,
   PublicPendingTrade,
+  PurchaseReservationLine,
   Rarity,
   RarityCount,
   RecordTxnInput,
@@ -644,7 +649,11 @@ export async function listCards(
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const stmt = db.prepare(
     `SELECT k.id, c.series, c.character, c.rarity, k.status, k.source,
-            k.purchase_price AS purchasePrice, k.asking_price AS askingPrice,
+            k.purchase_price AS purchasePrice,
+            p.seller AS purchaseSeller,
+            p.ordered_at AS purchaseOrderedAt,
+            p.note AS purchaseNote,
+            k.asking_price AS askingPrice,
             k.want_in_return AS wantInReturn, k.note,
             (SELECT COUNT(*) FROM cards k2
              WHERE k2.catalog_id = k.catalog_id AND k2.status IN ${ACTIVE}) AS activeCount,
@@ -656,6 +665,7 @@ export async function listCards(
             ) AS reserved
      FROM cards k
      JOIN card_catalog c ON c.id = k.catalog_id
+     LEFT JOIN purchase_reservations p ON p.id = k.purchase_reservation_id
      ${where}
      ORDER BY c.sort_order, k.id`,
   );
@@ -1061,4 +1071,212 @@ export async function completeReservation(
     );
   }
   await db.batch(stmts);
+}
+
+// ---- Pending purchase reservations ----
+
+interface RawPurchaseReservationLine {
+  reservationId: number;
+  catalogId: number;
+  series: string;
+  character: string;
+  rarity: Rarity;
+  qty: number;
+  unitPrice: number;
+}
+
+async function purchaseReservationLines(
+  db: D1Database,
+): Promise<RawPurchaseReservationLine[]> {
+  return (
+    await db
+      .prepare(
+        `SELECT l.reservation_id AS reservationId,
+                l.catalog_id AS catalogId, c.series, c.character, c.rarity,
+                l.qty, l.unit_price AS unitPrice
+         FROM purchase_reservation_lines l
+         JOIN purchase_reservations r ON r.id = l.reservation_id
+         JOIN card_catalog c ON c.id = l.catalog_id
+         WHERE r.status = 'pending'
+         ORDER BY c.sort_order, l.id`,
+      )
+      .all<RawPurchaseReservationLine>()
+  ).results;
+}
+
+export async function getPublicPendingPurchases(
+  db: D1Database,
+): Promise<PublicPendingPurchase[]> {
+  const purchases = (
+    await db
+      .prepare(
+        `SELECT id, ordered_at AS orderedAt
+         FROM purchase_reservations
+         WHERE status = 'pending'
+         ORDER BY ordered_at DESC, id DESC`,
+      )
+      .all<{ id: number; orderedAt: string }>()
+  ).results.map(
+    (purchase) => ({ ...purchase, lines: [] }) as PublicPendingPurchase,
+  );
+  const byId = new Map(purchases.map((purchase) => [purchase.id, purchase]));
+  for (const {
+    reservationId,
+    unitPrice: _,
+    ...line
+  } of await purchaseReservationLines(db)) {
+    byId.get(reservationId)?.lines.push(line as PurchaseReservationLine);
+  }
+  return purchases;
+}
+
+export async function getAdminPendingPurchases(
+  db: D1Database,
+): Promise<AdminPendingPurchase[]> {
+  const purchases = (
+    await db
+      .prepare(
+        `SELECT id, ordered_at AS orderedAt, seller, note
+         FROM purchase_reservations
+         WHERE status = 'pending'
+         ORDER BY ordered_at DESC, id DESC`,
+      )
+      .all<{
+        id: number;
+        orderedAt: string;
+        seller: string | null;
+        note: string | null;
+      }>()
+  ).results.map(
+    (purchase) => ({ ...purchase, lines: [] }) as AdminPendingPurchase,
+  );
+  const byId = new Map(purchases.map((purchase) => [purchase.id, purchase]));
+  for (const { reservationId, ...line } of await purchaseReservationLines(db)) {
+    byId.get(reservationId)?.lines.push(line as AdminPurchaseReservationLine);
+  }
+  return purchases;
+}
+
+export async function createPurchaseReservation(
+  db: D1Database,
+  input: CreatePurchaseReservationInput,
+): Promise<number> {
+  if (!input.orderedAt) throw new Error("orderedAt required");
+  if (!Array.isArray(input.lines) || input.lines.length === 0) {
+    throw new Error("at least one purchase line required");
+  }
+  if (input.lines.length > 50) {
+    throw new Error("at most 50 purchase lines are allowed");
+  }
+
+  const resolved: Array<{
+    catalogId: number;
+    qty: number;
+    unitPrice: number;
+  }> = [];
+  let totalQty = 0;
+  for (const line of input.lines) {
+    if (!Number.isInteger(line.qty) || line.qty < 1 || line.qty > 99) {
+      throw new Error("qty must be an integer between 1 and 99");
+    }
+    totalQty += line.qty;
+    if (totalQty > 500) {
+      throw new Error("at most 500 cards are allowed per purchase");
+    }
+    if (!Number.isFinite(line.unitPrice) || line.unitPrice < 0) {
+      throw new Error("unitPrice must be finite and nonnegative");
+    }
+    resolved.push({
+      catalogId: await catalogId(db, line.series, line.character, line.rarity),
+      qty: line.qty,
+      unitPrice: line.unitPrice,
+    });
+  }
+
+  // D1 executes a batch sequentially as one transaction, so the newest header
+  // remains this batch's header while all of its line statements are inserted.
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare(
+        `INSERT INTO purchase_reservations (seller, ordered_at, note)
+         VALUES (?, ?, ?)
+         RETURNING id`,
+      )
+      .bind(input.seller ?? null, input.orderedAt, input.note ?? null),
+  ];
+  for (const line of resolved) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO purchase_reservation_lines
+             (reservation_id, catalog_id, qty, unit_price)
+           VALUES (
+             (SELECT id FROM purchase_reservations ORDER BY id DESC LIMIT 1),
+             ?, ?, ?
+           )`,
+        )
+        .bind(line.catalogId, line.qty, line.unitPrice),
+    );
+  }
+  const results = await db.batch(statements);
+  return insertedId(results[0], "failed to create purchase reservation");
+}
+
+export async function completePurchaseReservation(
+  db: D1Database,
+  id: number,
+): Promise<void> {
+  // Expanding every line and claiming the header happen in one transaction.
+  // The pending-status guard turns a concurrent second completion into a no-op;
+  // the empty UPDATE result below then reports the conflict. Completed order
+  // metadata and lines remain available for purchase provenance.
+  const results = await db.batch([
+    db
+      .prepare(
+        `WITH RECURSIVE expanded(reservation_id, catalog_id, unit_price, copy, qty) AS (
+           SELECT r.id, l.catalog_id, l.unit_price, 1, l.qty
+           FROM purchase_reservation_lines l
+           JOIN purchase_reservations r ON r.id = l.reservation_id
+           WHERE l.reservation_id = ? AND r.status = 'pending'
+           UNION ALL
+           SELECT reservation_id, catalog_id, unit_price, copy + 1, qty
+           FROM expanded
+           WHERE copy < qty
+         )
+         INSERT INTO cards
+           (catalog_id, status, source, purchase_price, purchase_reservation_id)
+         SELECT catalog_id, 'owned', 'purchase', unit_price, reservation_id
+         FROM expanded`,
+      )
+      .bind(id),
+    db
+      .prepare(
+        `UPDATE purchase_reservations
+         SET status = 'received', received_at = datetime('now')
+         WHERE id = ? AND status = 'pending'
+         RETURNING id`,
+      )
+      .bind(id),
+  ]);
+  if (results[1].results.length === 0) {
+    throw new Error(`pending purchase reservation ${id} not found`);
+  }
+}
+
+export async function cancelPurchaseReservation(
+  db: D1Database,
+  id: number,
+): Promise<void> {
+  const result = await db
+    .prepare(
+      `UPDATE purchase_reservations
+       SET status = 'cancelled', cancelled_at = datetime('now')
+       WHERE id = ? AND status = 'pending'
+       RETURNING id`,
+    )
+    .bind(id)
+    .run();
+  if (result.results.length === 0) {
+    throw new Error(`pending purchase reservation ${id} not found`);
+  }
 }

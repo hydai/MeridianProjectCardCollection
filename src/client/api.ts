@@ -1,8 +1,10 @@
 import type {
   AddCardInput,
+  AdminPendingPurchase,
   AdminPendingTrade,
   CardRow,
   CatalogSeries,
+  CreatePurchaseReservationInput,
   CreateReservationInput,
   CreateSeriesInput,
   MarketListing,
@@ -10,6 +12,7 @@ import type {
   OpeningInput,
   OpeningSummary,
   OverviewResponse,
+  PublicPendingPurchase,
   PublicPendingTrade,
   RecordTxnInput,
   StatsResponse,
@@ -92,3 +95,16 @@ export const completeReservation = (id: number, happenedAt: string) =>
   });
 export const cancelReservation = (id: number) =>
   send<{ ok: true }>("DELETE", `/api/admin/pending-trades/${id}`, {});
+
+// ---- Pending purchases ----
+export const fetchPendingPurchases = () =>
+  get<PublicPendingPurchase[]>("/api/pending-purchases");
+export const fetchAdminPendingPurchases = () =>
+  get<AdminPendingPurchase[]>("/api/admin/pending-purchases");
+export const postPurchaseReservation = (
+  input: CreatePurchaseReservationInput,
+) => send<{ id: number }>("POST", "/api/admin/pending-purchases", input);
+export const completePendingPurchase = (id: number) =>
+  send<{ ok: true }>("POST", `/api/admin/pending-purchases/${id}/complete`, {});
+export const cancelPendingPurchase = (id: number) =>
+  send<{ ok: true }>("DELETE", `/api/admin/pending-purchases/${id}`, {});

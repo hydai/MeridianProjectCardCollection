@@ -17,7 +17,8 @@ with a live site you edit directly.
 - **Collection overview** — a series × character × rarity grid showing owned
   counts, per-series completion %, and missing cards highlighted.
 - **Trade board** — a "want" list (auto-computed missing cards) and a
-  "for trade / for sale" list with asking prices or desired cards.
+  "for trade / for sale" list with asking prices or desired cards; cards already
+  ordered or reserved as incoming are marked separately until they arrive.
 - **Public stats** — rarity distribution, per-character counts, and pull rates.
 
 ### Admin (Cloudflare Access, owner only)
@@ -29,6 +30,8 @@ with a live site you edit directly.
   (writes history and removes them from active inventory).
 - **Pending trades** — track reserved / in-progress trades, with
   reservation-aware duplicate flags.
+- **Pending purchases** — record ordered cards without counting them as owned;
+  confirm receipt to add them to inventory, or cancel if the seller never ships.
 - **Cost analysis & transaction history** — *private* (owner only): per-opening
   average cost, per-UR cost, and the full transaction log.
 
