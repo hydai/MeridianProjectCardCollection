@@ -27,7 +27,8 @@ with a live site you edit directly.
   optionally group them under an opening event (date + cost).
 - **Card management** — search/filter by series, character, rarity, and status;
   change status; set an asking price or a desired trade; mark cards sold/traded
-  (writes history and removes them from active inventory).
+  (writes history and removes them from active inventory). **保留 (hold)** locks a
+  duplicate so it stays owned but never shows up in the auto-computed trade list.
 - **Pending trades** — track reserved / in-progress trades, with
   reservation-aware duplicate flags.
 - **Pending purchases** — record ordered cards without counting them as owned;

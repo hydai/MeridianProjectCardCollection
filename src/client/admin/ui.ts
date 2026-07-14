@@ -139,6 +139,10 @@ export const PILL_DUP =
   "border-[rgba(201,161,74,0.4)] bg-[rgba(201,161,74,0.08)] text-primary";
 export const PILL_RESERVED =
   "border-reservation/40 bg-[var(--reservation-soft)] text-reservation";
+// Held (保留): a quiet neutral "shelved" chip — deliberately uncoloured so it
+// reads as set-aside, distinct from the amber reserved and gold duplicate pills.
+export const PILL_HELD =
+  "border-[var(--border-strong)] bg-[rgba(255,255,255,0.05)] text-[var(--text-secondary)]";
 
 // === Phase 4b: PendingTrades line editor (.line-editor / -head / -row) =
 export const LINE_EDITOR = "mt-3";

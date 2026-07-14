@@ -12,7 +12,14 @@ import type {
   CatalogSeries,
   Rarity,
 } from "../../shared/types";
-import { fetchCatalog, listCards, patchCard, postTransaction } from "../api";
+import {
+  fetchCatalog,
+  holdCard,
+  listCards,
+  patchCard,
+  postTransaction,
+  unholdCard,
+} from "../api";
 import {
   ACTION_FORM,
   BTN_GHOST_SM,
@@ -27,6 +34,7 @@ import {
   PANEL_TITLE,
   PILL_BASE,
   PILL_DUP,
+  PILL_HELD,
   PILL_RARITY,
   PILL_RESERVED,
   PILL_STATUS,
@@ -54,6 +62,7 @@ interface CardGroup {
   cards: CardRow[];
   inventoryCount: number;
   reservedCount: number;
+  heldCount: number;
   statusCounts: Record<CardStatus, number>;
 }
 
@@ -114,6 +123,7 @@ function groupCards(visibleRows: CardRow[], allRows: CardRow[]): CardGroup[] {
         cards: [],
         inventoryCount: inventoryCounts.get(key) ?? 0,
         reservedCount: 0,
+        heldCount: 0,
         statusCounts: {
           owned: 0,
           for_sale: 0,
@@ -128,6 +138,9 @@ function groupCards(visibleRows: CardRow[], allRows: CardRow[]): CardGroup[] {
     group.statusCounts[card.status] += 1;
     if (card.reserved && ACTIVE_STATUSES.has(card.status)) {
       group.reservedCount += 1;
+    }
+    if (card.held && ACTIVE_STATUSES.has(card.status)) {
+      group.heldCount += 1;
     }
   }
 
@@ -596,6 +609,11 @@ export function ManageCards() {
                               暫定換出 {group.reservedCount}
                             </span>
                           ) : null}
+                          {group.heldCount > 0 ? (
+                            <span className={cn(PILL_BASE, PILL_HELD)}>
+                              保留 {group.heldCount}
+                            </span>
+                          ) : null}
                         </div>
                       </td>
                       <td className={TD}>
@@ -675,6 +693,9 @@ export function ManageCards() {
                                           card.reserved &&
                                             isActive &&
                                             "[&_td]:bg-[var(--reservation-soft)] hover:[&_td]:bg-reservation/20",
+                                          card.held &&
+                                            isActive &&
+                                            "[&_td]:bg-[rgba(255,255,255,0.035)] hover:[&_td]:bg-[rgba(255,255,255,0.05)]",
                                         )}
                                       >
                                         <td
@@ -742,6 +763,17 @@ export function ManageCards() {
                                               暫定換出
                                             </span>
                                           ) : null}
+                                          {card.held && isActive ? (
+                                            <span
+                                              className={cn(
+                                                PILL_BASE,
+                                                PILL_HELD,
+                                                "ml-1.5",
+                                              )}
+                                            >
+                                              保留
+                                            </span>
+                                          ) : null}
                                           {card.status === "for_sale" &&
                                           card.askingPrice != null ? (
                                             <span className="ml-2">
@@ -756,7 +788,24 @@ export function ManageCards() {
                                           ) : null}
                                         </td>
                                         <td className={TD}>
-                                          {isActive && !card.reserved ? (
+                                          {card.held && isActive ? (
+                                            <div className={ROW_ACTIONS}>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                className={BTN_GHOST_SM}
+                                                onClick={() => {
+                                                  unholdCard(card.id)
+                                                    .then(onDone)
+                                                    .catch((e) =>
+                                                      setError(String(e)),
+                                                    );
+                                                }}
+                                              >
+                                                取消保留
+                                              </Button>
+                                            </div>
+                                          ) : isActive && !card.reserved ? (
                                             <div className={ROW_ACTIONS}>
                                               <Button
                                                 type="button"
@@ -824,6 +873,22 @@ export function ManageCards() {
                                                   }}
                                                 >
                                                   取消上架
+                                                </Button>
+                                              ) : null}
+                                              {card.status === "owned" ? (
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  className={BTN_GHOST_SM}
+                                                  onClick={() => {
+                                                    holdCard(card.id)
+                                                      .then(onDone)
+                                                      .catch((e) =>
+                                                        setError(String(e)),
+                                                      );
+                                                  }}
+                                                >
+                                                  保留
                                                 </Button>
                                               ) : null}
                                             </div>
