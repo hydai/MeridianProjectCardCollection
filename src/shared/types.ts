@@ -28,6 +28,8 @@ export interface OverviewCell {
   rarity: Rarity;
   owned: number;
   reserved: number;
+  // Owner-held copies (保留): still owned, but kept out of the tradeable pool.
+  held: number;
   available: number;
 }
 
@@ -170,6 +172,8 @@ export interface CardRow {
   duplicate: boolean;
   reserved: boolean;
   reservedGive: number;
+  // Owner has locked this exact physical card out of the tradeable list (保留).
+  held: boolean;
 }
 
 // ---- Pending trade reservations ----

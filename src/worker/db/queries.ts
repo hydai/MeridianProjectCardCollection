@@ -126,6 +126,7 @@ export async function getOverview(db: D1Database): Promise<OverviewResponse> {
         `SELECT c.id AS catalogId, c.series, s.volume_number AS volume,
                 c.character, c.rarity,
                 COUNT(k.id) AS owned,
+                COALESCE(SUM(k.held), 0) AS held,
                 COALESCE(g.reserved, 0) AS reserved
          FROM card_catalog c
          JOIN series s ON s.name = c.series
@@ -141,9 +142,12 @@ export async function getOverview(db: D1Database): Promise<OverviewResponse> {
       )
       .all<Omit<OverviewCell, "available">>()
   ).results;
+  // held and reserved never cover the same physical card (holding requires an
+  // unreserved card; reservation allocation skips held cards), so subtracting
+  // both never double-counts.
   const cells: OverviewCell[] = rawCells.map((cell) => ({
     ...cell,
-    available: Math.max(0, cell.owned - cell.reserved),
+    available: Math.max(0, cell.owned - cell.reserved - cell.held),
   }));
 
   const progress = (
@@ -466,6 +470,48 @@ async function assertCardNotReserved(
     throw new Error(`card ${cardId} is reserved for a pending trade`);
 }
 
+async function assertCardNotHeld(
+  db: D1Database,
+  cardId: number,
+): Promise<void> {
+  const row = await db
+    .prepare("SELECT held FROM cards WHERE id = ?")
+    .bind(cardId)
+    .first<{ held: number }>();
+  if (row?.held)
+    throw new Error(`card ${cardId} is held (保留); unhold it first`);
+}
+
+// Toggle the owner-held (保留) flag on a physical card. Holding locks a card out
+// of the tradeable list and every give-side allocation; only an unreserved
+// 'owned' card can be held. Unholding is an idempotent clear.
+export async function setCardHeld(
+  db: D1Database,
+  id: number,
+  held: boolean,
+): Promise<void> {
+  if (held) {
+    const card = await db
+      .prepare("SELECT status, held FROM cards WHERE id = ?")
+      .bind(id)
+      .first<{ status: string; held: number }>();
+    if (!card) throw new Error(`card ${id} not found`);
+    if (card.held) return;
+    if (card.status !== "owned") {
+      throw new Error(
+        `only an owned card can be held; card ${id} is ${card.status}`,
+      );
+    }
+    await assertCardNotReserved(db, id);
+  }
+  await db
+    .prepare(
+      "UPDATE cards SET held = ?, updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(held ? 1 : 0, id)
+    .run();
+}
+
 export async function updateCard(
   db: D1Database,
   id: number,
@@ -491,6 +537,7 @@ export async function updateCard(
   }
   if (sets.length === 0) return;
   await assertCardNotReserved(db, id);
+  await assertCardNotHeld(db, id);
   sets.push("updated_at = datetime('now')");
   const args = [...values, id];
   await db
@@ -505,6 +552,7 @@ export async function recordTransaction(
   t: RecordTxnInput,
 ): Promise<number> {
   await assertCardNotReserved(db, cardId);
+  await assertCardNotHeld(db, cardId);
   let receivedCatalogId: number | null = null;
   let receivedCardId: number | null = null;
   if (
@@ -615,6 +663,7 @@ async function legacyReservedCardIds(db: D1Database): Promise<Set<number>> {
            FROM cards k
            JOIN legacy ON legacy.catalog_id = k.catalog_id
            WHERE k.status IN ${ACTIVE}
+             AND k.held = 0
              AND NOT EXISTS (
                SELECT 1 FROM trade_reservation_lines explicit
                WHERE explicit.direction = 'give' AND explicit.card_id = k.id
@@ -659,6 +708,7 @@ export async function listCards(
              WHERE k2.catalog_id = k.catalog_id AND k2.status IN ${ACTIVE}) AS activeCount,
             (SELECT COALESCE(SUM(qty), 0) FROM trade_reservation_lines l
              WHERE l.catalog_id = k.catalog_id AND l.direction = 'give') AS reservedGive,
+            k.held AS held,
             EXISTS(
               SELECT 1 FROM trade_reservation_lines l
               WHERE l.card_id = k.id AND l.direction = 'give'
@@ -672,16 +722,18 @@ export async function listCards(
   const bound = vals.length ? stmt.bind(...vals) : stmt;
   const rows = (
     await bound.all<
-      Omit<CardRow, "duplicate" | "reserved"> & {
+      Omit<CardRow, "duplicate" | "reserved" | "held"> & {
         activeCount: number;
         reserved: number;
+        held: number;
       }
     >()
   ).results;
   const legacyReserved = await legacyReservedCardIds(db);
-  return rows.map(({ activeCount, reserved, ...r }) => ({
+  return rows.map(({ activeCount, reserved, held, ...r }) => ({
     ...r,
     reserved: Boolean(reserved) || legacyReserved.has(r.id),
+    held: Boolean(held),
     duplicate: activeCount - r.reservedGive > 1,
   }));
 }
@@ -808,6 +860,7 @@ export async function createReservation(
            FROM cards k
            WHERE k.catalog_id = ?
              AND k.status IN ('owned','for_sale','for_trade')
+             AND k.held = 0
              AND NOT EXISTS (
                SELECT 1 FROM trade_reservation_lines l
                WHERE l.direction = 'give' AND l.card_id = k.id
@@ -995,7 +1048,8 @@ export async function completeReservation(
     const card = await db
       .prepare(
         `SELECT id FROM cards
-         WHERE catalog_id = ? AND status IN ('owned','for_sale','for_trade') ${exclude}
+         WHERE catalog_id = ? AND status IN ('owned','for_sale','for_trade')
+           AND held = 0 ${exclude}
            AND NOT EXISTS (
              SELECT 1 FROM trade_reservation_lines l
              WHERE l.direction = 'give' AND l.card_id = cards.id

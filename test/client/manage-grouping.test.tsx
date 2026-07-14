@@ -41,6 +41,7 @@ function makeCard(id: number, overrides: Partial<CardRow> = {}): CardRow {
     duplicate: false,
     reserved: false,
     reservedGive: 0,
+    held: false,
     ...overrides,
   };
 }

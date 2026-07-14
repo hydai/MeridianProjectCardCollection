@@ -35,6 +35,7 @@ const cell = (
   rarity,
   owned,
   reserved: 0,
+  held: 0,
   available: owned,
   volume: series === "MP 4TH" ? 2 : 1,
 });

@@ -35,6 +35,7 @@ import {
   getTransactions,
   listCards,
   recordTransaction,
+  setCardHeld,
   updateCard,
 } from "./db/queries";
 import type { Env } from "./index";
@@ -302,6 +303,29 @@ admin.patch("/cards/:id", async (c) => {
   const body = await c.req.json<UpdateCardInput>();
   try {
     await updateCard(c.env.DB, id, body);
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+  return c.json({ ok: true });
+});
+
+// Lock a card out of the tradeable list (保留). DELETE releases the hold.
+admin.post("/cards/:id/hold", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) return c.json({ error: "bad id" }, 400);
+  try {
+    await setCardHeld(c.env.DB, id, true);
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+  return c.json({ ok: true });
+});
+
+admin.delete("/cards/:id/hold", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) return c.json({ error: "bad id" }, 400);
+  try {
+    await setCardHeld(c.env.DB, id, false);
   } catch (error) {
     return c.json({ error: String(error) }, 409);
   }

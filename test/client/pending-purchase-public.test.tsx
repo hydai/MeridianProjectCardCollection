@@ -24,6 +24,7 @@ const overview: OverviewResponse = {
       rarity: "R",
       owned: 0,
       reserved: 0,
+      held: 0,
       available: 0,
     },
     {
@@ -34,6 +35,7 @@ const overview: OverviewResponse = {
       rarity: "SR",
       owned: 1,
       reserved: 0,
+      held: 0,
       available: 1,
     },
     {
@@ -44,6 +46,7 @@ const overview: OverviewResponse = {
       rarity: "SSR",
       owned: 0,
       reserved: 0,
+      held: 0,
       available: 0,
     },
   ],

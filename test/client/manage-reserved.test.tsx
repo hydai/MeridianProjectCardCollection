@@ -35,6 +35,7 @@ describe("ManageCards acquisition and reservation state", () => {
         duplicate: false,
         reserved: true,
         reservedGive: 1,
+        held: false,
       },
     ];
     vi.stubGlobal(
@@ -109,6 +110,7 @@ describe("ManageCards acquisition and reservation state", () => {
         duplicate: false,
         reserved: false,
         reservedGive: 0,
+        held: false,
       },
     ];
     vi.stubGlobal(
@@ -171,6 +173,7 @@ describe("ManageCards acquisition and reservation state", () => {
         duplicate: false,
         reserved: false,
         reservedGive: 0,
+        held: false,
       },
       {
         id: 52,
@@ -186,6 +189,7 @@ describe("ManageCards acquisition and reservation state", () => {
         duplicate: false,
         reserved: false,
         reservedGive: 0,
+        held: false,
       },
       {
         id: 53,
@@ -201,6 +205,7 @@ describe("ManageCards acquisition and reservation state", () => {
         duplicate: false,
         reserved: false,
         reservedGive: 0,
+        held: false,
       },
       {
         id: 54,
@@ -216,6 +221,7 @@ describe("ManageCards acquisition and reservation state", () => {
         duplicate: false,
         reserved: false,
         reservedGive: 0,
+        held: false,
       },
     ];
     const fetchMock = vi.fn(async (url: string) => ({
