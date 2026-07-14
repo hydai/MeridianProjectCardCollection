@@ -20,6 +20,9 @@ export interface Matrix {
   characters: string[];
   cards: (Counts | null)[][];
   reserved: (Counts | null)[][];
+  // Owner-held copies (保留) per cell — kept out of the tradeable pool like
+  // reserved, but never surfaced publicly.
+  held: (Counts | null)[][];
   slots: (Slots | null)[][];
 }
 
@@ -31,6 +34,7 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
   const characters: string[] = [];
   const map = new Map<string, Counts>();
   const reservedMap = new Map<string, Counts>();
+  const heldMap = new Map<string, Counts>();
   const slotMap = new Map<string, Slots>();
 
   // Cells arrive ordered by catalog sort_order (series-major, then character,
@@ -56,6 +60,13 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
     }
     reserved[RARITY_INDEX[cell.rarity]] = cell.reserved ?? 0;
 
+    let held = heldMap.get(key);
+    if (!held) {
+      held = [0, 0, 0, 0];
+      heldMap.set(key, held);
+    }
+    held[RARITY_INDEX[cell.rarity]] = cell.held ?? 0;
+
     let slots = slotMap.get(key);
     if (!slots) {
       slots = [false, false, false, false];
@@ -70,6 +81,9 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
   const reserved = series.map((s) =>
     characters.map((c) => reservedMap.get(`${s}|${c}`) ?? null),
   );
+  const held = series.map((s) =>
+    characters.map((c) => heldMap.get(`${s}|${c}`) ?? null),
+  );
   const slots = series.map((s) =>
     characters.map((c) => slotMap.get(`${s}|${c}`) ?? null),
   );
@@ -79,6 +93,7 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
     characters,
     cards,
     reserved,
+    held,
     slots,
   };
 }
@@ -139,12 +154,27 @@ export const getReservedN = (
   const x = m.reserved[s]?.[c];
   return x === null || x === undefined ? 0 : x[r];
 };
+export const getHeldN = (
+  m: Matrix,
+  s: number,
+  c: number,
+  r: number,
+): number => {
+  const x = m.held[s]?.[c];
+  return x === null || x === undefined ? 0 : x[r];
+};
+// Tradeable copies exclude both pending-trade reservations and owner holds
+// (保留). held and reserved never cover the same card, so subtracting both is safe.
 export const getAvailableN = (
   m: Matrix,
   s: number,
   c: number,
   r: number,
-): number => Math.max(0, getN(m, s, c, r) - getReservedN(m, s, c, r));
+): number =>
+  Math.max(
+    0,
+    getN(m, s, c, r) - getReservedN(m, s, c, r) - getHeldN(m, s, c, r),
+  );
 export const sumRow = (arr: number[]): number => arr.reduce((a, b) => a + b, 0);
 
 export function grandTotalByRarity(m: Matrix): Counts {

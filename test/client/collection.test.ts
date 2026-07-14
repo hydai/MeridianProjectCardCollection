@@ -10,6 +10,7 @@ import {
   existsR,
   formatTradeList,
   getAvailableN,
+  getHeldN,
   getN,
   getReservedN,
   grandTotalByRarity,
@@ -193,6 +194,43 @@ describe("computeTradeWithPending", () => {
   });
 });
 
+describe("held cards (保留)", () => {
+  // Mirror the reserved overlay: a held copy lowers availability without
+  // touching the physical owned count.
+  const heldOverview = (catalogId: number, held: number): OverviewResponse => ({
+    ...overview,
+    cells: overview.cells.map((entry) =>
+      entry.catalogId === catalogId
+        ? { ...entry, held, available: Math.max(0, entry.owned - held) }
+        : entry,
+    ),
+  });
+
+  it("keeps held copies out of availability and shrinks the surplus", () => {
+    // NEW YEAR/Mizuki R: owned 3 (spare 2) → hold 1 → available 2, spare 1.
+    const m = buildMatrix(heldOverview(1, 1));
+    expect(getHeldN(m, 0, 0, 0)).toBe(1);
+    expect(getN(m, 0, 0, 0)).toBe(3); // still physically owned
+    expect(getAvailableN(m, 0, 0, 0)).toBe(2);
+    const spare = computeTrade(m).surplus.find(
+      (x) => x.si === 0 && x.ci === 0 && x.ri === 0,
+    )?.spare;
+    expect(spare).toBe(1);
+  });
+
+  it("drops a card from the surplus entirely when its only spare is held", () => {
+    // MP 4TH/Mizuki R: owned 2 (spare 1) → hold 1 → available 1 → no surplus.
+    const m = buildMatrix(heldOverview(5, 1));
+    expect(getAvailableN(m, 1, 0, 0)).toBe(1);
+    expect(
+      computeTrade(m).surplus.some(
+        (x) => x.si === 1 && x.ci === 0 && x.ri === 0,
+      ),
+    ).toBe(false);
+    expect(getN(m, 1, 0, 0)).toBe(2); // still physically owned
+  });
+});
+
 describe("receivableCards", () => {
   const m = buildMatrix(overview);
   // overview existing cells = 12 (2 series × 2 chars × 4 rarities = 16, minus
@@ -278,6 +316,7 @@ describe("formatTradeList", () => {
     characters: ["Kirali", "Mococo", "Fuwawa"],
     cards: [],
     reserved: [],
+    held: [],
     slots: [],
   };
 
@@ -324,6 +363,7 @@ describe("formatTradeList", () => {
       characters: ["Kirali", "Mizuki", "Unknown"],
       cards: [],
       reserved: [],
+      held: [],
       slots: [],
     };
     const items: TradeItem[] = [

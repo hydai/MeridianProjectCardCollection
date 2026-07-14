@@ -61,6 +61,12 @@ export const postSeries = (input: CreateSeriesInput) =>
 export const patchCard = (id: number, update: UpdateCardInput) =>
   send<{ ok: true }>("PATCH", `/api/admin/cards/${id}`, update);
 
+// Lock a card out of the tradeable list (保留); unhold releases it.
+export const holdCard = (id: number) =>
+  send<{ ok: true }>("POST", `/api/admin/cards/${id}/hold`, {});
+export const unholdCard = (id: number) =>
+  send<{ ok: true }>("DELETE", `/api/admin/cards/${id}/hold`, {});
+
 export const listCards = (
   filter: { series?: string; status?: string } = {},
 ) => {
