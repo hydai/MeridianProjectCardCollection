@@ -60,4 +60,25 @@ describe("schema", () => {
       ]),
     );
   });
+
+  it("adds the held flag and its partial index", async () => {
+    const columns = (
+      await env.DB.prepare("PRAGMA table_info(cards)").all<{
+        name: string;
+        dflt_value: string | null;
+        notnull: number;
+      }>()
+    ).results;
+    const held = columns.find((column) => column.name === "held");
+    expect(held).toBeDefined();
+    expect(held?.notnull).toBe(1);
+    expect(held?.dflt_value).toBe("0");
+
+    const indexes = (
+      await env.DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_cards_held'",
+      ).all<{ name: string }>()
+    ).results.map((row) => row.name);
+    expect(indexes).toContain("idx_cards_held");
+  });
 });
