@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { RARITY_ORDER, canonicalizeRarities } from "../shared/rarity";
 import type {
   AddCardInput,
   CompleteReservationInput,
@@ -42,7 +43,7 @@ import type { Env } from "./index";
 
 export const app = new Hono<{ Bindings: Env }>();
 
-const RARITIES = new Set(["R", "SR", "SSR", "UR"]);
+const RARITIES = new Set<string>(RARITY_ORDER);
 const CARD_SOURCES = new Set(["pull", "purchase", "trade_in"]);
 
 function normalizeSeriesInput(body: CreateSeriesInput): {
@@ -86,7 +87,12 @@ function normalizeSeriesInput(body: CreateSeriesInput): {
     return { error: "rarities must be unique" };
   }
   return {
-    value: { name, volume: body.volume, characters, rarities: body.rarities },
+    value: {
+      name,
+      volume: body.volume,
+      characters,
+      rarities: canonicalizeRarities(body.rarities),
+    },
   };
 }
 

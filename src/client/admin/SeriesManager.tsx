@@ -12,6 +12,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { RARITY_ORDER, canonicalizeRarities } from "../../shared/rarity";
 import type {
   CatalogSeries,
   CreateSeriesInput,
@@ -38,8 +39,6 @@ import {
   TALLY_ROW,
   TOAST,
 } from "./ui";
-
-const RARITIES: Rarity[] = ["R", "SR", "SSR", "UR"];
 
 interface FieldErrors {
   volume?: string;
@@ -85,7 +84,7 @@ export function SeriesManager() {
   const [copyFrom, setCopyFrom] = useState("");
   const [characterDraft, setCharacterDraft] = useState("");
   const [characters, setCharacters] = useState<string[]>([]);
-  const [rarities, setRarities] = useState<Rarity[]>([...RARITIES]);
+  const [rarities, setRarities] = useState<Rarity[]>([...RARITY_ORDER]);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -186,7 +185,7 @@ export function SeriesManager() {
       setCopyFrom("");
       setCharacterDraft("");
       setCharacters([]);
-      setRarities([...RARITIES]);
+      setRarities([...RARITY_ORDER]);
       setFieldErrors({});
       setSuccess(`已新增系列 ${trimmedName}`);
       await reload();
@@ -374,7 +373,7 @@ export function SeriesManager() {
             type="multiple"
             value={rarities}
             onValueChange={(values) => {
-              setRarities(values as Rarity[]);
+              setRarities(canonicalizeRarities(values as Rarity[]));
               setFieldErrors((current) => ({
                 ...current,
                 rarities: undefined,
@@ -386,7 +385,7 @@ export function SeriesManager() {
             }
             className={OPT_GROUP}
           >
-            {RARITIES.map((rarity) => (
+            {RARITY_ORDER.map((rarity) => (
               <ToggleGroupItem
                 key={rarity}
                 value={rarity}

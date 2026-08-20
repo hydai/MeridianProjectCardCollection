@@ -1,3 +1,4 @@
+import { RARITY_ORDER, canonicalizeRarities } from "../../shared/rarity";
 import type {
   AddCardInput,
   AdminPendingPurchase,
@@ -32,7 +33,6 @@ import type {
 
 // Cards still in the owner's possession (excludes sold/traded history).
 const ACTIVE = "('owned','for_sale','for_trade')";
-const RARITY_ORDER: Rarity[] = ["R", "SR", "SSR", "UR"];
 
 export async function getCatalog(db: D1Database): Promise<CatalogSeries[]> {
   const rows = (
@@ -74,7 +74,10 @@ export async function getCatalog(db: D1Database): Promise<CatalogSeries[]> {
       series.rarities.push(row.rarity);
     }
   }
-  return [...byName.values()];
+  return [...byName.values()].map((series) => ({
+    ...series,
+    rarities: canonicalizeRarities(series.rarities),
+  }));
 }
 
 export async function createSeries(
@@ -103,9 +106,10 @@ export async function createSeries(
       )
       .bind(input.name, nextSeriesOrder, input.volume),
   ];
+  const rarities = canonicalizeRarities(input.rarities);
   let catalogOrder = nextCatalogOrder;
   for (const character of input.characters) {
-    for (const rarity of input.rarities) {
+    for (const rarity of rarities) {
       statements.push(
         db
           .prepare(
@@ -116,7 +120,7 @@ export async function createSeries(
     }
   }
   await db.batch(statements);
-  return { ...input, sortOrder: nextSeriesOrder };
+  return { ...input, rarities, sortOrder: nextSeriesOrder };
 }
 
 export async function getOverview(db: D1Database): Promise<OverviewResponse> {

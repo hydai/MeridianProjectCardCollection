@@ -5,6 +5,7 @@ import {
   cancelReservation,
   createReservation,
   createSeries,
+  getCatalog,
   getMarket,
   getOverview,
   listCards,
@@ -55,6 +56,80 @@ describe("dynamic catalog", () => {
       "SELECT COUNT(*) AS n FROM card_catalog WHERE series = 'SUMMER'",
     ).first<{ n: number }>();
     expect(catalogRows?.n).toBe(4);
+  });
+
+  it("normalizes reselected rarity order before persisting a series", async () => {
+    const response = await send("POST", "/api/admin/series", {
+      name: "RARITY ORDER",
+      volume: 3,
+      characters: ["Alice"],
+      rarities: ["SR", "SSR", "UR", "R"],
+    });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      name: "RARITY ORDER",
+      rarities: ["R", "SR", "SSR", "UR"],
+    });
+
+    const rows = (
+      await env.DB.prepare(
+        "SELECT rarity FROM card_catalog WHERE series = ? ORDER BY sort_order",
+      )
+        .bind("RARITY ORDER")
+        .all<{ rarity: string }>()
+    ).results;
+    expect(rows.map((row) => row.rarity)).toEqual(["R", "SR", "SSR", "UR"]);
+  });
+
+  it("repairs stored rarity order and canonicalizes legacy catalog reads", async () => {
+    await createSeries(env.DB, {
+      name: "LEGACY RARITY ORDER",
+      volume: 3,
+      characters: ["Alice"],
+      rarities: ["R", "SR", "SSR", "UR"],
+    });
+    const firstOrder = await env.DB.prepare(
+      "SELECT MIN(sort_order) AS n FROM card_catalog WHERE series = ?",
+    )
+      .bind("LEGACY RARITY ORDER")
+      .first<{ n: number }>();
+    await env.DB.prepare(
+      `UPDATE card_catalog
+       SET sort_order = ? + CASE rarity
+         WHEN 'SR' THEN 0
+         WHEN 'SSR' THEN 1
+         WHEN 'UR' THEN 2
+         WHEN 'R' THEN 3
+       END
+       WHERE series = ?`,
+    )
+      .bind(firstOrder?.n ?? 0, "LEGACY RARITY ORDER")
+      .run();
+
+    const storedRarities = async () =>
+      (
+        await env.DB.prepare(
+          "SELECT rarity FROM card_catalog WHERE series = ? ORDER BY sort_order",
+        )
+          .bind("LEGACY RARITY ORDER")
+          .all<{ rarity: string }>()
+      ).results.map((row) => row.rarity);
+
+    expect(await storedRarities()).toEqual(["SR", "SSR", "UR", "R"]);
+    expect(
+      (await getCatalog(env.DB)).find(
+        (series) => series.name === "LEGACY RARITY ORDER",
+      )?.rarities,
+    ).toEqual(["R", "SR", "SSR", "UR"]);
+
+    const migration = env.TEST_MIGRATIONS.find((item) =>
+      item.name.includes("0009_normalize_catalog_rarity_order"),
+    );
+    expect(migration).toBeDefined();
+    await env.DB.batch(
+      (migration?.queries ?? []).map((query) => env.DB.prepare(query)),
+    );
+    expect(await storedRarities()).toEqual(["R", "SR", "SSR", "UR"]);
   });
 
   it("rejects duplicate normalized characters and existing series names", async () => {

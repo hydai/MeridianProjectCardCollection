@@ -48,7 +48,7 @@ describe("SeriesManager", () => {
     ).toHaveLength(0);
   });
 
-  it("submits a trimmed series payload, clears the form, and refreshes", async () => {
+  it("submits canonical rarity order, clears the form, and refreshes", async () => {
     const created = {
       name: "STARDUST",
       volume: 7,
@@ -93,6 +93,10 @@ describe("SeriesManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "加入角色" }));
     fireEvent.click(screen.getByRole("button", { name: "SR" }));
     fireEvent.click(screen.getByRole("button", { name: "UR" }));
+    // Radix appends a reselected item to the value array. The form must keep
+    // catalog order instead of turning this interaction into [SSR, R].
+    fireEvent.click(screen.getByRole("button", { name: "R" }));
+    fireEvent.click(screen.getByRole("button", { name: "R" }));
 
     expect(screen.getByText(/卡片種類預覽：4 種/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "新增系列" }));
