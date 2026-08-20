@@ -45,9 +45,16 @@ describe("read queries", () => {
     expect(mk[0].status).toBe("for_sale");
   });
 
-  it("stats pull rates cover four rarities and sum to ~100%", async () => {
+  it("stats pull rates cover all five rarities and sum to ~100%", async () => {
     const s = await getStats(env.DB);
-    expect(s.pullRates).toHaveLength(4);
+    expect(s.pullRates).toHaveLength(5);
+    expect(s.pullRates.map((row) => row.rarity)).toEqual([
+      "R",
+      "SR",
+      "SSR",
+      "UR",
+      "EX",
+    ]);
     const total = s.pullRates.reduce((a, r) => a + r.pct, 0);
     expect(Math.round(total)).toBe(100);
     expect(s.byRarity.reduce((a, r) => a + r.count, 0)).toBe(258);

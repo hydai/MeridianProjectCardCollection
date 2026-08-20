@@ -18,6 +18,7 @@ import type {
   StatsResponse,
   TxnRecord,
   UpdateCardInput,
+  UpdateSeriesInput,
 } from "../shared/types";
 
 async function get<T>(path: string): Promise<T> {
@@ -36,7 +37,16 @@ async function send<T>(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  if (!res.ok) {
+    let detail: string | null = null;
+    try {
+      const payload = (await res.json()) as { error?: unknown };
+      if (typeof payload.error === "string") detail = payload.error;
+    } catch {
+      // Fall back to the endpoint/status message for non-JSON errors.
+    }
+    throw new Error(detail ?? `${path} → ${res.status}`);
+  }
   return (await res.json()) as T;
 }
 
@@ -57,6 +67,13 @@ export const postCards = (cards: AddCardInput[], opening?: OpeningInput) =>
 
 export const postSeries = (input: CreateSeriesInput) =>
   send<CatalogSeries>("POST", "/api/admin/series", input);
+
+export const patchSeries = (name: string, input: UpdateSeriesInput) =>
+  send<CatalogSeries>(
+    "PATCH",
+    `/api/admin/series/${encodeURIComponent(name)}`,
+    input,
+  );
 
 export const patchCard = (id: number, update: UpdateCardInput) =>
   send<{ ok: true }>("PATCH", `/api/admin/cards/${id}`, update);

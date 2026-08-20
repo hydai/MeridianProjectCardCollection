@@ -1,3 +1,4 @@
+import { RARITY_ORDER } from "../shared/rarity";
 import type {
   OverviewResponse,
   PublicPendingPurchase,
@@ -5,14 +6,14 @@ import type {
   Rarity,
 } from "../shared/types";
 
-export const RARITIES: Rarity[] = ["R", "SR", "SSR", "UR"];
-export const RARITY_KEYS = ["r", "sr", "ssr", "ur"] as const;
+export const RARITIES = RARITY_ORDER;
+export const RARITY_KEYS = ["r", "sr", "ssr", "ur", "ex"] as const;
 export type RarityKey = (typeof RARITY_KEYS)[number];
 
-export type Counts = [number, number, number, number];
-export type Slots = [boolean, boolean, boolean, boolean];
+export type Counts = [number, number, number, number, number];
+export type Slots = [boolean, boolean, boolean, boolean, boolean];
 
-// The artifact's data shape: cards[seriesIdx][charIdx] = [R,SR,SSR,UR] or null
+// The artifact's data shape: cards[seriesIdx][charIdx] = [R,SR,SSR,UR,EX] or null
 // (null = that character does not appear in that series, e.g. KSP outside MP 4TH).
 export interface Matrix {
   series: string[];
@@ -26,7 +27,13 @@ export interface Matrix {
   slots: (Slots | null)[][];
 }
 
-const RARITY_INDEX: Record<Rarity, number> = { R: 0, SR: 1, SSR: 2, UR: 3 };
+const RARITY_INDEX: Record<Rarity, number> = {
+  R: 0,
+  SR: 1,
+  SSR: 2,
+  UR: 3,
+  EX: 4,
+};
 
 export function buildMatrix(overview: OverviewResponse): Matrix {
   const series: string[] = [];
@@ -48,28 +55,28 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
     const key = `${cell.series}|${cell.character}`;
     let counts = map.get(key);
     if (!counts) {
-      counts = [0, 0, 0, 0];
+      counts = [0, 0, 0, 0, 0];
       map.set(key, counts);
     }
     counts[RARITY_INDEX[cell.rarity]] = cell.owned;
 
     let reserved = reservedMap.get(key);
     if (!reserved) {
-      reserved = [0, 0, 0, 0];
+      reserved = [0, 0, 0, 0, 0];
       reservedMap.set(key, reserved);
     }
     reserved[RARITY_INDEX[cell.rarity]] = cell.reserved ?? 0;
 
     let held = heldMap.get(key);
     if (!held) {
-      held = [0, 0, 0, 0];
+      held = [0, 0, 0, 0, 0];
       heldMap.set(key, held);
     }
     held[RARITY_INDEX[cell.rarity]] = cell.held ?? 0;
 
     let slots = slotMap.get(key);
     if (!slots) {
-      slots = [false, false, false, false];
+      slots = [false, false, false, false, false];
       slotMap.set(key, slots);
     }
     slots[RARITY_INDEX[cell.rarity]] = true;

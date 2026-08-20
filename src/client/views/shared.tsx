@@ -16,6 +16,7 @@ const RARITY_CHIP = [
   "border-rarity-sr/40 bg-[var(--sr-soft)] text-rarity-sr",
   "border-rarity-ssr/40 bg-[var(--ssr-soft)] text-rarity-ssr",
   "border-rarity-ur/45 bg-[var(--ur-soft)] text-rarity-ur",
+  "border-rarity-ex/45 bg-[var(--ex-soft)] text-rarity-ex",
 ] as const;
 
 // Editorial card shell (shared by tables.tsx + Wishlist.tsx): the shadcn Card

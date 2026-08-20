@@ -93,6 +93,20 @@ describe("buildMatrix", () => {
     expect(getN(m, 1, 1, 0)).toBe(1);
   });
 
+  it("places Vol.3 EX cards in the fifth slot without inventing legacy slots", () => {
+    const m = buildMatrix({
+      cells: [
+        cell("LEGACY", "Mizuki", "R", 1, 201),
+        { ...cell("THIRD", "Mizuki", "R", 1, 202), volume: 3 },
+        { ...cell("THIRD", "Mizuki", "EX", 2, 203), volume: 3 },
+      ],
+      progress: [],
+    });
+    expect(existsR(m, 0, 0, 4)).toBe(false);
+    expect(existsR(m, 1, 0, 4)).toBe(true);
+    expect(getN(m, 1, 0, 4)).toBe(2);
+  });
+
   it("keeps reserved holdings separate from available holdings", () => {
     const withReservation: OverviewResponse = {
       ...overview,
@@ -107,7 +121,7 @@ describe("buildMatrix", () => {
   });
 
   it("grand total by rarity sums all owned", () => {
-    expect(grandTotalByRarity(buildMatrix(overview))).toEqual([6, 1, 0, 0]);
+    expect(grandTotalByRarity(buildMatrix(overview))).toEqual([6, 1, 0, 0, 0]);
   });
 });
 

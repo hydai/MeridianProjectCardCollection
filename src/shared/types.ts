@@ -1,4 +1,4 @@
-export type Rarity = "R" | "SR" | "SSR" | "UR";
+export type Rarity = "R" | "SR" | "SSR" | "UR" | "EX";
 export type CardStatus = "owned" | "for_sale" | "for_trade" | "sold" | "traded";
 export type CardSource = "pull" | "purchase" | "trade_in";
 export type TransactionType = "sale" | "trade";
@@ -19,6 +19,8 @@ export interface CreateSeriesInput {
   characters: string[];
   rarities: Rarity[];
 }
+
+export type UpdateSeriesInput = Omit<CreateSeriesInput, "name">;
 
 export interface OverviewCell {
   catalogId: number;
@@ -74,6 +76,7 @@ export interface CharacterStat {
   SR: number;
   SSR: number;
   UR: number;
+  EX: number;
 }
 
 export interface PullRate {

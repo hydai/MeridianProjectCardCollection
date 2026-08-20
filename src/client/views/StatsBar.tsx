@@ -9,9 +9,10 @@ export function StatsBar({ m }: { m: Matrix }) {
     { value: byRarity[1], label: "SR", cls: "text-rarity-sr" },
     { value: byRarity[2], label: "SSR", cls: "text-rarity-ssr" },
     { value: byRarity[3], label: "UR", cls: "text-rarity-ur" },
+    { value: byRarity[4], label: "EX", cls: "text-rarity-ex" },
   ];
   return (
-    <div className="mt-14 grid grid-cols-5 border-y border-border">
+    <div className="mt-14 grid grid-cols-6 border-y border-border">
       {cells.map((c) => (
         <div
           key={c.label}

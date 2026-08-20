@@ -112,15 +112,33 @@ export function Grid({ m }: { m: Matrix }) {
   const shown = m.series
     .map((s, si) => ({ s, si }))
     .filter(({ s }) => !hidden.has(s));
-  const shownRarities = RARITIES.map((rarity, ri) => ({ rarity, ri })).filter(
+  const issuedRarities = RARITIES.map((rarity, ri) => ({ rarity, ri })).filter(
+    ({ ri }) =>
+      m.series.some((_series, si) =>
+        m.characters.some((_character, ci) => existsR(m, si, ci, ri)),
+      ),
+  );
+  const shownRarities = issuedRarities.filter(
     ({ rarity }) => !hiddenR.has(rarity),
   );
+  // Each series only gets columns for levels actually issued in that series.
+  // This keeps EX scoped to Vol.3+ instead of adding an empty EX column to all
+  // legacy series.
+  const shownSeries = shown
+    .map(({ s, si }) => ({
+      s,
+      si,
+      rarities: shownRarities.filter(({ ri }) =>
+        m.characters.some((_character, ci) => existsR(m, si, ci, ri)),
+      ),
+    }))
+    .filter(({ rarities }) => rarities.length > 0);
 
   let totalHave = 0;
   let totalSlots = 0;
-  for (const { si } of shown) {
+  for (const { si, rarities } of shownSeries) {
     m.characters.forEach((_c, ci) => {
-      for (const { ri } of shownRarities) {
+      for (const { ri } of rarities) {
         if (!existsR(m, si, ci, ri)) continue;
         totalSlots++;
         if (getN(m, si, ci, ri) > 0) totalHave++;
@@ -162,7 +180,7 @@ export function Grid({ m }: { m: Matrix }) {
             稀有度
           </span>
           <div className="flex flex-wrap gap-1.5">
-            {RARITIES.map((rarity) => (
+            {issuedRarities.map(({ rarity }) => (
               <Toggle
                 key={rarity}
                 pressed={!hiddenR.has(rarity)}
@@ -195,11 +213,17 @@ export function Grid({ m }: { m: Matrix }) {
         ))}
       </div>
 
-      {shown.length === 0 || shownRarities.length === 0 ? (
+      {shown.length === 0 ||
+      shownRarities.length === 0 ||
+      shownSeries.length === 0 ? (
         <div
           className={`mb-4 ${CARD_FRAME} px-4 py-9 text-center text-[13px] tracking-[0.08em] text-[var(--text-tertiary)]`}
         >
-          {shown.length === 0 ? "（未選擇任何系列）" : "（未選擇任何稀有度）"}
+          {shown.length === 0
+            ? "（未選擇任何系列）"
+            : shownRarities.length === 0
+              ? "（未選擇任何稀有度）"
+              : "（所選系列沒有這個稀有度）"}
         </div>
       ) : (
         <div className={`overflow-x-auto ${CARD_FRAME}`}>
@@ -212,10 +236,10 @@ export function Grid({ m }: { m: Matrix }) {
                 >
                   角色
                 </th>
-                {shown.map(({ s }) => (
+                {shownSeries.map(({ s, rarities }) => (
                   <th
                     key={s}
-                    colSpan={shownRarities.length}
+                    colSpan={rarities.length}
                     className={`grid-series-head grid-series-start border-b-[0.5px] border-border bg-secondary px-1.5 pt-2.5 pb-2 text-center font-accent text-xs font-medium uppercase italic tracking-[0.12em] text-foreground ${BORDER_STRONG_L} max-sm:px-1 max-sm:pt-2 max-sm:pb-1.5 max-sm:text-[11px]`}
                   >
                     {s}
@@ -223,8 +247,8 @@ export function Grid({ m }: { m: Matrix }) {
                 ))}
               </tr>
               <tr>
-                {shown.map(({ s }) =>
-                  shownRarities.map(({ rarity, ri }, localRi) => (
+                {shownSeries.map(({ s, rarities }) =>
+                  rarities.map(({ rarity, ri }, localRi) => (
                     <th
                       key={`${s}-${rarity}`}
                       className={`grid-rarity-head gr-${RARITY_KEYS[ri]} min-w-[32px] bg-secondary px-0 py-1.5 text-center font-mono text-[10px] font-medium ${BORDER_STRONG_B} max-sm:min-w-[26px] max-sm:text-[9px] ${RARITY_TEXT[ri]} ${
@@ -247,8 +271,8 @@ export function Grid({ m }: { m: Matrix }) {
                   >
                     {charName}
                   </td>
-                  {shown.map(({ s, si }) =>
-                    shownRarities.map(({ rarity, ri }, localRi) => {
+                  {shownSeries.map(({ s, si, rarities }) =>
+                    rarities.map(({ rarity, ri }, localRi) => {
                       const startCls = localRi === 0 ? BORDER_STRONG_L : "";
                       const cellKey = `${s}-${rarity}`;
                       if (!existsR(m, si, ci, ri)) {

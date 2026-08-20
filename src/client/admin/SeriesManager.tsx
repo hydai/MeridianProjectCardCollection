@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
-import { Copy, Plus, X } from "lucide-react";
+import { Copy, Pencil, Plus, X } from "lucide-react";
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -12,13 +12,19 @@ import {
   useMemo,
   useState,
 } from "react";
-import { RARITY_ORDER, canonicalizeRarities } from "../../shared/rarity";
+import {
+  BASE_RARITY_ORDER,
+  RARITY_ORDER,
+  canonicalizeRarities,
+  supportsEx,
+} from "../../shared/rarity";
 import type {
   CatalogSeries,
   CreateSeriesInput,
   Rarity,
+  UpdateSeriesInput,
 } from "../../shared/types";
-import { fetchCatalog, postSeries } from "../api";
+import { fetchCatalog, patchSeries, postSeries } from "../api";
 import {
   ADD_ACTIONS,
   BTN_GHOST_SM,
@@ -79,12 +85,13 @@ function groupSeries(rows: CatalogSeries[]) {
 export function SeriesManager() {
   const [catalog, setCatalog] = useState<CatalogSeries[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState<string | null>(null);
   const [volume, setVolume] = useState("");
   const [name, setName] = useState("");
   const [copyFrom, setCopyFrom] = useState("");
   const [characterDraft, setCharacterDraft] = useState("");
   const [characters, setCharacters] = useState<string[]>([]);
-  const [rarities, setRarities] = useState<Rarity[]>([...RARITY_ORDER]);
+  const [rarities, setRarities] = useState<Rarity[]>([...BASE_RARITY_ORDER]);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -104,9 +111,56 @@ export function SeriesManager() {
   }, [reload]);
 
   const grouped = useMemo(() => groupSeries(catalog ?? []), [catalog]);
+  const isEditing = editingName !== null;
+  const exAvailable = supportsEx(Number(volume));
   const previewCharacterCount = appendCharacter(characters, characterDraft)
     .characters.length;
   const typeCount = previewCharacterCount * rarities.length;
+
+  const resetForm = () => {
+    setEditingName(null);
+    setVolume("");
+    setName("");
+    setCopyFrom("");
+    setCharacterDraft("");
+    setCharacters([]);
+    setRarities([...BASE_RARITY_ORDER]);
+    setFieldErrors({});
+    setSubmitError(null);
+  };
+
+  const editSeries = (series: CatalogSeries) => {
+    setEditingName(series.name);
+    setVolume(String(series.volume));
+    setName(series.name);
+    setCopyFrom("");
+    setCharacterDraft("");
+    setCharacters([...series.characters]);
+    setRarities(canonicalizeRarities(series.rarities));
+    setFieldErrors({});
+    setSubmitError(null);
+    setSuccess(null);
+  };
+
+  const changeVolume = (nextValue: string) => {
+    const hadExAvailable = supportsEx(Number(volume));
+    const hasExAvailable = supportsEx(Number(nextValue));
+    setVolume(nextValue);
+    setRarities((current) => {
+      if (!hasExAvailable) {
+        return current.filter((rarity) => rarity !== "EX");
+      }
+      if (!hadExAvailable) {
+        return canonicalizeRarities([...current, "EX"]);
+      }
+      return current;
+    });
+    setFieldErrors((current) => ({
+      ...current,
+      volume: undefined,
+      rarities: undefined,
+    }));
+  };
 
   const addCharacter = () => {
     const next = appendCharacter(characters, characterDraft);
@@ -154,6 +208,7 @@ export function SeriesManager() {
     if (!trimmedName) {
       errors.name = "系列名稱為必填";
     } else if (
+      !isEditing &&
       catalog?.some((row) => normalized(row.name) === normalized(trimmedName))
     ) {
       errors.name = "系列名稱已存在";
@@ -165,29 +220,31 @@ export function SeriesManager() {
     }
     if (rarities.length === 0) {
       errors.rarities = "至少選擇一個卡片級別";
+    } else if (!supportsEx(parsedVolume) && rarities.includes("EX")) {
+      errors.rarities = "EX 僅適用於第 3 彈以後的系列";
     }
 
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
-    const input: CreateSeriesInput = {
+    const input: UpdateSeriesInput = {
       volume: parsedVolume,
-      name: trimmedName,
       characters: pendingCharacter.characters,
       rarities,
     };
 
     setBusy(true);
     try {
-      await postSeries(input);
-      setVolume("");
-      setName("");
-      setCopyFrom("");
-      setCharacterDraft("");
-      setCharacters([]);
-      setRarities([...RARITY_ORDER]);
-      setFieldErrors({});
-      setSuccess(`已新增系列 ${trimmedName}`);
+      if (editingName) {
+        await patchSeries(editingName, input);
+      } else {
+        const createInput: CreateSeriesInput = { ...input, name: trimmedName };
+        await postSeries(createInput);
+      }
+      resetForm();
+      setSuccess(
+        editingName ? `已更新系列 ${editingName}` : `已新增系列 ${trimmedName}`,
+      );
       await reload();
     } catch (error) {
       setSubmitError(String(error));
@@ -202,6 +259,20 @@ export function SeriesManager() {
         系列管理
       </h2>
 
+      {editingName ? (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-[4px] border-[0.5px] border-primary/35 bg-primary/[0.06] px-3 py-2 text-[13px] text-muted-foreground">
+          <span>
+            正在編輯{" "}
+            <strong className="font-medium text-foreground">
+              {editingName}
+            </strong>
+          </span>
+          <span className="text-[11px] text-[var(--text-tertiary)]">
+            系列名稱不可變更；移除已被卡片或預約使用的卡種會被系統阻止。
+          </span>
+        </div>
+      ) : null}
+
       <form onSubmit={submit} noValidate>
         <div className="grid grid-cols-[minmax(120px,0.35fr)_minmax(220px,1fr)] gap-3 max-[600px]:grid-cols-1">
           <label className={FIELD}>
@@ -213,13 +284,7 @@ export function SeriesManager() {
               inputMode="numeric"
               className={CONTROL}
               value={volume}
-              onChange={(event) => {
-                setVolume(event.target.value);
-                setFieldErrors((current) => ({
-                  ...current,
-                  volume: undefined,
-                }));
-              }}
+              onChange={(event) => changeVolume(event.target.value)}
               aria-invalid={fieldErrors.volume ? true : undefined}
               aria-describedby={
                 fieldErrors.volume ? "series-volume-error" : undefined
@@ -241,6 +306,7 @@ export function SeriesManager() {
             <Input
               className={CONTROL}
               value={name}
+              disabled={isEditing}
               onChange={(event) => {
                 setName(event.target.value);
                 setFieldErrors((current) => ({
@@ -391,11 +457,20 @@ export function SeriesManager() {
                 value={rarity}
                 aria-label={rarity}
                 className={cn(OPT_BASE, OPT_RARITY[rarity])}
+                disabled={rarity === "EX" && !exAvailable}
+                title={
+                  rarity === "EX" && !exAvailable
+                    ? "EX 自第 3 彈起適用"
+                    : undefined
+                }
               >
                 {rarity}
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
+          <span className="text-[11px] text-[var(--text-tertiary)]">
+            EX 自第 3 彈起適用。
+          </span>
           {fieldErrors.rarities ? (
             <span
               className={ERROR_TEXT}
@@ -413,8 +488,28 @@ export function SeriesManager() {
             className={BTN_PRIMARY}
             disabled={busy || catalog === null}
           >
-            {busy ? "新增中…" : "新增系列"}
+            {busy
+              ? isEditing
+                ? "儲存中…"
+                : "新增中…"
+              : isEditing
+                ? "儲存變更"
+                : "新增系列"}
           </Button>
+          {isEditing ? (
+            <Button
+              type="button"
+              variant="outline"
+              className={BTN_GHOST_SM}
+              disabled={busy}
+              onClick={() => {
+                resetForm();
+                setSuccess(null);
+              }}
+            >
+              取消編輯
+            </Button>
+          ) : null}
           <output className="text-[13px] text-muted-foreground">
             卡片種類預覽：{typeCount} 種（{previewCharacterCount} 位角色 ×{" "}
             {rarities.length} 個級別）
@@ -455,7 +550,10 @@ export function SeriesManager() {
                   {rows.map((row) => (
                     <div
                       key={row.name}
-                      className="grid grid-cols-[minmax(130px,0.7fr)_minmax(220px,1.5fr)_auto] items-center gap-4 border-b-[0.5px] border-border px-2 py-3 max-[700px]:grid-cols-1 max-[700px]:gap-2"
+                      className={cn(
+                        "grid grid-cols-[minmax(130px,0.7fr)_minmax(220px,1.5fr)_auto_auto] items-center gap-4 border-b-[0.5px] border-border px-2 py-3 max-[700px]:grid-cols-1 max-[700px]:gap-2",
+                        editingName === row.name && "bg-primary/[0.04]",
+                      )}
                     >
                       <strong className="font-serif text-[15px] font-medium text-foreground">
                         {row.name}
@@ -476,6 +574,19 @@ export function SeriesManager() {
                           </span>
                         ))}
                       </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(
+                          BTN_GHOST_SM,
+                          "justify-self-end max-[700px]:justify-self-start",
+                        )}
+                        aria-label={`編輯系列 ${row.name}`}
+                        onClick={() => editSeries(row)}
+                      >
+                        <Pencil data-icon="inline-start" />
+                        編輯
+                      </Button>
                     </div>
                   ))}
                 </div>

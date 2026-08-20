@@ -14,11 +14,11 @@ describe("public api", () => {
     expect(body.progress).toHaveLength(SERIES.length);
   });
 
-  it("GET /api/stats returns four pull rates", async () => {
+  it("GET /api/stats returns all five pull rates", async () => {
     const res = await SELF.fetch("https://example.com/api/stats");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { pullRates: unknown[] };
-    expect(body.pullRates).toHaveLength(4);
+    expect(body.pullRates).toHaveLength(5);
   });
 
   it("GET /api/missing and /api/market respond 200 with arrays", async () => {

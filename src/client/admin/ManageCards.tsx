@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, useCallback, useEffect, useId, useState } from "react";
+import { RARITY_ORDER } from "../../shared/rarity";
 import type {
   CardRow,
   CardStatus,
@@ -76,7 +77,6 @@ const CARD_STATUSES: CardStatus[] = [
   "sold",
   "traded",
 ];
-const RARITY_ORDER: Rarity[] = ["R", "SR", "SSR", "UR"];
 const FILTER_BUTTON = cn(
   OPT_TOGGLE,
   "min-h-8 max-w-full break-words px-3 py-1.5 text-center text-xs whitespace-normal tracking-[0.04em]",

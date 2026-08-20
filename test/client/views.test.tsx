@@ -478,6 +478,57 @@ describe("Grid rarity filter", () => {
       (SERIES.length - 1) * 3,
     );
   });
+
+  it("renders an EX column only under a series that actually issues EX", () => {
+    const exMatrix = buildMatrix({
+      cells: [
+        {
+          catalogId: 1,
+          series: "LEGACY",
+          character: "Mizuki",
+          rarity: "R",
+          owned: 1,
+          reserved: 0,
+          held: 0,
+          available: 1,
+          volume: 2,
+        },
+        {
+          catalogId: 2,
+          series: "THIRD",
+          character: "Mizuki",
+          rarity: "R",
+          owned: 1,
+          reserved: 0,
+          held: 0,
+          available: 1,
+          volume: 3,
+        },
+        {
+          catalogId: 3,
+          series: "THIRD",
+          character: "Mizuki",
+          rarity: "EX",
+          owned: 0,
+          reserved: 0,
+          held: 0,
+          available: 0,
+          volume: 3,
+        },
+      ],
+      progress: [],
+    });
+    const { container } = render(<Grid m={exMatrix} />);
+    expect(container.querySelectorAll(".grid-rarity-head.gr-ex")).toHaveLength(
+      1,
+    );
+    expect(
+      within(container.querySelector(".grid-filter") as HTMLElement).getByRole(
+        "button",
+        { name: "EX" },
+      ),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
 });
 
 describe("Trade copy buttons", () => {

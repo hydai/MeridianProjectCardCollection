@@ -30,11 +30,13 @@
   --sr-color: #d4a857;
   --ssr-color: #d68aa3;
   --ur-color: #e07171;
+  --ex-color: #a78bfa;
 
   --r-soft: rgba(154, 149, 139, 0.08);
   --sr-soft: rgba(212, 168, 87, 0.08);
   --ssr-soft: rgba(214, 138, 163, 0.08);
   --ur-soft: rgba(224, 113, 113, 0.1);
+  --ex-soft: rgba(167, 139, 250, 0.12);
 
   /* ---- shadcn semantic token bridge (dark-only) ---- */
   /* Semantic tokens alias the legacy brand tokens above: single source of
@@ -64,6 +66,7 @@
   --rarity-sr: var(--sr-color);
   --rarity-ssr: var(--ssr-color);
   --rarity-ur: var(--ur-color);
+  --rarity-ex: var(--ex-color);
 }
 
 @theme inline {
@@ -91,6 +94,7 @@
   --color-rarity-sr: var(--rarity-sr);
   --color-rarity-ssr: var(--rarity-ssr);
   --color-rarity-ur: var(--rarity-ur);
+  --color-rarity-ex: var(--rarity-ex);
   --color-reservation: var(--reservation);
 
   /* brand: fonts → font-sans / font-serif / font-accent / font-mono */

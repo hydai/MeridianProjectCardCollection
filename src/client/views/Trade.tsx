@@ -415,6 +415,11 @@ export function Trade({
     pendingPurchases ?? [],
   );
   const totalSpare = surplus.reduce((s, x) => s + x.spare, 0);
+  const issuedRarityIndexes = RARITIES.map((_rarity, ri) => ri).filter((ri) =>
+    m.series.some((_series, si) =>
+      m.characters.some((_character, ci) => existsR(m, si, ci, ri)),
+    ),
+  );
 
   // Empty selection = 顯示全部；否則只顯示所選稀有度的聯集。
   const showAll = rarities.size === 0;
@@ -448,7 +453,8 @@ export function Trade({
       spare: totalSpare,
       shortfall: false,
     },
-    ...RARITIES.map((rarity, ri) => {
+    ...issuedRarityIndexes.map((ri) => {
+      const rarity = RARITIES[ri];
       const need = needs.filter((x) => x.ri === ri).length;
       const spare = surplus
         .filter((x) => x.ri === ri)
@@ -465,7 +471,7 @@ export function Trade({
   ];
 
   const groupedList = (items: TradeItem[], kind: "surplus" | "needs") =>
-    [3, 2, 1, 0].map((ri) => {
+    [...issuedRarityIndexes].reverse().map((ri) => {
       const ritems = items.filter((x) => x.ri === ri);
       if (ritems.length === 0) return null;
       const headCount =
@@ -541,10 +547,24 @@ export function Trade({
   const surplusSub = `多餘 ${fSurplus.reduce((s, x) => s + x.spare, 0)} 張`;
   const needsSub = `缺 ${fNeeds.length} 種`;
 
-  const urNeed = needs.filter((x) => x.ri === 3).length;
-  const urSpare = surplus.filter((x) => x.ri === 3).length;
+  const highestRarityIndex = issuedRarityIndexes.at(-1);
+  const highestRarity =
+    highestRarityIndex === undefined ? null : RARITIES[highestRarityIndex];
+  const highestNeed =
+    highestRarityIndex === undefined
+      ? 0
+      : needs.filter((x) => x.ri === highestRarityIndex).length;
+  const highestSpare =
+    highestRarityIndex === undefined
+      ? 0
+      : surplus
+          .filter((x) => x.ri === highestRarityIndex)
+          .reduce((sum, item) => sum + item.spare, 0);
   const showWarning =
-    (showAll || rarities.has("ur")) && urNeed > 0 && urSpare === 0;
+    highestRarityIndex !== undefined &&
+    (showAll || rarities.has(RARITY_KEYS[highestRarityIndex])) &&
+    highestNeed > 0 &&
+    highestSpare === 0;
 
   const sumItemClass = (active: boolean, shortfall: boolean) =>
     cn(
@@ -561,8 +581,8 @@ export function Trade({
     );
 
   const shownRi = showAll
-    ? [0, 1, 2, 3]
-    : [0, 1, 2, 3].filter((ri) => rarities.has(RARITY_KEYS[ri]));
+    ? issuedRarityIndexes
+    : issuedRarityIndexes.filter((ri) => rarities.has(RARITY_KEYS[ri]));
 
   const surplusTitle = (
     <span className="inline-flex items-center gap-2">
@@ -587,7 +607,12 @@ export function Trade({
 
   return (
     <section className="view view-trade">
-      <div className="mb-[18px] grid w-full grid-cols-5 gap-2.5 max-sm:gap-[7px]">
+      <div
+        className="mb-[18px] grid w-full gap-2.5 max-sm:gap-[7px]"
+        style={{
+          gridTemplateColumns: `repeat(${summaryCards.length}, minmax(0, 1fr))`,
+        }}
+      >
         {summaryCards.map((c) => {
           const active =
             c.key === "all" ? showAll : rarities.has(c.key as RarityKey);
@@ -625,12 +650,19 @@ export function Trade({
       {showWarning ? (
         <Alert className="mb-[22px] gap-1 rounded-[4px] border-[0.5px] border-rarity-ur/35 bg-[var(--ur-soft)] px-[18px] py-3.5 text-[13px] leading-[1.6] text-muted-foreground">
           <TriangleAlert className="text-rarity-ur" />
-          <AlertTitle className="font-medium text-rarity-ur">
-            UR 沒有任何多餘可換出
+          <AlertTitle
+            className={cn(
+              "font-medium",
+              highestRarityIndex === undefined
+                ? "text-rarity-ur"
+                : RARITY_TEXT[highestRarityIndex],
+            )}
+          >
+            {highestRarity} 沒有任何多餘可換出
           </AlertTitle>
           <AlertDescription className="text-[13px] leading-[1.6] text-muted-foreground">
-            還缺 {urNeed} 張。同階互換補不齊 UR，需用多張低階卡換 1 張
-            UR，或直接購入。其餘 R / SR / SSR 的重複都足以換回所缺。
+            還缺 {highestNeed} 張。同階互換補不齊 {highestRarity}
+            ，可能需用多張其他級別交換 1 張，或直接購入。
           </AlertDescription>
         </Alert>
       ) : null}

@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { RARITY_TEXT } from "@/shared/rarity";
-import { RARITIES } from "../../../seed/catalog-def";
+import { RARITY_ORDER } from "../../shared/rarity";
 import type { Rarity } from "../../shared/types";
 
 // === Admin design-system constants (Phase 4) =========================
@@ -54,6 +54,7 @@ export const OPT_RARITY: Record<Rarity, string> = {
   SR: "data-[state=on]:border-[rgba(212,168,87,0.5)] data-[state=on]:bg-[rgba(212,168,87,0.08)] data-[state=on]:text-rarity-sr aria-pressed:border-[rgba(212,168,87,0.5)] aria-pressed:bg-[rgba(212,168,87,0.08)] aria-pressed:text-rarity-sr",
   SSR: "data-[state=on]:border-[rgba(214,138,163,0.5)] data-[state=on]:bg-[rgba(214,138,163,0.08)] data-[state=on]:text-rarity-ssr aria-pressed:border-[rgba(214,138,163,0.5)] aria-pressed:bg-[rgba(214,138,163,0.08)] aria-pressed:text-rarity-ssr",
   UR: "data-[state=on]:border-[rgba(224,113,113,0.5)] data-[state=on]:bg-[rgba(224,113,113,0.08)] data-[state=on]:text-rarity-ur aria-pressed:border-[rgba(224,113,113,0.5)] aria-pressed:bg-[rgba(224,113,113,0.08)] aria-pressed:text-rarity-ur",
+  EX: "data-[state=on]:border-rarity-ex/50 data-[state=on]:bg-[var(--ex-soft)] data-[state=on]:text-rarity-ex aria-pressed:border-rarity-ex/50 aria-pressed:bg-[var(--ex-soft)] aria-pressed:text-rarity-ex",
 };
 
 // Admin pills (.pill + rarity colour) — 10px neutral-bordered chips kept as a
@@ -62,10 +63,10 @@ export const OPT_RARITY: Record<Rarity, string> = {
 export const PILL_BASE =
   "inline-flex items-center whitespace-nowrap rounded-full border-[0.5px] border-[var(--border-strong)] px-[9px] py-0.5 text-[10px] tracking-[0.1em] text-[var(--text-tertiary)]";
 // Rarity text colour reuses the shared RARITY_TEXT token (@/shared/rarity) — the
-// single source also used by the collection views — indexed by RARITIES order,
+// single source also used by the collection views — indexed by shared rarity order,
 // instead of a parallel map.
 export const PILL_RARITY: Record<Rarity, string> = Object.fromEntries(
-  RARITIES.map((r, i): [Rarity, string] => [r, RARITY_TEXT[i]]),
+  RARITY_ORDER.map((r, i): [Rarity, string] => [r, RARITY_TEXT[i]]),
 ) as Record<Rarity, string>;
 
 // Running tally list (.tally*).

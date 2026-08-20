@@ -29,6 +29,7 @@ import type {
   TradeDirection,
   TxnRecord,
   UpdateCardInput,
+  UpdateSeriesInput,
 } from "../../shared/types";
 
 // Cards still in the owner's possession (excludes sold/traded history).
@@ -121,6 +122,123 @@ export async function createSeries(
   }
   await db.batch(statements);
   return { ...input, rarities, sortOrder: nextSeriesOrder };
+}
+
+interface CatalogIdentity {
+  id: number;
+  character: string;
+  rarity: Rarity;
+  referenced: number;
+}
+
+export async function updateSeries(
+  db: D1Database,
+  name: string,
+  input: UpdateSeriesInput,
+): Promise<CatalogSeries> {
+  const metadata = await db
+    .prepare("SELECT sort_order AS sortOrder FROM series WHERE name = ?")
+    .bind(name)
+    .first<{ sortOrder: number }>();
+  if (!metadata) throw new Error(`series not found: ${name}`);
+
+  const existing = (
+    await db
+      .prepare(
+        `SELECT c.id, c.character, c.rarity,
+                (
+                  EXISTS(SELECT 1 FROM cards WHERE catalog_id = c.id)
+                  OR EXISTS(
+                    SELECT 1 FROM transactions WHERE received_catalog_id = c.id
+                  )
+                  OR EXISTS(
+                    SELECT 1 FROM trade_reservation_lines WHERE catalog_id = c.id
+                  )
+                  OR EXISTS(
+                    SELECT 1 FROM purchase_reservation_lines WHERE catalog_id = c.id
+                  )
+                ) AS referenced
+         FROM card_catalog c
+         WHERE c.series = ?
+         ORDER BY c.sort_order, c.id`,
+      )
+      .bind(name)
+      .all<CatalogIdentity>()
+  ).results;
+  const rarities = canonicalizeRarities(input.rarities);
+  const desired = input.characters.flatMap((character) =>
+    rarities.map((rarity) => ({
+      key: `${character}\u0000${rarity}`,
+      character,
+      rarity,
+    })),
+  );
+  const desiredKeys = new Set(desired.map((row) => row.key));
+  const removed = existing.filter(
+    (row) => !desiredKeys.has(`${row.character}\u0000${row.rarity}`),
+  );
+  if (removed.some((row) => Boolean(row.referenced))) {
+    throw new Error("無法移除已有卡片、交易紀錄或預約資料的角色／級別");
+  }
+
+  const existingByKey = new Map(
+    existing.map((row) => [`${row.character}\u0000${row.rarity}`, row]),
+  );
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare("UPDATE series SET volume_number = ? WHERE name = ?")
+      .bind(input.volume, name),
+  ];
+  if (removed.length > 0) {
+    const placeholders = removed.map(() => "?").join(", ");
+    statements.push(
+      db
+        .prepare(`DELETE FROM card_catalog WHERE id IN (${placeholders})`)
+        .bind(...removed.map((row) => row.id)),
+    );
+  }
+
+  // Temporary negative orders encode the submitted character/rarity order.
+  // The final materialized CTE then compacts the whole catalog back to stable,
+  // unique, series-major sort_order values inside this same D1 batch.
+  desired.forEach((row, index) => {
+    const sortOrder = index - desired.length;
+    const current = existingByKey.get(row.key);
+    statements.push(
+      current
+        ? db
+            .prepare("UPDATE card_catalog SET sort_order = ? WHERE id = ?")
+            .bind(sortOrder, current.id)
+        : db
+            .prepare(
+              "INSERT INTO card_catalog (series, character, rarity, sort_order) VALUES (?, ?, ?, ?)",
+            )
+            .bind(name, row.character, row.rarity, sortOrder),
+    );
+  });
+  statements.push(
+    db.prepare(
+      `WITH normalized AS MATERIALIZED (
+         SELECT c.id,
+                ROW_NUMBER() OVER (
+                  ORDER BY s.sort_order, c.sort_order, c.id
+                ) - 1 AS normalized_sort_order
+         FROM card_catalog c
+         JOIN series s ON s.name = c.series
+       )
+       UPDATE card_catalog
+       SET sort_order = (
+         SELECT normalized_sort_order
+         FROM normalized
+         WHERE normalized.id = card_catalog.id
+       )`,
+    ),
+  );
+  await db.batch(statements);
+
+  const updated = (await getCatalog(db)).find((series) => series.name === name);
+  if (!updated) throw new Error(`series not found after update: ${name}`);
+  return updated;
 }
 
 export async function getOverview(db: D1Database): Promise<OverviewResponse> {
@@ -230,7 +348,8 @@ export async function getStats(db: D1Database): Promise<StatsResponse> {
       .prepare(
         `SELECT c.character,
                 SUM(c.rarity = 'R') AS R, SUM(c.rarity = 'SR') AS SR,
-                SUM(c.rarity = 'SSR') AS SSR, SUM(c.rarity = 'UR') AS UR
+                SUM(c.rarity = 'SSR') AS SSR, SUM(c.rarity = 'UR') AS UR,
+                SUM(c.rarity = 'EX') AS EX
          FROM cards k JOIN card_catalog c ON c.id = k.catalog_id
          WHERE k.status IN ${ACTIVE}
          GROUP BY c.character
@@ -239,7 +358,7 @@ export async function getStats(db: D1Database): Promise<StatsResponse> {
       .all<CharacterStat>()
   ).results;
 
-  // Normalise to all four rarities in display order, filling gaps with 0.
+  // Normalise to every supported rarity in display order, filling gaps with 0.
   const byRarity: RarityCount[] = RARITY_ORDER.map((rarity) => ({
     rarity,
     count: rawRarity.find((r) => r.rarity === rarity)?.count ?? 0,
@@ -976,7 +1095,13 @@ export async function cancelReservation(
   ]);
 }
 
-const RARITY_RANK: Record<Rarity, number> = { R: 0, SR: 1, SSR: 2, UR: 3 };
+const RARITY_RANK: Record<Rarity, number> = {
+  R: 0,
+  SR: 1,
+  SSR: 2,
+  UR: 3,
+  EX: 4,
+};
 
 export async function completeReservation(
   db: D1Database,

@@ -1,5 +1,9 @@
 import { Hono } from "hono";
-import { RARITY_ORDER, canonicalizeRarities } from "../shared/rarity";
+import {
+  RARITY_ORDER,
+  canonicalizeRarities,
+  supportsEx,
+} from "../shared/rarity";
 import type {
   AddCardInput,
   CompleteReservationInput,
@@ -7,8 +11,10 @@ import type {
   CreateReservationInput,
   CreateSeriesInput,
   OpeningInput,
+  Rarity,
   RecordTxnInput,
   UpdateCardInput,
+  UpdateSeriesInput,
 } from "../shared/types";
 import { accessGuard } from "./auth";
 import {
@@ -38,6 +44,7 @@ import {
   recordTransaction,
   setCardHeld,
   updateCard,
+  updateSeries,
 } from "./db/queries";
 import type { Env } from "./index";
 
@@ -46,27 +53,43 @@ export const app = new Hono<{ Bindings: Env }>();
 const RARITIES = new Set<string>(RARITY_ORDER);
 const CARD_SOURCES = new Set(["pull", "purchase", "trade_in"]);
 
-function normalizeSeriesInput(body: CreateSeriesInput): {
+function isRarity(value: unknown): value is Rarity {
+  return typeof value === "string" && RARITIES.has(value);
+}
+
+function normalizeSeriesInput(
+  body: unknown,
+  nameOverride?: string,
+): {
   value?: CreateSeriesInput;
   error?: string;
 } {
-  if (!Number.isInteger(body?.volume) || body.volume < 1) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { error: "invalid series" };
+  }
+  const input = body as Record<string, unknown>;
+  if (
+    typeof input.volume !== "number" ||
+    !Number.isInteger(input.volume) ||
+    input.volume < 1
+  ) {
     return { error: "volume must be a positive integer" };
   }
-  if (typeof body?.name !== "string" || !body.name.trim()) {
+  const inputName = nameOverride ?? input.name;
+  if (typeof inputName !== "string" || !inputName.trim()) {
     return { error: "name required" };
   }
-  if (!Array.isArray(body.characters) || body.characters.length === 0) {
+  if (!Array.isArray(input.characters) || input.characters.length === 0) {
     return { error: "characters required" };
   }
-  if (!Array.isArray(body.rarities) || body.rarities.length === 0) {
+  if (!Array.isArray(input.rarities) || input.rarities.length === 0) {
     return { error: "rarities required" };
   }
-  if (body.characters.some((character) => typeof character !== "string")) {
+  if (input.characters.some((character) => typeof character !== "string")) {
     return { error: "characters must be strings" };
   }
-  const name = body.name.trim();
-  const characters = body.characters.map((character) => character.trim());
+  const name = inputName.trim();
+  const characters = input.characters.map((character) => character.trim());
   if (characters.some((character) => !character)) {
     return { error: "characters cannot be blank" };
   }
@@ -76,22 +99,23 @@ function normalizeSeriesInput(body: CreateSeriesInput): {
   ) {
     return { error: "characters must be unique" };
   }
-  if (
-    body.rarities.some(
-      (rarity) => typeof rarity !== "string" || !RARITIES.has(rarity),
-    )
-  ) {
+  if (!input.rarities.every(isRarity)) {
     return { error: "rarities contain an unsupported value" };
   }
-  if (new Set(body.rarities).size !== body.rarities.length) {
+  if (new Set(input.rarities).size !== input.rarities.length) {
     return { error: "rarities must be unique" };
+  }
+  const rarities = canonicalizeRarities(input.rarities);
+  const volume = input.volume;
+  if (!supportsEx(volume) && rarities.includes("EX")) {
+    return { error: "EX is only available from volume 3" };
   }
   return {
     value: {
       name,
-      volume: body.volume,
+      volume,
       characters,
-      rarities: canonicalizeRarities(body.rarities),
+      rarities,
     },
   };
 }
@@ -265,9 +289,13 @@ admin.get("/cards", async (c) =>
 );
 
 admin.post("/series", async (c) => {
-  const normalized = normalizeSeriesInput(
-    await c.req.json<CreateSeriesInput>(),
-  );
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const normalized = normalizeSeriesInput(body);
   if (!normalized.value) {
     return c.json({ error: normalized.error ?? "invalid series" }, 400);
   }
@@ -278,6 +306,36 @@ admin.post("/series", async (c) => {
   if (exists) return c.json({ error: "series already exists" }, 409);
   try {
     return c.json(await createSeries(c.env.DB, normalized.value), 201);
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+});
+
+admin.patch("/series/:name", async (c) => {
+  const name = c.req.param("name").trim();
+  if (!name) return c.json({ error: "name required" }, 400);
+  const existing = (await getCatalog(c.env.DB)).find(
+    (series) => series.name === name,
+  );
+  if (!existing) return c.json({ error: "series not found" }, 404);
+
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const normalized = normalizeSeriesInput(body, name);
+  if (!normalized.value) {
+    return c.json({ error: normalized.error ?? "invalid series" }, 400);
+  }
+  const input: UpdateSeriesInput = {
+    volume: normalized.value.volume,
+    characters: normalized.value.characters,
+    rarities: normalized.value.rarities,
+  };
+  try {
+    return c.json(await updateSeries(c.env.DB, name, input));
   } catch (error) {
     return c.json({ error: String(error) }, 409);
   }

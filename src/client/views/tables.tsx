@@ -33,13 +33,36 @@ const CARD_TITLE_SERIES =
   "font-accent text-[26px] font-medium uppercase italic tracking-[0.08em] text-foreground max-sm:text-[22px]";
 const CARD_TITLE_RARITY =
   "font-mono text-2xl font-medium tracking-[0.1em] max-sm:text-[22px]";
-// ByRarity title colour: R = foreground (per StatsBar), SR/SSR/UR = rarity.
+// ByRarity title colour: R = foreground (per StatsBar), higher tiers = rarity.
 const RARITY_TITLE = [
   "text-foreground",
   "text-rarity-sr",
   "text-rarity-ssr",
   "text-rarity-ur",
+  "text-rarity-ex",
 ] as const;
+
+const RARITY_LABELS = ["普通", "較稀有", "稀有", "極稀有", "限定級別"];
+
+function rarityIndexesFor(
+  m: Matrix,
+  coordinates: Array<{ si: number; ci: number }>,
+): number[] {
+  return RARITIES.map((_rarity, ri) => ri).filter((ri) =>
+    coordinates.some(({ si, ci }) => existsR(m, si, ci, ri)),
+  );
+}
+
+function RarityHeaders({ indexes }: { indexes: number[] }) {
+  return indexes.map((ri) => (
+    <TableHead
+      key={RARITIES[ri]}
+      className={cn(TH, "text-center", RARITY_TITLE[ri])}
+    >
+      {RARITIES[ri]}
+    </TableHead>
+  ));
+}
 
 function CatalogNumCell({
   m,
@@ -65,7 +88,11 @@ export function ByCharacter({ m }: { m: Matrix }) {
         const seriesIdxs = m.series
           .map((_s, si) => si)
           .filter((si) => exists(m, si, ci));
-        const totalsByRarity = RARITIES.map((_r, ri) =>
+        const rarityIndexes = rarityIndexesFor(
+          m,
+          seriesIdxs.map((si) => ({ si, ci })),
+        );
+        const totalsByRarity = rarityIndexes.map((ri) =>
           seriesIdxs.reduce((sum, si) => sum + getN(m, si, ci, ri), 0),
         );
         const charTotal = sumRow(totalsByRarity);
@@ -88,20 +115,7 @@ export function ByCharacter({ m }: { m: Matrix }) {
                 <TableHeader>
                   <TableRow>
                     <TableHead className={cn(TH, "text-left")}>系列</TableHead>
-                    <TableHead className={cn(TH, "text-center text-rarity-r")}>
-                      R
-                    </TableHead>
-                    <TableHead className={cn(TH, "text-center text-rarity-sr")}>
-                      SR
-                    </TableHead>
-                    <TableHead
-                      className={cn(TH, "text-center text-rarity-ssr")}
-                    >
-                      SSR
-                    </TableHead>
-                    <TableHead className={cn(TH, "text-center text-rarity-ur")}>
-                      UR
-                    </TableHead>
+                    <RarityHeaders indexes={rarityIndexes} />
                     <TableHead
                       className={cn(TH, "border-l border-border text-right")}
                     >
@@ -111,8 +125,8 @@ export function ByCharacter({ m }: { m: Matrix }) {
                 </TableHeader>
                 <TableBody>
                   {seriesIdxs.map((si) => {
-                    const rowTotal = RARITIES.reduce(
-                      (sum, _r, ri) => sum + getN(m, si, ci, ri),
+                    const rowTotal = rarityIndexes.reduce(
+                      (sum, ri) => sum + getN(m, si, ci, ri),
                       0,
                     );
                     return (
@@ -120,9 +134,9 @@ export function ByCharacter({ m }: { m: Matrix }) {
                         <TableCell className={NAME_CELL}>
                           {m.series[si]}
                         </TableCell>
-                        {RARITIES.map((rarity, ri) => (
+                        {rarityIndexes.map((ri) => (
                           <CatalogNumCell
-                            key={rarity}
+                            key={RARITIES[ri]}
                             m={m}
                             si={si}
                             ci={ci}
@@ -146,8 +160,12 @@ export function ByCharacter({ m }: { m: Matrix }) {
                     >
                       小計
                     </TableCell>
-                    {RARITIES.map((rarity, ri) => (
-                      <NumCell key={rarity} n={totalsByRarity[ri]} ri={ri} />
+                    {rarityIndexes.map((ri, index) => (
+                      <NumCell
+                        key={RARITIES[ri]}
+                        n={totalsByRarity[index]}
+                        ri={ri}
+                      />
                     ))}
                     <TableCell className={TOTAL_CELL}>{charTotal}</TableCell>
                   </TableRow>
@@ -168,7 +186,11 @@ export function BySeries({ m }: { m: Matrix }) {
         const charIdxs = m.characters
           .map((_c, ci) => ci)
           .filter((ci) => exists(m, si, ci));
-        const totalsByRarity = RARITIES.map((_r, ri) =>
+        const rarityIndexes = rarityIndexesFor(
+          m,
+          charIdxs.map((ci) => ({ si, ci })),
+        );
+        const totalsByRarity = rarityIndexes.map((ri) =>
           charIdxs.reduce((sum, ci) => sum + getN(m, si, ci, ri), 0),
         );
         const seriesTotal = sumRow(totalsByRarity);
@@ -191,20 +213,7 @@ export function BySeries({ m }: { m: Matrix }) {
                 <TableHeader>
                   <TableRow>
                     <TableHead className={cn(TH, "text-left")}>角色</TableHead>
-                    <TableHead className={cn(TH, "text-center text-rarity-r")}>
-                      R
-                    </TableHead>
-                    <TableHead className={cn(TH, "text-center text-rarity-sr")}>
-                      SR
-                    </TableHead>
-                    <TableHead
-                      className={cn(TH, "text-center text-rarity-ssr")}
-                    >
-                      SSR
-                    </TableHead>
-                    <TableHead className={cn(TH, "text-center text-rarity-ur")}>
-                      UR
-                    </TableHead>
+                    <RarityHeaders indexes={rarityIndexes} />
                     <TableHead
                       className={cn(TH, "border-l border-border text-right")}
                     >
@@ -214,8 +223,8 @@ export function BySeries({ m }: { m: Matrix }) {
                 </TableHeader>
                 <TableBody>
                   {charIdxs.map((ci) => {
-                    const rowTotal = RARITIES.reduce(
-                      (sum, _r, ri) => sum + getN(m, si, ci, ri),
+                    const rowTotal = rarityIndexes.reduce(
+                      (sum, ri) => sum + getN(m, si, ci, ri),
                       0,
                     );
                     return (
@@ -223,9 +232,9 @@ export function BySeries({ m }: { m: Matrix }) {
                         <TableCell className={NAME_CELL}>
                           {m.characters[ci]}
                         </TableCell>
-                        {RARITIES.map((rarity, ri) => (
+                        {rarityIndexes.map((ri) => (
                           <CatalogNumCell
-                            key={rarity}
+                            key={RARITIES[ri]}
                             m={m}
                             si={si}
                             ci={ci}
@@ -249,8 +258,12 @@ export function BySeries({ m }: { m: Matrix }) {
                     >
                       小計
                     </TableCell>
-                    {RARITIES.map((rarity, ri) => (
-                      <NumCell key={rarity} n={totalsByRarity[ri]} ri={ri} />
+                    {rarityIndexes.map((ri, index) => (
+                      <NumCell
+                        key={RARITIES[ri]}
+                        n={totalsByRarity[index]}
+                        ri={ri}
+                      />
                     ))}
                     <TableCell className={TOTAL_CELL}>{seriesTotal}</TableCell>
                   </TableRow>
@@ -264,12 +277,17 @@ export function BySeries({ m }: { m: Matrix }) {
   );
 }
 
-const RARITY_LABELS = ["普通", "較稀有", "稀有", "最稀有"];
-
 export function ByRarity({ m }: { m: Matrix }) {
+  const issuedRarityIndexes = rarityIndexesFor(
+    m,
+    m.series.flatMap((_series, si) =>
+      m.characters.map((_character, ci) => ({ si, ci })),
+    ),
+  );
   return (
     <section className="view view-rarity">
-      {RARITIES.map((rarityName, ri) => {
+      {issuedRarityIndexes.map((ri) => {
+        const rarityName = RARITIES[ri];
         const totalsBySeries = m.series.map((_s, si) =>
           m.characters.reduce((sum, _c, ci) => sum + getN(m, si, ci, ri), 0),
         );

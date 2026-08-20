@@ -1,3 +1,4 @@
+import { BASE_RARITY_ORDER } from "../src/shared/rarity";
 import type { Rarity } from "../src/shared/types";
 
 // The collectible-card universe — the single source of truth for which cards
@@ -8,7 +9,10 @@ import type { Rarity } from "../src/shared/types";
 //   - Add a CHARACTER to a series: append it to that series's character list.
 // Then run `npm run catalog:sync` and follow the skill.
 
-export const RARITIES: Rarity[] = ["R", "SR", "SSR", "UR"];
+// The checked-in seed contains only Vol.1–2. EX is introduced by the Vol.3
+// migration and by the dynamic series manager, so legacy seed series keep the
+// original four-rarity catalog.
+export const RARITIES: Rarity[] = [...BASE_RARITY_ORDER];
 
 // Characters shared by the original three series.
 export const COMMON_CHARACTERS = [

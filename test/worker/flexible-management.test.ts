@@ -162,6 +162,116 @@ describe("dynamic catalog", () => {
     });
     expect(caseDuplicateSeries.status).toBe(409);
   });
+
+  it("allows EX only from Vol.3 onward", async () => {
+    const tooEarly = await send("POST", "/api/admin/series", {
+      name: "EARLY EX",
+      volume: 2,
+      characters: ["Alice"],
+      rarities: ["R", "EX"],
+    });
+    expect(tooEarly.status).toBe(400);
+    expect(await tooEarly.json()).toMatchObject({
+      error: "EX is only available from volume 3",
+    });
+
+    const introduced = await send("POST", "/api/admin/series", {
+      name: "EX INTRODUCTION",
+      volume: 3,
+      characters: ["Alice"],
+      rarities: ["R", "EX"],
+    });
+    expect(introduced.status).toBe(201);
+    expect(await introduced.json()).toMatchObject({
+      rarities: ["R", "EX"],
+    });
+  });
+
+  it("edits a series cross-product but blocks removal of referenced card types", async () => {
+    const created = await send("POST", "/api/admin/series", {
+      name: "EDITABLE SERIES",
+      volume: 3,
+      characters: ["Alice", "Bob"],
+      rarities: ["R", "EX"],
+    });
+    expect(created.status).toBe(201);
+
+    const expanded = await send(
+      "PATCH",
+      "/api/admin/series/EDITABLE%20SERIES",
+      {
+        volume: 4,
+        characters: ["Bob", "Alice", "Cara"],
+        rarities: ["EX", "R", "SR"],
+      },
+    );
+    expect(expanded.status).toBe(200);
+    expect(await expanded.json()).toMatchObject({
+      name: "EDITABLE SERIES",
+      volume: 4,
+      characters: ["Bob", "Alice", "Cara"],
+      rarities: ["R", "SR", "EX"],
+    });
+
+    await addCards(env.DB, [
+      { series: "EDITABLE SERIES", character: "Alice", rarity: "R" },
+    ]);
+    const blocked = await send("PATCH", "/api/admin/series/EDITABLE%20SERIES", {
+      volume: 4,
+      characters: ["Bob", "Cara"],
+      rarities: ["R", "SR", "EX"],
+    });
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({
+      error: expect.stringContaining("無法移除"),
+    });
+    expect(
+      (await getCatalog(env.DB)).find(
+        (series) => series.name === "EDITABLE SERIES",
+      ),
+    ).toMatchObject({
+      volume: 4,
+      characters: ["Bob", "Alice", "Cara"],
+      rarities: ["R", "SR", "EX"],
+    });
+  });
+
+  it("backfills EX for existing Vol.3 characters in canonical order", async () => {
+    await createSeries(env.DB, {
+      name: "PRE-EX VOL3",
+      volume: 3,
+      characters: ["Alice", "Bob"],
+      rarities: ["R", "SR", "SSR", "UR"],
+    });
+    const migration = env.TEST_MIGRATIONS.find((item) =>
+      item.name.includes("0010_add_ex_rarity"),
+    );
+    expect(migration).toBeDefined();
+    await env.DB.batch(
+      (migration?.queries ?? []).map((query) => env.DB.prepare(query)),
+    );
+
+    const rows = (
+      await env.DB.prepare(
+        `SELECT character, rarity
+         FROM card_catalog
+         WHERE series = 'PRE-EX VOL3'
+         ORDER BY sort_order`,
+      ).all<{ character: string; rarity: string }>()
+    ).results;
+    expect(rows).toEqual([
+      { character: "Alice", rarity: "R" },
+      { character: "Alice", rarity: "SR" },
+      { character: "Alice", rarity: "SSR" },
+      { character: "Alice", rarity: "UR" },
+      { character: "Alice", rarity: "EX" },
+      { character: "Bob", rarity: "R" },
+      { character: "Bob", rarity: "SR" },
+      { character: "Bob", rarity: "SSR" },
+      { character: "Bob", rarity: "UR" },
+      { character: "Bob", rarity: "EX" },
+    ]);
+  });
 });
 
 describe("numbered packs and purchases", () => {

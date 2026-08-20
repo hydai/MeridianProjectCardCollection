@@ -54,7 +54,7 @@ describe("SeriesManager", () => {
       volume: 7,
       sortOrder: 2,
       characters: ["Alice", "Bob"],
-      rarities: ["R", "SSR"],
+      rarities: ["R", "SSR", "EX"],
     };
     let getCount = 0;
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
@@ -98,7 +98,7 @@ describe("SeriesManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "R" }));
     fireEvent.click(screen.getByRole("button", { name: "R" }));
 
-    expect(screen.getByText(/卡片種類預覽：4 種/)).toBeInTheDocument();
+    expect(screen.getByText(/卡片種類預覽：6 種/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "新增系列" }));
 
     await waitFor(() => {
@@ -114,7 +114,7 @@ describe("SeriesManager", () => {
       volume: 7,
       name: "STARDUST",
       characters: ["Alice", "Bob"],
-      rarities: ["R", "SSR"],
+      rarities: ["R", "SSR", "EX"],
     });
 
     await waitFor(() => expect(getCount).toBe(2));
@@ -131,7 +131,7 @@ describe("SeriesManager", () => {
       volume: 3,
       sortOrder: 2,
       characters: ["Mizuki", "Koyuki"],
-      rarities: ["R", "SR", "SSR", "UR"],
+      rarities: ["R", "SR", "SSR", "UR", "EX"],
     };
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => ({
       ok: true,
@@ -178,5 +178,67 @@ describe("SeriesManager", () => {
       "Mizuki",
       "Koyuki",
     ]);
+  });
+
+  it("edits an existing series and keeps EX scoped to Vol.3 or later", async () => {
+    const third = {
+      name: "Tesseract Symphony",
+      volume: 3,
+      sortOrder: 2,
+      characters: ["Mizuki", "Rei"],
+      rarities: ["R", "SR", "SSR", "UR", "EX"],
+    };
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => ({
+      ok: true,
+      json: async () =>
+        init?.method === "PATCH" ? third : [...existing, third],
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SeriesManager />);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "編輯系列 Tesseract Symphony",
+      }),
+    );
+
+    expect(screen.getByLabelText("系列名稱")).toBeDisabled();
+    expect(screen.getByLabelText("系列名稱")).toHaveValue("Tesseract Symphony");
+    expect(screen.getByRole("button", { name: "EX" })).toHaveAttribute(
+      "data-state",
+      "on",
+    );
+
+    fireEvent.change(screen.getByLabelText("第幾彈"), {
+      target: { value: "2" },
+    });
+    expect(screen.getByRole("button", { name: "EX" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "EX" })).toHaveAttribute(
+      "data-state",
+      "off",
+    );
+    fireEvent.change(screen.getByLabelText("第幾彈"), {
+      target: { value: "3" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "移除角色 Rei" }));
+    fireEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH"),
+      ).toBe(true),
+    );
+    const patchCall = fetchMock.mock.calls.find(
+      ([, init]) => init?.method === "PATCH",
+    );
+    expect(patchCall?.[0]).toBe("/api/admin/series/Tesseract%20Symphony");
+    expect(JSON.parse(patchCall?.[1]?.body as string)).toEqual({
+      volume: 3,
+      characters: ["Mizuki"],
+      rarities: ["R", "SR", "SSR", "UR", "EX"],
+    });
+    expect(
+      await screen.findByText("已更新系列 Tesseract Symphony"),
+    ).toBeInTheDocument();
   });
 });
