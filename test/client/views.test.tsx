@@ -270,6 +270,17 @@ describe("Grid pending exchange state", () => {
 describe("Grid volume filter", () => {
   beforeEach(() => localStorage.clear());
 
+  it("keeps intrinsic column widths as the catalog grows", () => {
+    const { container } = render(<Grid m={m} />);
+    const table = container.querySelector(".grid-table") as HTMLTableElement;
+    const firstDataCell = table.querySelector(
+      "tbody tr td:nth-child(2)",
+    ) as HTMLTableCellElement;
+
+    expect(table).toHaveClass("w-max", "min-w-full", "table-auto");
+    expect(firstDataCell).toHaveClass("min-w-8");
+  });
+
   it("renders a filter row per volume with a button per series", () => {
     const { container } = render(<Grid m={m} />);
     const filter = container.querySelector(".grid-filter") as HTMLElement;

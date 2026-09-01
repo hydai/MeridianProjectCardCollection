@@ -31,9 +31,10 @@ const BORDER_STRONG_R = "[border-right:0.5px_solid_var(--border-strong)]";
 const BORDER_STRONG_L = "[border-left:0.5px_solid_var(--border-strong)]";
 
 // Grid body cell base (legacy `.grid-cell`): fixed 32px square, hairline bottom,
-// centered. Each cell layers its state fill on top.
+// centered. The minimum width prevents large catalogs from compressing every
+// rarity column below legibility. Each cell layers its state fill on top.
 const GRID_CELL_BASE =
-  "h-8 w-8 border-b-[0.5px] border-border p-0 text-center text-xs leading-none max-sm:h-7 max-sm:w-[26px]";
+  "size-8 min-w-8 border-b-[0.5px] border-border p-0 text-center text-xs leading-none max-sm:h-7 max-sm:w-[26px] max-sm:min-w-[26px]";
 
 // Gold "have" tint (legacy `.gc-have` / `.sw-have`): shared by the filled grid
 // cells and the legend's ✓ swatch so a retint stays in lockstep.
@@ -227,7 +228,7 @@ export function Grid({ m }: { m: Matrix }) {
         </div>
       ) : (
         <div className={`overflow-x-auto ${CARD_FRAME}`}>
-          <table className="grid-table w-full border-collapse text-xs">
+          <table className="grid-table w-max min-w-full table-auto border-collapse text-xs">
             <thead>
               <tr>
                 <th
