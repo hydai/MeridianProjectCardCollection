@@ -120,20 +120,74 @@ function normalizeSeriesInput(
   };
 }
 
+async function normalizeOpeningInput(
+  db: D1Database,
+  body: unknown,
+): Promise<{ value?: OpeningInput; error?: string }> {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { error: "invalid opening" };
+  }
+  const input = body as Record<string, unknown>;
+  const catalog = await getCatalog(db);
+  let volume: number;
+
+  if (input.volume !== undefined) {
+    if (
+      typeof input.volume !== "number" ||
+      !Number.isInteger(input.volume) ||
+      input.volume < 1
+    ) {
+      return { error: "opening volume must be a positive integer" };
+    }
+    volume = input.volume;
+    if (!catalog.some((entry) => entry.volume === volume)) {
+      return { error: "unknown opening volume" };
+    }
+  } else if (typeof input.series === "string" && input.series.trim()) {
+    // Compatibility for a browser tab that still has the pre-volume client
+    // loaded during deployment. New clients always submit `volume`.
+    const legacySeriesName = input.series.trim();
+    const legacySeries = catalog.find(
+      (entry) => entry.name === legacySeriesName,
+    );
+    if (!legacySeries) return { error: "unknown opening series" };
+    volume = legacySeries.volume;
+  } else {
+    return { error: "opening volume required" };
+  }
+
+  if (!validIsoDate(input.openedAt)) {
+    return { error: "openedAt must be a valid ISO date" };
+  }
+  if (
+    input.cost !== undefined &&
+    (typeof input.cost !== "number" ||
+      !Number.isFinite(input.cost) ||
+      input.cost < 0)
+  ) {
+    return { error: "opening cost must be finite and nonnegative" };
+  }
+  if (input.note !== undefined && typeof input.note !== "string") {
+    return { error: "opening note must be a string" };
+  }
+
+  return {
+    value: {
+      volume,
+      openedAt: input.openedAt,
+      cost: input.cost as number | undefined,
+      note: input.note as string | undefined,
+    },
+  };
+}
+
 function validateCards(
   cards: AddCardInput[],
   opening?: OpeningInput,
 ): string | null {
   if (opening) {
-    if (typeof opening.series !== "string" || !opening.series.trim()) {
-      return "opening series required";
-    }
-    if (!opening.openedAt) return "openedAt required";
-    if (
-      opening.cost !== undefined &&
-      (!Number.isFinite(opening.cost) || opening.cost < 0)
-    ) {
-      return "opening cost must be finite and nonnegative";
+    if (!Number.isInteger(opening.volume) || opening.volume < 1) {
+      return "opening volume must be a positive integer";
     }
   }
   for (const card of cards) {
@@ -161,8 +215,8 @@ function validateCards(
     } else if (card.purchasePrice !== undefined) {
       return "purchasePrice is only valid for purchased cards";
     }
-    if (opening && (source !== "pull" || card.series !== opening.series)) {
-      return "pack cards must be pulls matching the opening series";
+    if (opening && source !== "pull") {
+      return "pack cards must be pulls";
     }
   }
   return null;
@@ -342,20 +396,35 @@ admin.patch("/series/:name", async (c) => {
 });
 
 admin.post("/cards", async (c) => {
-  const body = await c.req.json<{
-    cards: AddCardInput[];
-    opening?: OpeningInput;
-  }>();
-  if (!Array.isArray(body.cards) || body.cards.length === 0) {
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return c.json({ error: "invalid card request" }, 400);
+  }
+  const input = body as Record<string, unknown>;
+  if (!Array.isArray(input.cards) || input.cards.length === 0) {
     return c.json({ error: "cards required" }, 400);
   }
-  const validationError = validateCards(body.cards, body.opening);
+  const cards = input.cards as AddCardInput[];
+  let opening: OpeningInput | undefined;
+  if (input.opening !== undefined) {
+    const normalized = await normalizeOpeningInput(c.env.DB, input.opening);
+    if (!normalized.value) {
+      return c.json({ error: normalized.error ?? "invalid opening" }, 400);
+    }
+    opening = normalized.value;
+  }
+  const validationError = validateCards(cards, opening);
   if (validationError) return c.json({ error: validationError }, 400);
   try {
-    if (body.opening) {
-      return c.json(await addPack(c.env.DB, body.cards, body.opening));
+    if (opening) {
+      return c.json(await addPack(c.env.DB, cards, opening));
     }
-    return c.json({ ids: await addCards(c.env.DB, body.cards) });
+    return c.json({ ids: await addCards(c.env.DB, cards) });
   } catch (error) {
     return c.json({ error: String(error) }, 400);
   }
@@ -397,37 +466,45 @@ admin.delete("/cards/:id/hold", async (c) => {
 });
 
 admin.get("/openings/next", async (c) => {
-  const series = c.req.query("series")?.trim();
-  if (!series) return c.json({ error: "series required" }, 400);
-  if (!(await getCatalog(c.env.DB)).some((entry) => entry.name === series)) {
-    return c.json({ error: "unknown series" }, 404);
+  const catalog = await getCatalog(c.env.DB);
+  const requestedVolume = c.req.query("volume");
+  const legacySeries = c.req.query("series")?.trim();
+  let volume: number;
+
+  if (requestedVolume !== undefined) {
+    volume = Number(requestedVolume);
+    if (!Number.isInteger(volume) || volume < 1) {
+      return c.json({ error: "volume must be a positive integer" }, 400);
+    }
+  } else if (legacySeries) {
+    const matched = catalog.find((entry) => entry.name === legacySeries);
+    if (!matched) return c.json({ error: "unknown series" }, 404);
+    volume = matched.volume;
+  } else {
+    return c.json({ error: "volume required" }, 400);
+  }
+
+  if (!catalog.some((entry) => entry.volume === volume)) {
+    return c.json({ error: "unknown volume" }, 404);
   }
   return c.json({
-    series,
-    packNumber: await getNextPackNumber(c.env.DB, series),
+    volume,
+    packNumber: await getNextPackNumber(c.env.DB, volume),
   });
 });
 
 admin.post("/openings", async (c) => {
-  const body = await c.req.json<OpeningInput>();
-  if (!body.series?.trim() || !body.openedAt) {
-    return c.json({ error: "series and openedAt required" }, 400);
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
   }
-  if (
-    body.cost !== undefined &&
-    (!Number.isFinite(body.cost) || body.cost < 0)
-  ) {
-    return c.json(
-      { error: "opening cost must be finite and nonnegative" },
-      400,
-    );
+  const normalized = await normalizeOpeningInput(c.env.DB, body);
+  if (!normalized.value) {
+    return c.json({ error: normalized.error ?? "invalid opening" }, 400);
   }
-  if (
-    !(await getCatalog(c.env.DB)).some((entry) => entry.name === body.series)
-  ) {
-    return c.json({ error: "unknown series" }, 404);
-  }
-  return c.json(await createOpening(c.env.DB, body));
+  return c.json(await createOpening(c.env.DB, normalized.value));
 });
 
 admin.get("/openings", async (c) => c.json(await getOpenings(c.env.DB)));

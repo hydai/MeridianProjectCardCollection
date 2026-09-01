@@ -59,11 +59,10 @@ export const fetchCatalog = () => get<CatalogSeries[]>("/api/catalog");
 
 // ---- Admin ----
 export const postCards = (cards: AddCardInput[], opening?: OpeningInput) =>
-  send<{ ids: number[]; opening?: { id: number; packNumber: number } }>(
-    "POST",
-    "/api/admin/cards",
-    { cards, opening },
-  );
+  send<{
+    ids: number[];
+    opening?: { id: number; volume: number; packNumber: number };
+  }>("POST", "/api/admin/cards", { cards, opening });
 
 export const postSeries = (input: CreateSeriesInput) =>
   send<CatalogSeries>("POST", "/api/admin/series", input);
@@ -98,9 +97,9 @@ export const postTransaction = (input: { cardId: number } & RecordTxnInput) =>
   send<{ id: number }>("POST", "/api/admin/transactions", input);
 
 export const fetchOpenings = () => get<OpeningSummary[]>("/api/admin/openings");
-export const fetchNextPackNumber = (series: string) =>
+export const fetchNextPackNumber = (volume: number) =>
   get<{ packNumber: number }>(
-    `/api/admin/openings/next?${new URLSearchParams({ series })}`,
+    `/api/admin/openings/next?${new URLSearchParams({ volume: String(volume) })}`,
   );
 export const fetchTransactions = () =>
   get<TxnRecord[]>("/api/admin/transactions");

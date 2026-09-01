@@ -65,10 +65,11 @@ export function Openings() {
             <strong>{avg != null ? `${avg.toFixed(1)} 元` : "—"}</strong>
           </div>
           <div className="overflow-x-auto">
-            <table className={`${TABLE} min-w-[680px]`}>
+            <table className={`${TABLE} min-w-[760px]`}>
               <thead>
                 <tr>
                   <th className={TH}>包號</th>
+                  <th className={TH}>彈數</th>
                   <th className={TH}>日期</th>
                   <th className={TH}>系列</th>
                   <th className={TH}>張數</th>
@@ -80,8 +81,13 @@ export function Openings() {
                 {rows.map((o) => (
                   <tr key={o.id}>
                     <td className={TD_MONO}>第 {o.packNumber} 包</td>
+                    <td className={TD_MONO}>
+                      {o.volume == null ? "—" : `第 ${o.volume} 彈`}
+                    </td>
                     <td className={TD_MONO}>{o.openedAt}</td>
-                    <td className={TD}>{o.series ?? "—"}</td>
+                    <td className={TD}>
+                      {o.series?.replaceAll(",", "、") ?? "—"}
+                    </td>
                     <td className={TD_MONO}>{o.cardCount}</td>
                     <td className={TD_MONO}>
                       {o.cost != null ? `${o.cost} 元` : "—"}

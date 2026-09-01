@@ -51,6 +51,7 @@ interface TallyEntry {
 export function AddCards() {
   const [catalog, setCatalog] = useState<CatalogSeries[] | null>(null);
   const [mode, setMode] = useState<AcquisitionMode>("pack");
+  const [packVolume, setPackVolume] = useState<number | null>(null);
   const [series, setSeries] = useState("");
   const [rarity, setRarity] = useState<Rarity | null>(null);
   const [purchaseCharacter, setPurchaseCharacter] = useState("");
@@ -71,6 +72,7 @@ export function AddCards() {
         setCatalog(items);
         const first = items[0];
         if (!first) return;
+        setPackVolume(first.volume);
         setSeries(first.name);
         setRarity(first.rarities[0] ?? null);
         setPurchaseCharacter(first.characters[0] ?? "");
@@ -84,10 +86,10 @@ export function AddCards() {
   }, []);
 
   useEffect(() => {
-    if (!series || mode !== "pack") return;
+    if (packVolume == null || mode !== "pack") return;
     let current = true;
     setNextPackNumber(null);
-    fetchNextPackNumber(series)
+    fetchNextPackNumber(packVolume)
       .then((result) => {
         if (current) setNextPackNumber(result.packNumber);
       })
@@ -97,9 +99,16 @@ export function AddCards() {
     return () => {
       current = false;
     };
-  }, [mode, series]);
+  }, [mode, packVolume]);
 
   const selectedSeries = catalog?.find((item) => item.name === series);
+  const volumes = [...new Set((catalog ?? []).map((item) => item.volume))].sort(
+    (a, b) => a - b,
+  );
+  const seriesOptions =
+    mode === "pack"
+      ? (catalog ?? []).filter((item) => item.volume === packVolume)
+      : (catalog ?? []);
   const characters = selectedSeries?.characters ?? [];
   const rarities = selectedSeries?.rarities ?? [];
   const total = tally.reduce((sum, entry) => sum + entry.qty, 0);
@@ -112,13 +121,35 @@ export function AddCards() {
     Number.isFinite(numericPurchasePrice) &&
     numericPurchasePrice >= 0;
 
+  const selectMode = (nextMode: AcquisitionMode) => {
+    setMode(nextMode);
+    if (nextMode === "pack" && selectedSeries) {
+      setPackVolume(selectedSeries.volume);
+    }
+    setToast(null);
+    setError(null);
+  };
+
+  const selectPackVolume = (volume: number) => {
+    if (volume === packVolume) return;
+    const firstSeries = catalog?.find((item) => item.volume === volume);
+    if (!firstSeries) return;
+    setPackVolume(volume);
+    setSeries(firstSeries.name);
+    setRarity(firstSeries.rarities[0] ?? null);
+    setPurchaseCharacter(firstSeries.characters[0] ?? "");
+    setTally([]);
+    setToast(null);
+    setError(null);
+  };
+
   const selectSeries = (name: string) => {
     if (name === series) return;
     const next = catalog?.find((item) => item.name === name);
+    if (!next || (mode === "pack" && next.volume !== packVolume)) return;
     setSeries(name);
-    setRarity(next?.rarities[0] ?? null);
-    setPurchaseCharacter(next?.characters[0] ?? "");
-    setTally([]);
+    setRarity(next.rarities[0] ?? null);
+    setPurchaseCharacter(next.characters[0] ?? "");
     setToast(null);
     setError(null);
   };
@@ -127,7 +158,10 @@ export function AddCards() {
     if (!rarity) return;
     setTally((entries) => {
       const index = entries.findIndex(
-        (entry) => entry.character === character && entry.rarity === rarity,
+        (entry) =>
+          entry.series === series &&
+          entry.character === character &&
+          entry.rarity === rarity,
       );
       if (index === -1) {
         return [...entries, { series, character, rarity, qty: 1 }];
@@ -138,11 +172,17 @@ export function AddCards() {
     });
   };
 
-  const removeOne = (character: string, entryRarity: Rarity) =>
+  const removeOne = (
+    entrySeries: string,
+    character: string,
+    entryRarity: Rarity,
+  ) =>
     setTally((entries) =>
       entries
         .map((entry) =>
-          entry.character === character && entry.rarity === entryRarity
+          entry.series === entrySeries &&
+          entry.character === character &&
+          entry.rarity === entryRarity
             ? { ...entry, qty: entry.qty - 1 }
             : entry,
         )
@@ -150,21 +190,21 @@ export function AddCards() {
     );
 
   const submitPack = async () => {
-    if (!rarity || !series || total === 0 || !openedAt) return;
+    if (packVolume == null || total === 0 || !openedAt) return;
     setBusy(true);
     setError(null);
     setToast(null);
     try {
       const cards: AddCardInput[] = tally.flatMap((entry) =>
         Array.from({ length: entry.qty }, () => ({
-          series,
+          series: entry.series,
           character: entry.character,
           rarity: entry.rarity,
           source: "pull" as const,
         })),
       );
       const opening: OpeningInput = {
-        series,
+        volume: packVolume,
         openedAt,
         cost: cost.trim() === "" ? undefined : numericCost,
       };
@@ -173,7 +213,7 @@ export function AddCards() {
       setToast(
         packNumber == null
           ? `已記錄 1 包（${result.ids.length} 張）`
-          : `第 ${packNumber} 包已記錄（${result.ids.length} 張）`,
+          : `第 ${packVolume} 彈第 ${packNumber} 包已記錄（${result.ids.length} 張）`,
       );
       if (result.opening) setNextPackNumber(result.opening.packNumber + 1);
       setTally([]);
@@ -216,7 +256,7 @@ export function AddCards() {
     !series ||
     !rarity ||
     (mode === "pack"
-      ? total === 0 || !openedAt || !costValid
+      ? packVolume == null || total === 0 || !openedAt || !costValid
       : !purchaseCharacter || !purchasePriceValid);
 
   return (
@@ -231,9 +271,7 @@ export function AddCards() {
           value={mode}
           onValueChange={(value) => {
             if (!value) return;
-            setMode(value as AcquisitionMode);
-            setToast(null);
-            setError(null);
+            selectMode(value as AcquisitionMode);
           }}
           className="justify-start"
         >
@@ -251,21 +289,46 @@ export function AddCards() {
         </ToggleGroup>
       </div>
 
+      {mode === "pack" ? (
+        <div className={cn(FIELD, "mt-4")}>
+          <span className={FIELD_LABEL}>彈數</span>
+          <ToggleGroup
+            type="single"
+            aria-label="卡包彈數"
+            value={packVolume == null ? "" : String(packVolume)}
+            onValueChange={(value) => {
+              if (value) selectPackVolume(Number(value));
+            }}
+            className="justify-start"
+          >
+            {volumes.map((volume) => (
+              <ToggleGroupItem
+                key={volume}
+                value={String(volume)}
+                className={OPT_TOGGLE}
+                disabled={total > 0 && volume !== packVolume}
+                title={
+                  total > 0 && volume !== packVolume
+                    ? "本包已有卡片，需先送出或移除"
+                    : undefined
+                }
+              >
+                第 {volume} 彈
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </div>
+      ) : null}
+
       <div className={cn(FIELD, "mt-4")}>
         <span className={FIELD_LABEL}>系列</span>
         <div className={OPT_GROUP}>
-          {catalog?.map((item) => (
+          {seriesOptions.map((item) => (
             <Toggle
               key={item.name}
               pressed={item.name === series}
               onPressedChange={() => selectSeries(item.name)}
               className={OPT_TOGGLE}
-              disabled={total > 0 && item.name !== series}
-              title={
-                total > 0 && item.name !== series
-                  ? "本包已有卡片，需先送出或移除"
-                  : undefined
-              }
             >
               {item.name}
             </Toggle>
@@ -326,10 +389,10 @@ export function AddCards() {
               {tally.map((entry) => (
                 <div
                   className={TALLY_ROW}
-                  key={`${entry.character}-${entry.rarity}`}
+                  key={`${entry.series}-${entry.character}-${entry.rarity}`}
                 >
-                  <span className={TALLY_SERIES} title={series}>
-                    {series}
+                  <span className={TALLY_SERIES} title={entry.series}>
+                    {entry.series}
                   </span>
                   <span className={TALLY_NAME}>{entry.character}</span>
                   <span className={cn(PILL_BASE, PILL_RARITY[entry.rarity])}>
@@ -340,8 +403,10 @@ export function AddCards() {
                     type="button"
                     variant="outline"
                     className={BTN_GHOST_SM}
-                    aria-label={`移除 ${series} ${entry.character} ${entry.rarity}`}
-                    onClick={() => removeOne(entry.character, entry.rarity)}
+                    aria-label={`移除 ${entry.series} ${entry.character} ${entry.rarity}`}
+                    onClick={() =>
+                      removeOne(entry.series, entry.character, entry.rarity)
+                    }
                   >
                     –
                   </Button>
@@ -357,7 +422,7 @@ export function AddCards() {
             <strong className="font-mono text-base font-medium text-primary">
               {nextPackNumber == null
                 ? "由系統自動編號"
-                : `第 ${nextPackNumber} 包`}
+                : `第 ${packVolume} 彈 · 第 ${nextPackNumber} 包`}
             </strong>
           </div>
           <div className={OPENING_FIELDS}>

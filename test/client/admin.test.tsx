@@ -31,9 +31,16 @@ const catalogJson = [
     rarities: ["R", "SR", "SSR", "UR"],
   },
   {
+    name: "BUNNY GIRL",
+    volume: 1,
+    sortOrder: 1,
+    characters: ["Rei", "Koyuki"],
+    rarities: ["R", "SR", "SSR", "UR"],
+  },
+  {
     name: "MP 4TH",
     volume: 2,
-    sortOrder: 1,
+    sortOrder: 2,
     characters: ["Mizuki", "KSP"],
     rarities: ["SSR", "UR"],
   },
@@ -42,7 +49,7 @@ const catalogJson = [
 function stubAddCardsFetch(
   postResult: unknown = {
     ids: [101],
-    opening: { id: 4, packNumber: 7 },
+    opening: { id: 4, volume: 1, packNumber: 7 },
   },
 ) {
   return vi.fn(async (url: string, init?: RequestInit) => {
@@ -54,7 +61,7 @@ function stubAddCardsFetch(
     }
     return {
       ok: true,
-      json: async () => ({ series: "NEW YEAR", packNumber: 7 }),
+      json: async () => ({ volume: 1, packNumber: 7 }),
     };
   });
 }
@@ -74,10 +81,10 @@ describe("AddCards", () => {
     ).toBeDisabled();
   });
 
-  it("submits exactly one opening per pack and advances the server pack number", async () => {
+  it("submits one mixed-series opening and advances the volume pack number", async () => {
     const fetchMock = stubAddCardsFetch({
-      ids: [101, 102],
-      opening: { id: 4, packNumber: 7 },
+      ids: [101, 102, 103],
+      opening: { id: 4, volume: 1, packNumber: 7 },
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<AddCards />);
@@ -85,6 +92,9 @@ describe("AddCards", () => {
     await screen.findByRole("button", { name: "記錄第 7 包（0 張）" });
     fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
     fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
+    fireEvent.click(screen.getByRole("button", { name: "BUNNY GIRL" }));
+    fireEvent.click(screen.getByRole("button", { name: "SR" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rei" }));
     fireEvent.change(screen.getByLabelText("開卡日期"), {
       target: { value: "2026-07-10" },
     });
@@ -92,17 +102,17 @@ describe("AddCards", () => {
       target: { value: "120" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "記錄第 7 包（2 張）" }),
+      screen.getByRole("button", { name: "記錄第 7 包（3 張）" }),
     );
 
-    await screen.findByText("第 7 包已記錄（2 張）");
+    await screen.findByText("第 1 彈第 7 包已記錄（3 張）");
     const posts = fetchMock.mock.calls.filter(
       ([url, init]) => url === "/api/admin/cards" && init?.method === "POST",
     );
     expect(posts).toHaveLength(1);
     const body = JSON.parse(posts[0][1]?.body as string);
     expect(body.opening).toEqual({
-      series: "NEW YEAR",
+      volume: 1,
       openedAt: "2026-07-10",
       cost: 120,
     });
@@ -117,6 +127,12 @@ describe("AddCards", () => {
         series: "NEW YEAR",
         character: "Mizuki",
         rarity: "R",
+        source: "pull",
+      },
+      {
+        series: "BUNNY GIRL",
+        character: "Rei",
+        rarity: "SR",
         source: "pull",
       },
     ]);
@@ -141,22 +157,37 @@ describe("AddCards", () => {
     expect(screen.getByText("×1")).toBeInTheDocument();
   });
 
-  it("locks the pack series until the current tally is empty", async () => {
+  it("allows same-volume series and locks only the pack volume", async () => {
     vi.stubGlobal("fetch", stubAddCardsFetch());
     render(<AddCards />);
 
     await screen.findByRole("button", { name: "Mizuki" });
     fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
     expect(screen.getByText("×1")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "MP 4TH" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "BUNNY GIRL" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: "第 2 彈" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "BUNNY GIRL" }));
+    expect(
+      screen.getByRole("button", { name: "移除 NEW YEAR Mizuki R" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Koyuki" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Koyuki" }));
+    expect(
+      screen.getByRole("button", { name: "移除 BUNNY GIRL Koyuki R" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", { name: "移除 NEW YEAR Mizuki R" }),
     );
-    expect(screen.getByRole("button", { name: "MP 4TH" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "MP 4TH" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "移除 BUNNY GIRL Koyuki R" }),
+    );
+    expect(screen.getByRole("radio", { name: "第 2 彈" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("radio", { name: "第 2 彈" }));
 
     expect(screen.getByText("點上方角色加入本包卡片")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "MP 4TH" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "KSP" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "SSR" })).toHaveAttribute(
       "aria-pressed",
@@ -213,7 +244,7 @@ describe("AddCards", () => {
           ok: true,
           json: async () => ({
             ids: [301],
-            opening: { id: 9, packNumber: 4 },
+            opening: { id: 9, volume: 1, packNumber: 4 },
           }),
         };
       }
@@ -231,7 +262,7 @@ describe("AddCards", () => {
     expect(submit).toBeEnabled();
     fireEvent.click(submit);
 
-    await screen.findByText("第 4 包已記錄（1 張）");
+    await screen.findByText("第 1 彈第 4 包已記錄（1 張）");
     expect(
       fetchMock.mock.calls.some(
         ([url, init]) => url === "/api/admin/cards" && init?.method === "POST",
@@ -645,6 +676,7 @@ describe("Openings", () => {
     const rows = [
       {
         id: 1,
+        volume: 1,
         packNumber: 12,
         series: "NEW YEAR",
         openedAt: "2026-06-01",
@@ -665,6 +697,7 @@ describe("Openings", () => {
     expect(screen.getByText("開卡成本")).toBeInTheDocument();
     // Row cells (the mono columns): date, count, cost, avg-cost.
     expect(screen.getByText("第 12 包")).toBeInTheDocument();
+    expect(screen.getByText("第 1 彈")).toBeInTheDocument();
     expect(screen.getByText("2026-06-01")).toBeInTheDocument();
     expect(screen.getByText("NEW YEAR")).toBeInTheDocument();
     expect(screen.getByText("600 元")).toBeInTheDocument();
@@ -686,6 +719,7 @@ describe("Openings", () => {
     const rows = [
       {
         id: 1,
+        volume: 1,
         packNumber: 1,
         series: "NEW YEAR",
         openedAt: "2026-06-01",
@@ -695,6 +729,7 @@ describe("Openings", () => {
       },
       {
         id: 2,
+        volume: 1,
         packNumber: 2,
         series: "NEW YEAR",
         openedAt: "2026-06-02",

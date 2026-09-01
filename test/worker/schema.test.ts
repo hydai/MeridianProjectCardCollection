@@ -42,6 +42,7 @@ describe("schema", () => {
       ).results.map((column) => column.name);
 
     expect(await columns("series")).toContain("volume_number");
+    expect(await columns("openings")).toContain("volume_number");
     expect(await columns("openings")).toContain("pack_number");
     expect(await columns("cards")).toContain("purchase_price");
     expect(await columns("trade_reservation_lines")).toContain("card_id");
@@ -50,12 +51,12 @@ describe("schema", () => {
       await env.DB.prepare(
         `SELECT name FROM sqlite_master
          WHERE type = 'index'
-           AND name IN ('idx_openings_series_pack','idx_resv_lines_give_card')`,
+           AND name IN ('idx_openings_volume_pack','idx_resv_lines_give_card')`,
       ).all<{ name: string }>()
     ).results.map((row) => row.name);
     expect(indexes).toEqual(
       expect.arrayContaining([
-        "idx_openings_series_pack",
+        "idx_openings_volume_pack",
         "idx_resv_lines_give_card",
       ]),
     );

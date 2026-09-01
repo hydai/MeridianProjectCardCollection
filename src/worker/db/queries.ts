@@ -375,21 +375,38 @@ export async function getStats(db: D1Database): Promise<StatsResponse> {
 
 // ---- Mutations ----
 
+interface CatalogEntry {
+  id: number;
+  volume: number;
+}
+
+async function catalogEntry(
+  db: D1Database,
+  series: string,
+  character: string,
+  rarity: string,
+): Promise<CatalogEntry> {
+  const row = await db
+    .prepare(
+      `SELECT c.id, s.volume_number AS volume
+       FROM card_catalog c
+       JOIN series s ON s.name = c.series
+       WHERE c.series = ? AND c.character = ? AND c.rarity = ?`,
+    )
+    .bind(series, character, rarity)
+    .first<CatalogEntry>();
+  if (!row)
+    throw new Error(`unknown card type: ${series}/${character}/${rarity}`);
+  return row;
+}
+
 async function catalogId(
   db: D1Database,
   series: string,
   character: string,
   rarity: string,
 ): Promise<number> {
-  const row = await db
-    .prepare(
-      "SELECT id FROM card_catalog WHERE series = ? AND character = ? AND rarity = ?",
-    )
-    .bind(series, character, rarity)
-    .first<{ id: number }>();
-  if (!row)
-    throw new Error(`unknown card type: ${series}/${character}/${rarity}`);
-  return row.id;
+  return (await catalogEntry(db, series, character, rarity)).id;
 }
 
 export async function createOpening(
@@ -398,18 +415,19 @@ export async function createOpening(
 ): Promise<OpeningCreated> {
   const row = await db
     .prepare(
-      `INSERT INTO openings (series, opened_at, cost, note, pack_number)
-       SELECT ?, ?, ?, ?, COALESCE(MAX(pack_number), 0) + 1
+      `INSERT INTO openings
+         (series, volume_number, opened_at, cost, note, pack_number)
+       SELECT NULL, ?, ?, ?, ?, COALESCE(MAX(pack_number), 0) + 1
        FROM openings
-       WHERE series = ?
-       RETURNING id, pack_number AS packNumber`,
+       WHERE volume_number = ?
+       RETURNING id, volume_number AS volume, pack_number AS packNumber`,
     )
     .bind(
-      input.series,
+      input.volume,
       input.openedAt,
       input.cost ?? null,
       input.note ?? null,
-      input.series,
+      input.volume,
     )
     .first<OpeningCreated>();
   if (!row) throw new Error("failed to create opening");
@@ -418,13 +436,13 @@ export async function createOpening(
 
 export async function getNextPackNumber(
   db: D1Database,
-  series: string,
+  volume: number,
 ): Promise<number> {
   const row = await db
     .prepare(
-      "SELECT COALESCE(MAX(pack_number), 0) + 1 AS packNumber FROM openings WHERE series = ?",
+      "SELECT COALESCE(MAX(pack_number), 0) + 1 AS packNumber FROM openings WHERE volume_number = ?",
     )
-    .bind(series)
+    .bind(volume)
     .first<{ packNumber: number }>();
   return row?.packNumber ?? 1;
 }
@@ -432,6 +450,7 @@ export async function getNextPackNumber(
 interface ResolvedCard {
   input: AddCardInput;
   catalogId: number;
+  volume: number;
 }
 
 function validateCardAcquisition(cards: AddCardInput[], hasOpening: boolean) {
@@ -462,16 +481,20 @@ async function resolveCards(
   db: D1Database,
   cards: AddCardInput[],
 ): Promise<ResolvedCard[]> {
-  const cache = new Map<string, number>();
+  const cache = new Map<string, CatalogEntry>();
   const resolved: ResolvedCard[] = [];
   for (const card of cards) {
     const key = `${card.series}\u0000${card.character}\u0000${card.rarity}`;
-    let id = cache.get(key);
-    if (id === undefined) {
-      id = await catalogId(db, card.series, card.character, card.rarity);
-      cache.set(key, id);
+    let entry = cache.get(key);
+    if (entry === undefined) {
+      entry = await catalogEntry(db, card.series, card.character, card.rarity);
+      cache.set(key, entry);
     }
-    resolved.push({ input: card, catalogId: id });
+    resolved.push({
+      input: card,
+      catalogId: entry.id,
+      volume: entry.volume,
+    });
   }
   return resolved;
 }
@@ -488,17 +511,25 @@ export async function addCards(
   openingId?: number,
 ): Promise<number[]> {
   validateCardAcquisition(cards, openingId !== undefined);
+  const resolved = await resolveCards(db, cards);
   if (openingId !== undefined) {
     const opening = await db
-      .prepare("SELECT series FROM openings WHERE id = ?")
+      .prepare(
+        `SELECT COALESCE(o.volume_number, s.volume_number) AS volume
+         FROM openings o
+         LEFT JOIN series s ON s.name = o.series
+         WHERE o.id = ?`,
+      )
       .bind(openingId)
-      .first<{ series: string }>();
+      .first<{ volume: number | null }>();
     if (!opening) throw new Error(`opening ${openingId} not found`);
-    if (cards.some((card) => card.series !== opening.series)) {
-      throw new Error("every pack card must match the opening series");
+    if (
+      opening.volume == null ||
+      resolved.some((card) => card.volume !== opening.volume)
+    ) {
+      throw new Error("every pack card must belong to the opening volume");
     }
   }
-  const resolved = await resolveCards(db, cards);
   if (resolved.length === 0) return [];
   const results = await db.batch(
     resolved.map(({ input, catalogId: id }) =>
@@ -527,25 +558,26 @@ export async function addPack(
   opening: OpeningInput,
 ): Promise<{ ids: number[]; opening: OpeningCreated }> {
   validateCardAcquisition(cards, true);
-  if (cards.some((card) => card.series !== opening.series)) {
-    throw new Error("every pack card must match the opening series");
-  }
   const resolved = await resolveCards(db, cards);
+  if (resolved.some((card) => card.volume !== opening.volume)) {
+    throw new Error("every pack card must belong to the opening volume");
+  }
   const statements: D1PreparedStatement[] = [
     db
       .prepare(
-        `INSERT INTO openings (series, opened_at, cost, note, pack_number)
-         SELECT ?, ?, ?, ?, COALESCE(MAX(pack_number), 0) + 1
+        `INSERT INTO openings
+           (series, volume_number, opened_at, cost, note, pack_number)
+         SELECT NULL, ?, ?, ?, ?, COALESCE(MAX(pack_number), 0) + 1
          FROM openings
-         WHERE series = ?
-         RETURNING id, pack_number AS packNumber`,
+         WHERE volume_number = ?
+         RETURNING id, volume_number AS volume, pack_number AS packNumber`,
       )
       .bind(
-        opening.series,
+        opening.volume,
         opening.openedAt,
         opening.cost ?? null,
         opening.note ?? null,
-        opening.series,
+        opening.volume,
       ),
   ];
   for (const { input, catalogId: id } of resolved) {
@@ -556,12 +588,14 @@ export async function addPack(
              (catalog_id, status, source, opening_id, purchase_price, note)
            VALUES (
              ?, 'owned', 'pull',
-             (SELECT id FROM openings WHERE series = ? ORDER BY pack_number DESC LIMIT 1),
+             (SELECT id FROM openings
+              WHERE volume_number = ?
+              ORDER BY pack_number DESC LIMIT 1),
              NULL, ?
            )
            RETURNING id`,
         )
-        .bind(id, opening.series, input.note ?? null),
+        .bind(id, opening.volume, input.note ?? null),
     );
   }
   const results = await db.batch(statements);
@@ -732,13 +766,16 @@ export async function getOpenings(db: D1Database): Promise<OpeningSummary[]> {
   return (
     await db
       .prepare(
-        `SELECT o.id, o.series, o.pack_number AS packNumber,
+        `SELECT o.id, o.volume_number AS volume,
+                COALESCE(GROUP_CONCAT(DISTINCT c.series), o.series) AS series,
+                o.pack_number AS packNumber,
                 o.opened_at AS openedAt, o.cost,
                 COUNT(k.id) AS cardCount,
                 CASE WHEN o.cost IS NULL OR COUNT(k.id) = 0 THEN NULL
                      ELSE o.cost * 1.0 / COUNT(k.id) END AS avgCost
          FROM openings o
          LEFT JOIN cards k ON k.opening_id = o.id
+         LEFT JOIN card_catalog c ON c.id = k.catalog_id
          GROUP BY o.id
          ORDER BY o.opened_at DESC, o.id DESC`,
       )

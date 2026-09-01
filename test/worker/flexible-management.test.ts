@@ -275,20 +275,32 @@ describe("dynamic catalog", () => {
 });
 
 describe("numbered packs and purchases", () => {
-  it("assigns the next pack number independently per series", async () => {
-    const open = (series: string, character: string) =>
+  it("numbers packs per volume and accepts multiple series from that volume", async () => {
+    const open = (
+      volume: number,
+      cards: Array<{ series: string; character: string; rarity: "R" }>,
+    ) =>
       send("POST", "/api/admin/cards", {
-        cards: [{ series, character, rarity: "R" }],
-        opening: { series, openedAt: "2026-07-10", cost: 120 },
+        cards,
+        opening: { volume, openedAt: "2026-07-10", cost: 120 },
       });
 
-    const first = (await (await open("KILLER", "Mizuki")).json()) as {
+    const first = (await (
+      await open(1, [
+        { series: "KILLER", character: "Mizuki", rarity: "R" },
+        { series: "BUNNY GIRL", character: "Rei", rarity: "R" },
+      ])
+    ).json()) as {
       opening: { packNumber: number };
     };
-    const second = (await (await open("KILLER", "Rei")).json()) as {
+    const second = (await (
+      await open(1, [{ series: "NEW YEAR", character: "Sachi", rarity: "R" }])
+    ).json()) as {
       opening: { packNumber: number };
     };
-    const other = (await (await open("MP 4TH", "KSP")).json()) as {
+    const other = (await (
+      await open(2, [{ series: "MP 4TH", character: "KSP", rarity: "R" }])
+    ).json()) as {
       opening: { packNumber: number };
     };
     expect(first.opening.packNumber).toBe(1);
@@ -296,11 +308,21 @@ describe("numbered packs and purchases", () => {
     expect(other.opening.packNumber).toBe(1);
 
     const next = (await (
+      await SELF.fetch("https://example.com/api/admin/openings/next?volume=1")
+    ).json()) as { packNumber: number };
+    expect(next.packNumber).toBe(3);
+
+    const legacyNext = (await (
       await SELF.fetch(
         "https://example.com/api/admin/openings/next?series=KILLER",
       )
-    ).json()) as { packNumber: number };
-    expect(next.packNumber).toBe(3);
+    ).json()) as { packNumber: number; volume: number };
+    expect(legacyNext).toMatchObject({ packNumber: 3, volume: 1 });
+
+    const wrongVolume = await open(2, [
+      { series: "KILLER", character: "Rei", rarity: "R" },
+    ]);
+    expect(wrongVolume.status).toBe(400);
   });
 
   it("stores purchase price and rejects incomplete or packed purchases", async () => {
@@ -351,7 +373,7 @@ describe("numbered packs and purchases", () => {
           purchasePrice: 100,
         },
       ],
-      opening: { series: "NEW YEAR", openedAt: "2026-07-10" },
+      opening: { volume: 1, openedAt: "2026-07-10" },
     });
     expect(packedPurchase.status).toBe(400);
   });

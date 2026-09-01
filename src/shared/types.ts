@@ -103,7 +103,7 @@ export interface AddCardInput {
 }
 
 export interface OpeningInput {
-  series: string;
+  volume: number;
   openedAt: string;
   cost?: number;
   note?: string;
@@ -111,6 +111,7 @@ export interface OpeningInput {
 
 export interface OpeningCreated {
   id: number;
+  volume: number;
   packNumber: number;
 }
 
@@ -135,6 +136,7 @@ export interface RecordTxnInput {
 
 export interface OpeningSummary {
   id: number;
+  volume: number | null;
   series: string | null;
   packNumber: number;
   openedAt: string;

@@ -23,8 +23,9 @@ with a live site you edit directly.
 
 ### Admin (Cloudflare Access, owner only)
 
-- **Add from openings** — quickly log multiple cards from a pack opening;
-  optionally group them under an opening event (date + cost).
+- **Add from openings** — quickly log multiple cards from one physical pack,
+  including cards from different series in the same volume; packs are numbered
+  per volume and grouped under an opening event (date + cost).
 - **Card management** — search/filter by series, character, rarity, and status;
   change status; set an asking price or a desired trade; mark cards sold/traded
   (writes history and removes them from active inventory). **保留 (hold)** locks a

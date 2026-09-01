@@ -27,7 +27,7 @@ describe("admin api", () => {
         { series: "MP 4TH", character: "KSP", rarity: "SR" },
         { series: "MP 4TH", character: "KSP", rarity: "R" },
       ],
-      opening: { series: "MP 4TH", openedAt: "2026-06-20", cost: 500 },
+      opening: { volume: 2, openedAt: "2026-06-20", cost: 500 },
     });
     const openings = await getJson<
       Array<{ cardCount: number; avgCost: number | null }>
