@@ -270,6 +270,37 @@ describe("Grid pending exchange state", () => {
 describe("Grid volume filter", () => {
   beforeEach(() => localStorage.clear());
 
+  it("orders columns by volume while preserving order within each volume", () => {
+    const outOfVolumeOrder = buildMatrix({
+      cells: (
+        [
+          ["Tesseract Symphony", 3],
+          ["YUKATA", 4],
+          ["INTERMISSION", 3],
+          ["RUBIC's CUBE", 3],
+        ] as const
+      ).map(([series, volume], index) => ({
+        catalogId: index + 1,
+        series,
+        character: "Mizuki",
+        rarity: "R" as const,
+        owned: 0,
+        reserved: 0,
+        held: 0,
+        available: 0,
+        volume,
+      })),
+      progress: [],
+    });
+    const { container } = render(<Grid m={outOfVolumeOrder} />);
+
+    expect(
+      [...container.querySelectorAll(".grid-series-head")].map(
+        (header) => header.textContent,
+      ),
+    ).toEqual(["Tesseract Symphony", "INTERMISSION", "RUBIC's CUBE", "YUKATA"]);
+  });
+
   it("keeps intrinsic column widths as the catalog grows", () => {
     const { container } = render(<Grid m={m} />);
     const table = container.querySelector(".grid-table") as HTMLTableElement;
