@@ -283,6 +283,24 @@ describe("Trade pending overlay", () => {
 });
 
 describe("Glance mode toggle", () => {
+  it("keeps series columns readable as the catalog grows", () => {
+    const { container } = render(<Glance m={m} />);
+    const tableWrap = container.querySelector(
+      ".glance-table-wrap",
+    ) as HTMLElement;
+    const table = container.querySelector(".glance-table") as HTMLTableElement;
+    const seriesHead = table.querySelector("thead th:nth-child(2)");
+
+    expect(tableWrap).toHaveClass("overflow-x-auto");
+    expect(tableWrap).not.toHaveClass("overflow-hidden");
+    expect(table).toHaveClass("w-max", "min-w-full", "table-auto");
+    expect(seriesHead).toHaveClass("whitespace-nowrap");
+    expect(table.querySelector(".glance-chip-stack")).toHaveClass(
+      "flex",
+      "flex-col",
+    );
+  });
+
   it("switches wishlist↔collection via the radio toggle", () => {
     render(<Glance m={m} />);
     // the single-select mode switch is a radiogroup with an accessible name

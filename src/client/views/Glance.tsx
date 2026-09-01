@@ -24,7 +24,8 @@ type GlanceCellData = { na: true } | { na: false; owned: Owned[] };
 // Body cell chrome (legacy `.glance-table tbody td`): hairline divider, centered,
 // padded; shared by every GlanceCell branch.
 const GLANCE_TD =
-  "border-b-[0.5px] border-border px-3 py-3 text-center align-middle max-sm:px-[7px] max-sm:py-2.5";
+  "min-w-[72px] border-b-[0.5px] border-border px-3 py-3 text-center align-middle max-sm:px-[7px] max-sm:py-2.5";
+const GLANCE_CHIP_STACK = "glance-chip-stack flex flex-col items-center gap-1";
 
 // Empty marker (legacy `.glance-na`): faint quaternary em dash.
 const GlanceNa = () => (
@@ -49,20 +50,24 @@ function GlanceCell({
     if (missing.length === 0) {
       return (
         <td className={GLANCE_TD}>
-          <Badge
-            variant="outline"
-            className="h-auto gap-1 rounded-full border-[0.5px] border-primary/35 bg-primary/[0.08] px-2.5 py-[3px] text-[10px] font-normal tracking-[0.12em] text-primary max-sm:px-[7px] max-sm:py-0.5 max-sm:text-[9px] max-sm:tracking-[0.08em]"
-          >
-            ✓ 完成
-          </Badge>
+          <div className={GLANCE_CHIP_STACK}>
+            <Badge
+              variant="outline"
+              className="h-auto gap-1 rounded-full border-[0.5px] border-primary/35 bg-primary/[0.08] px-2.5 py-[3px] text-[10px] font-normal tracking-[0.12em] text-primary max-sm:px-[7px] max-sm:py-0.5 max-sm:text-[9px] max-sm:tracking-[0.08em]"
+            >
+              ✓ 完成
+            </Badge>
+          </div>
         </td>
       );
     }
     return (
       <td className={GLANCE_TD}>
-        {missing.map((r) => (
-          <MissChip key={r.name} ri={r.ri} label={r.name} />
-        ))}
+        <div className={GLANCE_CHIP_STACK}>
+          {missing.map((r) => (
+            <MissChip key={r.name} ri={r.ri} label={r.name} />
+          ))}
+        </div>
       </td>
     );
   }
@@ -76,15 +81,17 @@ function GlanceCell({
   }
   return (
     <td className={GLANCE_TD}>
-      {have.map((o) => (
-        <MissChip
-          key={o.name}
-          ri={o.ri}
-          label={o.name}
-          count={o.count}
-          reserved={o.reserved}
-        />
-      ))}
+      <div className={GLANCE_CHIP_STACK}>
+        {have.map((o) => (
+          <MissChip
+            key={o.name}
+            ri={o.ri}
+            label={o.name}
+            count={o.count}
+            reserved={o.reserved}
+          />
+        ))}
+      </div>
     </td>
   );
 }
@@ -165,17 +172,17 @@ export function Glance({ m }: { m: Matrix }) {
           )}
         </span>
       </div>
-      <div className={`overflow-hidden ${CARD_FRAME}`}>
-        <table className="w-full table-fixed border-collapse text-[13px] max-sm:text-xs">
+      <div className={`glance-table-wrap overflow-x-auto ${CARD_FRAME}`}>
+        <table className="glance-table w-max min-w-full table-auto border-collapse text-[13px] max-sm:text-xs">
           <thead>
             <tr>
-              <th className="w-[20%] border-b-[0.5px] border-border bg-secondary px-3 pt-3.5 pb-3 text-left font-sans text-[11px] font-normal tracking-[0.25em] text-foreground max-sm:w-[19%] max-sm:px-[7px] max-sm:py-2.5 max-sm:text-[9px]">
+              <th className="w-[110px] min-w-[110px] whitespace-nowrap border-b-[0.5px] border-border bg-secondary px-3 pt-3.5 pb-3 text-left font-sans text-[11px] font-normal tracking-[0.25em] text-foreground max-sm:w-[88px] max-sm:min-w-[88px] max-sm:px-[7px] max-sm:py-2.5 max-sm:text-[9px]">
                 角色
               </th>
               {m.series.map((s) => (
                 <th
                   key={s}
-                  className="border-b-[0.5px] border-border bg-secondary px-3 pt-3.5 pb-3 text-center font-accent text-[11px] font-medium uppercase italic tracking-[0.18em] text-foreground max-sm:px-[7px] max-sm:py-2.5 max-sm:text-[9px] max-sm:tracking-[0.12em]"
+                  className="whitespace-nowrap border-b-[0.5px] border-border bg-secondary px-3 pt-3.5 pb-3 text-center font-accent text-[11px] font-medium uppercase italic tracking-[0.18em] text-foreground max-sm:px-[7px] max-sm:py-2.5 max-sm:text-[9px] max-sm:tracking-[0.12em]"
                 >
                   {s}
                 </th>
@@ -192,7 +199,7 @@ export function Glance({ m }: { m: Matrix }) {
                     : "last:[&_td]:border-b-0"
                 }
               >
-                <td className="border-b-[0.5px] border-border px-3 py-3 text-left align-middle font-sans text-sm text-foreground max-sm:px-[7px] max-sm:py-2.5 max-sm:text-[13px]">
+                <td className="w-[110px] min-w-[110px] whitespace-nowrap border-b-[0.5px] border-border px-3 py-3 text-left align-middle font-sans text-sm text-foreground max-sm:w-[88px] max-sm:min-w-[88px] max-sm:px-[7px] max-sm:py-2.5 max-sm:text-[13px]">
                   {row.charName}
                   {row.isComplete ? (
                     <span className="ml-1.5 inline-block font-accent text-xs italic tracking-[0.1em] text-primary">
