@@ -140,6 +140,15 @@ describe("views render against full collection data", () => {
     );
     view.unmount();
   });
+
+  it("keeps rarity columns at their intrinsic width as the catalog grows", () => {
+    const { container } = render(<ByRarity m={m} />);
+    const table = container.querySelector(
+      ".view-rarity table",
+    ) as HTMLTableElement;
+
+    expect(table).toHaveClass("w-max", "min-w-full", "table-auto");
+  });
 });
 
 const sampleListings: MarketListing[] = [

@@ -310,7 +310,7 @@ export function ByRarity({ m }: { m: Matrix }) {
               </span>
             </CardHeader>
             <CardContent className="px-0">
-              <Table>
+              <Table className="rarity-table w-max min-w-full table-auto">
                 <TableHeader>
                   <TableRow>
                     <TableHead className={cn(TH, "text-left")}>角色</TableHead>
