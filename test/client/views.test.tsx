@@ -47,6 +47,34 @@ const full: OverviewResponse = {
 
 const m: Matrix = buildMatrix(full);
 
+const VOLUME_ORDER = [
+  "Tesseract Symphony",
+  "INTERMISSION",
+  "RUBIC's CUBE",
+  "YUKATA",
+];
+const volumeOrderedMatrix = buildMatrix({
+  cells: (
+    [
+      ["Tesseract Symphony", 3],
+      ["YUKATA", 4],
+      ["INTERMISSION", 3],
+      ["RUBIC's CUBE", 3],
+    ] as const
+  ).map(([series, volume], index) => ({
+    catalogId: index + 1,
+    series,
+    character: "Mizuki",
+    rarity: "R" as const,
+    owned: 0,
+    reserved: 0,
+    held: 0,
+    available: 0,
+    volume,
+  })),
+  progress: [],
+});
+
 describe("views render against full collection data", () => {
   it("renders all seven views without crashing", () => {
     for (const View of [
@@ -67,6 +95,50 @@ describe("views render against full collection data", () => {
   it("derives series and characters from the catalog definition", () => {
     expect(m.series).toEqual(SERIES);
     expect(m.characters).toEqual([...new Set(SERIES.flatMap(charactersFor))]);
+  });
+
+  it("uses the canonical volume order across every series-based view", () => {
+    localStorage.clear();
+    const expectSeriesOrder = (container: HTMLElement, selector: string) => {
+      const labels = [...container.querySelectorAll(selector)]
+        .map((element) => element.textContent?.trim() ?? "")
+        .filter((label) => VOLUME_ORDER.includes(label));
+      expect(labels).toEqual(VOLUME_ORDER);
+    };
+
+    let view = render(<ByCharacter m={volumeOrderedMatrix} />);
+    expectSeriesOrder(view.container, ".view-char tbody tr td:first-child");
+    view.unmount();
+
+    view = render(<BySeries m={volumeOrderedMatrix} />);
+    expectSeriesOrder(view.container, ".view-series h2");
+    view.unmount();
+
+    view = render(<ByRarity m={volumeOrderedMatrix} />);
+    expectSeriesOrder(view.container, ".view-rarity thead th");
+    view.unmount();
+
+    view = render(<Wishlist m={volumeOrderedMatrix} />);
+    expectSeriesOrder(view.container, ".view-wishlist div");
+    view.unmount();
+
+    view = render(<Glance m={volumeOrderedMatrix} />);
+    expectSeriesOrder(view.container, ".view-glance thead th");
+    view.unmount();
+
+    view = render(<Grid m={volumeOrderedMatrix} />);
+    expectSeriesOrder(view.container, ".grid-series-head");
+    view.unmount();
+
+    view = render(<Trade m={volumeOrderedMatrix} />);
+    fireEvent.click(
+      within(view.container).getByRole("radio", { name: "格表" }),
+    );
+    expectSeriesOrder(
+      view.container,
+      '.trade-grid[data-kind="needs"] .trade-grid-series-head',
+    );
+    view.unmount();
   });
 });
 
@@ -271,34 +343,13 @@ describe("Grid volume filter", () => {
   beforeEach(() => localStorage.clear());
 
   it("orders columns by volume while preserving order within each volume", () => {
-    const outOfVolumeOrder = buildMatrix({
-      cells: (
-        [
-          ["Tesseract Symphony", 3],
-          ["YUKATA", 4],
-          ["INTERMISSION", 3],
-          ["RUBIC's CUBE", 3],
-        ] as const
-      ).map(([series, volume], index) => ({
-        catalogId: index + 1,
-        series,
-        character: "Mizuki",
-        rarity: "R" as const,
-        owned: 0,
-        reserved: 0,
-        held: 0,
-        available: 0,
-        volume,
-      })),
-      progress: [],
-    });
-    const { container } = render(<Grid m={outOfVolumeOrder} />);
+    const { container } = render(<Grid m={volumeOrderedMatrix} />);
 
     expect(
       [...container.querySelectorAll(".grid-series-head")].map(
         (header) => header.textContent,
       ),
-    ).toEqual(["Tesseract Symphony", "INTERMISSION", "RUBIC's CUBE", "YUKATA"]);
+    ).toEqual(VOLUME_ORDER);
   });
 
   it("keeps intrinsic column widths as the catalog grows", () => {

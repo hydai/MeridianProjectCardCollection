@@ -45,7 +45,8 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
   const slotMap = new Map<string, Slots>();
 
   // Cells arrive ordered by catalog sort_order (series-major, then character,
-  // then rarity), so first-appearance order yields the canonical ordering.
+  // then rarity), so first appearance establishes character order and the
+  // order of series within each volume.
   for (const cell of overview.cells) {
     if (!series.includes(cell.series)) series.push(cell.series);
     if (!volumeBySeries.has(cell.series)) {
@@ -82,21 +83,29 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
     slots[RARITY_INDEX[cell.rarity]] = true;
   }
 
-  const cards = series.map((s) =>
+  // Keep every public view on one canonical series order: ascending volume,
+  // while retaining catalog order within a volume. Invalid legacy metadata is
+  // handled by buildVolumeRows and remains visible in a trailing group.
+  const orderedSeries = buildVolumeRows(
+    series,
+    series.map((s) => volumeBySeries.get(s) ?? 0),
+  ).flatMap((row) => row.series);
+
+  const cards = orderedSeries.map((s) =>
     characters.map((c) => map.get(`${s}|${c}`) ?? null),
   );
-  const reserved = series.map((s) =>
+  const reserved = orderedSeries.map((s) =>
     characters.map((c) => reservedMap.get(`${s}|${c}`) ?? null),
   );
-  const held = series.map((s) =>
+  const held = orderedSeries.map((s) =>
     characters.map((c) => heldMap.get(`${s}|${c}`) ?? null),
   );
-  const slots = series.map((s) =>
+  const slots = orderedSeries.map((s) =>
     characters.map((c) => slotMap.get(`${s}|${c}`) ?? null),
   );
   return {
-    series,
-    volumes: series.map((s) => volumeBySeries.get(s) ?? 0),
+    series: orderedSeries,
+    volumes: orderedSeries.map((s) => volumeBySeries.get(s) ?? 0),
     characters,
     cards,
     reserved,

@@ -110,9 +110,8 @@ export function Grid({ m }: { m: Matrix }) {
     });
 
   const volumeRows = buildVolumeRows(m.series, m.volumes);
-  const shown = volumeRows
-    .flatMap((row) => row.series)
-    .map((s) => ({ s, si: m.series.indexOf(s) }))
+  const shown = m.series
+    .map((s, si) => ({ s, si }))
     .filter(({ s }) => !hidden.has(s));
   const issuedRarities = RARITIES.map((rarity, ri) => ({ rarity, ri })).filter(
     ({ ri }) =>

@@ -60,10 +60,33 @@ const overview: OverviewResponse = {
 };
 
 describe("buildMatrix", () => {
-  it("derives series and characters in first-appearance order", () => {
+  it("derives characters in first-appearance order and series in volume order", () => {
     const m = buildMatrix(overview);
     expect(m.series).toEqual(["NEW YEAR", "MP 4TH"]);
     expect(m.characters).toEqual(["Mizuki", "KSP"]);
+  });
+
+  it("groups series by volume while preserving order within each volume", () => {
+    const m = buildMatrix({
+      cells: [
+        { ...cell("Tesseract Symphony", "Mizuki", "R", 1, 301), volume: 3 },
+        { ...cell("YUKATA", "Mizuki", "R", 2, 302), volume: 4 },
+        { ...cell("INTERMISSION", "Mizuki", "R", 3, 303), volume: 3 },
+        { ...cell("RUBIC's CUBE", "Mizuki", "R", 4, 304), volume: 3 },
+      ],
+      progress: [],
+    });
+
+    expect(m.series).toEqual([
+      "Tesseract Symphony",
+      "INTERMISSION",
+      "RUBIC's CUBE",
+      "YUKATA",
+    ]);
+    expect(m.volumes).toEqual([3, 3, 3, 4]);
+    expect(m.series.map((_series, si) => getN(m, si, 0, 0))).toEqual([
+      1, 3, 4, 2,
+    ]);
   });
 
   it("marks KSP null in NEW YEAR but present in MP 4TH", () => {
