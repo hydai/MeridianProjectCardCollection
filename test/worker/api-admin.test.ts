@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { MAX_CARD_BATCH_SIZE } from "../../src/shared/card-batch";
 
 const post = (path: string, body: unknown) =>
   SELF.fetch(`https://example.com${path}`, {
@@ -19,6 +20,62 @@ describe("admin api", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ids: number[] };
     expect(body.ids).toHaveLength(1);
+  });
+
+  it("POST /api/admin/cards accepts an other acquisition source", async () => {
+    const res = await post("/api/admin/cards", {
+      cards: [
+        {
+          series: "KILLER",
+          character: "Rei",
+          rarity: "UR",
+          source: "other",
+        },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ids: number[] };
+    const cards =
+      await getJson<Array<{ id: number; source: string }>>("/api/admin/cards");
+    expect(cards).toContainEqual(
+      expect.objectContaining({ id: body.ids[0], source: "other" }),
+    );
+    const activities = await getJson<
+      Array<{ kind: string; sourceType: string; lines: Array<{ qty: number }> }>
+    >("/api/admin/activities?limit=1");
+    expect(activities[0]).toMatchObject({
+      kind: "acquisition",
+      sourceType: "card_batch",
+      lines: [expect.objectContaining({ qty: 1 })],
+    });
+  });
+
+  it("POST /api/admin/cards rejects oversized batches", async () => {
+    const res = await post("/api/admin/cards", {
+      cards: Array.from({ length: MAX_CARD_BATCH_SIZE + 1 }, () => ({
+        series: "KILLER",
+        character: "Rei",
+        rarity: "UR",
+      })),
+    });
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: `at most ${MAX_CARD_BATCH_SIZE} cards are allowed per batch`,
+    });
+  });
+
+  it("POST /api/admin/cards accepts the maximum batch size", async () => {
+    const res = await post("/api/admin/cards", {
+      cards: Array.from({ length: MAX_CARD_BATCH_SIZE }, () => ({
+        series: "KILLER",
+        character: "Rei",
+        rarity: "UR",
+        source: "other",
+      })),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ids: number[] };
+    expect(body.ids).toHaveLength(MAX_CARD_BATCH_SIZE);
   });
 
   it("POST /api/admin/cards with an opening computes average cost", async () => {

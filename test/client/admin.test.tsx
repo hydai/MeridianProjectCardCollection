@@ -67,21 +67,30 @@ function stubAddCardsFetch(
 }
 
 describe("AddCards", () => {
-  it("loads card choices from the catalog and disables an empty pack", async () => {
+  it("renders a cross-series quantity matrix and disables an empty batch", async () => {
     vi.stubGlobal("fetch", stubAddCardsFetch());
     render(<AddCards />);
 
+    const matrix = await screen.findByRole("table", {
+      name: "第 1 彈 R 批次入藏矩陣",
+    });
     expect(
-      await screen.findByRole("button", { name: "NEW YEAR" }),
+      within(matrix).getByRole("columnheader", { name: "NEW YEAR" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Mizuki" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Koyuki" })).toBeNull();
     expect(
-      await screen.findByRole("button", { name: "記錄第 7 包（0 張）" }),
+      within(matrix).getByRole("columnheader", { name: "BUNNY GIRL" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("NEW YEAR Mizuki R 數量")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("BUNNY GIRL Koyuki R 數量"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("BUNNY GIRL Mizuki R 數量")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "檢查本次入藏（0 張）" }),
     ).toBeDisabled();
   });
 
-  it("submits one mixed-series opening and advances the volume pack number", async () => {
+  it("reviews and submits one mixed-series opening, then advances the pack number", async () => {
     const fetchMock = stubAddCardsFetch({
       ids: [101, 102, 103],
       opening: { id: 4, volume: 1, packNumber: 7 },
@@ -89,12 +98,13 @@ describe("AddCards", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<AddCards />);
 
-    await screen.findByRole("button", { name: "記錄第 7 包（0 張）" });
-    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
-    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
-    fireEvent.click(screen.getByRole("button", { name: "BUNNY GIRL" }));
-    fireEvent.click(screen.getByRole("button", { name: "SR" }));
-    fireEvent.click(screen.getByRole("button", { name: "Rei" }));
+    fireEvent.change(await screen.findByLabelText("NEW YEAR Mizuki R 數量"), {
+      target: { value: "2" },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: /^SR/ }));
+    fireEvent.change(screen.getByLabelText("BUNNY GIRL Rei SR 數量"), {
+      target: { value: "1" },
+    });
     fireEvent.change(screen.getByLabelText("開卡日期"), {
       target: { value: "2026-07-10" },
     });
@@ -102,8 +112,31 @@ describe("AddCards", () => {
       target: { value: "120" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "記錄第 7 包（3 張）" }),
+      screen.getByRole("button", { name: "檢查本次入藏（3 張）" }),
     );
+
+    const reviewHeading = await screen.findByRole("heading", {
+      name: "確認本次入藏",
+    });
+    expect(reviewHeading).toHaveFocus();
+    expect(
+      screen.getByRole("table", { name: "本次批次入藏明細" }),
+    ).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.filter(
+        ([url, init]) => url === "/api/admin/cards" && init?.method === "POST",
+      ),
+    ).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "返回修改" }));
+    expect(screen.getByLabelText("BUNNY GIRL Rei SR 數量")).toHaveValue(1);
+    expect(
+      screen.getByRole("button", { name: "檢查本次入藏（3 張）" }),
+    ).toHaveFocus();
+    fireEvent.click(
+      screen.getByRole("button", { name: "檢查本次入藏（3 張）" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "確認寫入 3 張" }));
 
     await screen.findByText("第 1 彈第 7 包已記錄（3 張）");
     const posts = fetchMock.mock.calls.filter(
@@ -137,90 +170,102 @@ describe("AddCards", () => {
       },
     ]);
     expect(
-      screen.getByRole("button", { name: "記錄第 8 包（0 張）" }),
+      screen.getByRole("button", { name: "檢查本次入藏（0 張）" }),
     ).toBeDisabled();
+    expect(screen.getByText("第 1 彈 · 第 8 包")).toBeInTheDocument();
   });
 
-  it("increments and removes cards from the current pack tally", async () => {
+  it("preserves quantities across rarity tabs and locks source and volume", async () => {
     vi.stubGlobal("fetch", stubAddCardsFetch());
     render(<AddCards />);
 
-    await screen.findByRole("button", { name: "Rei" });
-    fireEvent.click(screen.getByRole("button", { name: "SR" }));
-    fireEvent.click(screen.getByRole("button", { name: "Rei" }));
-    fireEvent.click(screen.getByRole("button", { name: "Rei" }));
-    expect(screen.getByText("×2")).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "移除 NEW YEAR Rei SR" }),
-    );
-    expect(screen.getByText("×1")).toBeInTheDocument();
-  });
-
-  it("allows same-volume series and locks only the pack volume", async () => {
-    vi.stubGlobal("fetch", stubAddCardsFetch());
-    render(<AddCards />);
-
-    await screen.findByRole("button", { name: "Mizuki" });
-    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
-    expect(screen.getByText("×1")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "BUNNY GIRL" })).toBeEnabled();
+    await screen.findByLabelText("NEW YEAR Mizuki R 數量");
+    fireEvent.click(screen.getByRole("radio", { name: /^SR/ }));
+    fireEvent.change(screen.getByLabelText("NEW YEAR Rei SR 數量"), {
+      target: { value: "2" },
+    });
+    expect(screen.getByRole("radio", { name: "SR，已選 2 張" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "已收購入" })).toBeDisabled();
     expect(screen.getByRole("radio", { name: "第 2 彈" })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("button", { name: "BUNNY GIRL" }));
-    expect(
-      screen.getByRole("button", { name: "移除 NEW YEAR Mizuki R" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Koyuki" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Koyuki" }));
-    expect(
-      screen.getByRole("button", { name: "移除 BUNNY GIRL Koyuki R" }),
-    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /^R，/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /^SR/ }));
+    expect(screen.getByLabelText("NEW YEAR Rei SR 數量")).toHaveValue(2);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "移除 NEW YEAR Mizuki R" }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "移除 BUNNY GIRL Koyuki R" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "清空草稿" }));
+    expect(screen.getByRole("radio", { name: "已收購入" })).toBeEnabled();
     expect(screen.getByRole("radio", { name: "第 2 彈" })).toBeEnabled();
     fireEvent.click(screen.getByRole("radio", { name: "第 2 彈" }));
 
-    expect(screen.getByText("點上方角色加入本包卡片")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "MP 4TH" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "KSP" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "SSR" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.queryByRole("button", { name: "R" })).toBeNull();
+    expect(
+      await screen.findByRole("table", {
+        name: "第 2 彈 SSR 批次入藏矩陣",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("MP 4TH KSP SSR 數量")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /^SSR/ })).toBeChecked();
+    expect(
+      screen.queryByRole("radio", { name: /^R，/ }),
+    ).not.toBeInTheDocument();
   });
 
-  it("requires a nonnegative purchase price and sends one purchased card without an opening", async () => {
-    const fetchMock = stubAddCardsFetch({ ids: [201] });
+  it("caps each cell at 99 cards and the whole batch at 100", async () => {
+    vi.stubGlobal("fetch", stubAddCardsFetch());
+    render(<AddCards />);
+
+    const first = await screen.findByLabelText("NEW YEAR Mizuki R 數量");
+    fireEvent.change(first, { target: { value: "100" } });
+    expect(first).toHaveValue(99);
+
+    const second = screen.getByLabelText("BUNNY GIRL Rei R 數量");
+    fireEvent.change(second, { target: { value: "8" } });
+    expect(second).toHaveValue(1);
+    expect(screen.getByText("100 / 100 張")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "檢查本次入藏（100 張）" }),
+    ).toBeEnabled();
+  });
+
+  it("requires a purchase total and distributes it across a received batch", async () => {
+    const fetchMock = stubAddCardsFetch({ ids: [201, 202, 203] });
     vi.stubGlobal("fetch", fetchMock);
     render(<AddCards />);
 
-    await screen.findByRole("radio", { name: "單卡購入" });
-    fireEvent.click(screen.getByRole("radio", { name: "單卡購入" }));
-    fireEvent.click(screen.getByRole("button", { name: "SR" }));
-    fireEvent.click(screen.getByRole("button", { name: "Rei" }));
+    await screen.findByLabelText("NEW YEAR Mizuki R 數量");
+    fireEvent.click(screen.getByRole("radio", { name: "已收購入" }));
+    fireEvent.change(screen.getByLabelText("NEW YEAR Mizuki R 數量"), {
+      target: { value: "2" },
+    });
+    fireEvent.change(screen.getByLabelText("BUNNY GIRL Rei R 數量"), {
+      target: { value: "1" },
+    });
 
-    const submit = screen.getByRole("button", { name: "記錄購入" });
-    expect(submit).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("購入價格 (TWD)"), {
+    const review = screen.getByRole("button", {
+      name: "檢查本次入藏（3 張）",
+    });
+    expect(review).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("購入總額 (TWD)"), {
       target: { value: "-1" },
     });
-    expect(submit).toBeDisabled();
-    expect(screen.getByText("購入價格必須為 0 或正數")).toBeInTheDocument();
+    expect(review).toBeDisabled();
+    expect(screen.getByText("購入總額必須為 0 或正數")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("購入價格 (TWD)"), {
-      target: { value: "0" },
+    fireEvent.change(screen.getByLabelText("購入總額 (TWD)"), {
+      target: { value: "1.001" },
     });
-    expect(submit).toBeEnabled();
-    fireEvent.click(submit);
+    expect(review).toBeDisabled();
+    expect(screen.getByText("購入總額最多只能有兩位小數")).toBeInTheDocument();
 
-    await screen.findByText("已記錄購入 NEW YEAR Rei SR（0 元）");
+    fireEvent.change(screen.getByLabelText("購入總額 (TWD)"), {
+      target: { value: "100" },
+    });
+    fireEvent.click(review);
+    expect(
+      await screen.findByText("購入總額會分攤到每張實體卡"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "確認寫入 3 張" }));
+
+    await screen.findByText("已記錄 3 張已收購入（總額 100 TWD）");
     const post = fetchMock.mock.calls.find(
       ([url, init]) => url === "/api/admin/cards" && init?.method === "POST",
     );
@@ -229,10 +274,61 @@ describe("AddCards", () => {
     expect(body.cards).toEqual([
       {
         series: "NEW YEAR",
-        character: "Rei",
-        rarity: "SR",
+        character: "Mizuki",
+        rarity: "R",
         source: "purchase",
-        purchasePrice: 0,
+        purchasePrice: 33.34,
+      },
+      {
+        series: "NEW YEAR",
+        character: "Mizuki",
+        rarity: "R",
+        source: "purchase",
+        purchasePrice: 33.33,
+      },
+      {
+        series: "BUNNY GIRL",
+        character: "Rei",
+        rarity: "R",
+        source: "purchase",
+        purchasePrice: 33.33,
+      },
+    ]);
+  });
+
+  it("records other acquisitions as one batch without opening metadata", async () => {
+    const fetchMock = stubAddCardsFetch({ ids: [301, 302] });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AddCards />);
+
+    await screen.findByLabelText("NEW YEAR Mizuki R 數量");
+    fireEvent.click(screen.getByRole("radio", { name: "其他入藏" }));
+    fireEvent.change(screen.getByLabelText("NEW YEAR Mizuki R 數量"), {
+      target: { value: "2" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "檢查本次入藏（2 張）" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "確認寫入 2 張" }));
+
+    await screen.findByText("已記錄 2 張其他入藏");
+    const post = fetchMock.mock.calls.find(
+      ([url, init]) => url === "/api/admin/cards" && init?.method === "POST",
+    );
+    const body = JSON.parse(post?.[1]?.body as string);
+    expect(body).not.toHaveProperty("opening");
+    expect(body.cards).toEqual([
+      {
+        series: "NEW YEAR",
+        character: "Mizuki",
+        rarity: "R",
+        source: "other",
+      },
+      {
+        series: "NEW YEAR",
+        character: "Mizuki",
+        rarity: "R",
+        source: "other",
       },
     ]);
   });
@@ -256,11 +352,14 @@ describe("AddCards", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<AddCards />);
 
-    await screen.findByText(/503/);
-    fireEvent.click(screen.getByRole("button", { name: "Mizuki" }));
-    const submit = screen.getByRole("button", { name: "記錄本包（1 張）" });
-    expect(submit).toBeEnabled();
-    fireEvent.click(submit);
+    await screen.findByText(/目前無法預覽下一個包號/);
+    fireEvent.change(screen.getByLabelText("NEW YEAR Mizuki R 數量"), {
+      target: { value: "1" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "檢查本次入藏（1 張）" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "確認寫入 1 張" }));
 
     await screen.findByText("第 1 彈第 4 包已記錄（1 張）");
     expect(
@@ -280,7 +379,7 @@ describe("ManageCards", () => {
         character: "Rei",
         rarity: "UR",
         status: "owned",
-        source: "pull",
+        source: "other",
         purchasePrice: null,
         askingPrice: null,
         wantInReturn: null,
@@ -311,6 +410,9 @@ describe("ManageCards", () => {
     const row = within(details).getByText("#1").closest("tr");
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getByText("重複")).toBeInTheDocument();
+    expect(
+      within(row as HTMLElement).getByText("其他入藏"),
+    ).toBeInTheDocument();
 
     fireEvent.click(
       within(row as HTMLElement).getByRole("button", { name: "賣出" }),

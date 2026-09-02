@@ -23,9 +23,10 @@ with a live site you edit directly.
 
 ### Admin (Cloudflare Access, owner only)
 
-- **Add from openings** — quickly log multiple cards from one physical pack,
-  including cards from different series in the same volume; packs are numbered
-  per volume and grouped under an opening event (date + cost).
+- **Batch collection workbench** — enter quantities in a character × series
+  matrix across rarity tabs, review the whole batch, then record it atomically
+  as one pack opening, received purchase, or other acquisition. Packs are
+  numbered per volume; purchase totals are allocated to the physical cards.
 - **Card management** — search/filter by series, character, rarity, and status;
   change status; set an asking price or a desired trade; mark cards sold/traded
   (writes history and removes them from active inventory). **保留 (hold)** locks a

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { MAX_CARD_BATCH_SIZE } from "../shared/card-batch";
 import {
   RARITY_ORDER,
   canonicalizeRarities,
@@ -53,7 +54,7 @@ import type { Env } from "./index";
 export const app = new Hono<{ Bindings: Env }>();
 
 const RARITIES = new Set<string>(RARITY_ORDER);
-const CARD_SOURCES = new Set(["pull", "purchase", "trade_in"]);
+const CARD_SOURCES = new Set(["pull", "purchase", "trade_in", "other"]);
 
 function isRarity(value: unknown): value is Rarity {
   return typeof value === "string" && RARITIES.has(value);
@@ -410,6 +411,12 @@ admin.post("/cards", async (c) => {
   const input = body as Record<string, unknown>;
   if (!Array.isArray(input.cards) || input.cards.length === 0) {
     return c.json({ error: "cards required" }, 400);
+  }
+  if (input.cards.length > MAX_CARD_BATCH_SIZE) {
+    return c.json(
+      { error: `at most ${MAX_CARD_BATCH_SIZE} cards are allowed per batch` },
+      400,
+    );
   }
   const cards = input.cards as AddCardInput[];
   let opening: OpeningInput | undefined;

@@ -728,8 +728,10 @@ export function ManageCards() {
                                                 </span>
                                               ) : null}
                                             </>
-                                          ) : (
+                                          ) : card.source === "trade_in" ? (
                                             "交換換入"
+                                          ) : (
+                                            "其他入藏"
                                           )}
                                         </td>
                                         <td className={TD}>

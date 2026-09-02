@@ -1,10 +1,44 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Toggle } from "@/components/ui/toggle";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { todayLocal } from "@/lib/date";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { RARITY_TEXT } from "@/shared/rarity";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  MAX_CARD_BATCH_SIZE,
+  MAX_CARD_CELL_QUANTITY,
+} from "../../shared/card-batch";
+import { RARITY_ORDER } from "../../shared/rarity";
 import type {
   AddCardInput,
   CatalogSeries,
@@ -12,34 +46,8 @@ import type {
   Rarity,
 } from "../../shared/types";
 import { fetchCatalog, fetchNextPackNumber, postCards } from "../api";
-import {
-  ADD_ACTIONS,
-  BTN_GHOST_SM,
-  BTN_PRIMARY,
-  CONTROL,
-  ERROR_TEXT,
-  FIELD,
-  FIELD_LABEL,
-  OPENING_FIELDS,
-  OPT_BASE,
-  OPT_CHIP,
-  OPT_GROUP,
-  OPT_RARITY,
-  OPT_TOGGLE,
-  PANEL,
-  PANEL_TITLE,
-  PILL_BASE,
-  PILL_RARITY,
-  TALLY,
-  TALLY_EMPTY,
-  TALLY_NAME,
-  TALLY_QTY,
-  TALLY_ROW,
-  TALLY_SERIES,
-  TOAST,
-} from "./ui";
 
-type AcquisitionMode = "pack" | "purchase";
+type AcquisitionMode = "pack" | "purchase" | "other";
 
 interface TallyEntry {
   series: string;
@@ -48,37 +56,97 @@ interface TallyEntry {
   qty: number;
 }
 
+const MODE_COPY: Record<
+  AcquisitionMode,
+  { label: string; description: string }
+> = {
+  pack: {
+    label: "開卡包",
+    description: "記錄同一彈的一包卡片，可同時填入多個系列與稀有度。",
+  },
+  purchase: {
+    label: "已收購入",
+    description: "只記錄已經收到的購入卡片；尚未收貨請使用購入預約。",
+  },
+  other: {
+    label: "其他入藏",
+    description: "適合贈與、盤點補登等不屬於開包或購入的收藏異動。",
+  },
+};
+
+const RARITY_CLASS = Object.fromEntries(
+  RARITY_ORDER.map((rarity, index) => [rarity, RARITY_TEXT[index]]),
+) as Record<Rarity, string>;
+
+function entryKey(series: string, character: string, rarity: Rarity) {
+  return `${series}\u0000${character}\u0000${rarity}`;
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("zh-TW", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+  }).format(value);
+}
+
+function volumeRarities(series: CatalogSeries[]) {
+  return RARITY_ORDER.filter((rarity) =>
+    series.some((item) => item.rarities.includes(rarity)),
+  );
+}
+
+function volumeCharacters(series: CatalogSeries[]) {
+  const seen = new Set<string>();
+  const characters: string[] = [];
+  for (const item of series) {
+    for (const character of item.characters) {
+      if (seen.has(character)) continue;
+      seen.add(character);
+      characters.push(character);
+    }
+  }
+  return characters;
+}
+
 export function AddCards() {
   const [catalog, setCatalog] = useState<CatalogSeries[] | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [previewUnavailable, setPreviewUnavailable] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [mode, setMode] = useState<AcquisitionMode>("pack");
-  const [packVolume, setPackVolume] = useState<number | null>(null);
-  const [series, setSeries] = useState("");
-  const [rarity, setRarity] = useState<Rarity | null>(null);
-  const [purchaseCharacter, setPurchaseCharacter] = useState("");
+  const [selectedVolume, setSelectedVolume] = useState<number | null>(null);
+  const [activeRarity, setActiveRarity] = useState<Rarity | null>(null);
   const [tally, setTally] = useState<TallyEntry[]>([]);
   const [openedAt, setOpenedAt] = useState(todayLocal);
   const [cost, setCost] = useState("");
-  const [purchasePrice, setPurchasePrice] = useState("");
+  const [purchaseTotal, setPurchaseTotal] = useState("");
   const [nextPackNumber, setNextPackNumber] = useState<number | null>(null);
+  const [reviewing, setReviewing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const reviewHeadingRef = useRef<HTMLHeadingElement>(null);
+  const restoreReviewFocus = useRef(false);
 
   useEffect(() => {
     let current = true;
     fetchCatalog()
       .then((items) => {
         if (!current) return;
-        setCatalog(items);
-        const first = items[0];
+        const sorted = [...items].sort(
+          (left, right) =>
+            left.volume - right.volume || left.sortOrder - right.sortOrder,
+        );
+        setCatalog(sorted);
+        const first = sorted[0];
         if (!first) return;
-        setPackVolume(first.volume);
-        setSeries(first.name);
-        setRarity(first.rarities[0] ?? null);
-        setPurchaseCharacter(first.characters[0] ?? "");
+        const firstVolumeSeries = sorted.filter(
+          (item) => item.volume === first.volume,
+        );
+        setSelectedVolume(first.volume);
+        setActiveRarity(volumeRarities(firstVolumeSeries)[0] ?? null);
       })
-      .catch((e) => {
-        if (current) setError(String(e));
+      .catch((error) => {
+        if (current) setCatalogError(String(error));
       });
     return () => {
       current = false;
@@ -86,418 +154,780 @@ export function AddCards() {
   }, []);
 
   useEffect(() => {
-    if (packVolume == null || mode !== "pack") return;
+    if (selectedVolume == null || mode !== "pack") return;
     let current = true;
     setNextPackNumber(null);
-    fetchNextPackNumber(packVolume)
+    setPreviewUnavailable(false);
+    fetchNextPackNumber(selectedVolume)
       .then((result) => {
         if (current) setNextPackNumber(result.packNumber);
       })
-      .catch((e) => {
-        if (current) setError(String(e));
+      .catch(() => {
+        if (current) setPreviewUnavailable(true);
       });
     return () => {
       current = false;
     };
-  }, [mode, packVolume]);
+  }, [mode, selectedVolume]);
 
-  const selectedSeries = catalog?.find((item) => item.name === series);
-  const volumes = [...new Set((catalog ?? []).map((item) => item.volume))].sort(
-    (a, b) => a - b,
+  useEffect(() => {
+    if (reviewing) {
+      reviewHeadingRef.current?.focus();
+    } else if (restoreReviewFocus.current) {
+      document.getElementById("batch-review-button")?.focus();
+      restoreReviewFocus.current = false;
+    }
+  }, [reviewing]);
+
+  const volumes = useMemo(
+    () =>
+      [...new Set((catalog ?? []).map((item) => item.volume))].sort(
+        (left, right) => left - right,
+      ),
+    [catalog],
   );
-  const seriesOptions =
-    mode === "pack"
-      ? (catalog ?? []).filter((item) => item.volume === packVolume)
-      : (catalog ?? []);
-  const characters = selectedSeries?.characters ?? [];
-  const rarities = selectedSeries?.rarities ?? [];
+  const selectedSeries = useMemo(
+    () => (catalog ?? []).filter((item) => item.volume === selectedVolume),
+    [catalog, selectedVolume],
+  );
+  const rarities = useMemo(
+    () => volumeRarities(selectedSeries),
+    [selectedSeries],
+  );
+  const characters = useMemo(
+    () => volumeCharacters(selectedSeries),
+    [selectedSeries],
+  );
+  const quantityByKey = useMemo(
+    () =>
+      new Map(
+        tally.map((entry) => [
+          entryKey(entry.series, entry.character, entry.rarity),
+          entry.qty,
+        ]),
+      ),
+    [tally],
+  );
   const total = tally.reduce((sum, entry) => sum + entry.qty, 0);
+  const rarityTotals = useMemo(
+    () =>
+      Object.fromEntries(
+        RARITY_ORDER.map((rarity) => [
+          rarity,
+          tally
+            .filter((entry) => entry.rarity === rarity)
+            .reduce((sum, entry) => sum + entry.qty, 0),
+        ]),
+      ) as Record<Rarity, number>,
+    [tally],
+  );
+  const sortedTally = useMemo(() => {
+    const seriesOrder = new Map(
+      selectedSeries.map((item, index) => [item.name, index]),
+    );
+    const characterOrder = new Map(
+      characters.map((character, index) => [character, index]),
+    );
+    const rarityOrder = new Map(
+      RARITY_ORDER.map((rarity, index) => [rarity, index]),
+    );
+    return [...tally].sort(
+      (left, right) =>
+        (seriesOrder.get(left.series) ?? Number.MAX_SAFE_INTEGER) -
+          (seriesOrder.get(right.series) ?? Number.MAX_SAFE_INTEGER) ||
+        (characterOrder.get(left.character) ?? Number.MAX_SAFE_INTEGER) -
+          (characterOrder.get(right.character) ?? Number.MAX_SAFE_INTEGER) ||
+        (rarityOrder.get(left.rarity) ?? Number.MAX_SAFE_INTEGER) -
+          (rarityOrder.get(right.rarity) ?? Number.MAX_SAFE_INTEGER),
+    );
+  }, [characters, selectedSeries, tally]);
+
   const numericCost = Number(cost);
   const costValid =
     cost.trim() === "" || (Number.isFinite(numericCost) && numericCost >= 0);
-  const numericPurchasePrice = Number(purchasePrice);
-  const purchasePriceValid =
-    purchasePrice.trim() !== "" &&
-    Number.isFinite(numericPurchasePrice) &&
-    numericPurchasePrice >= 0;
+  const numericPurchaseTotal = Number(purchaseTotal);
+  const purchaseTotalNumberValid =
+    purchaseTotal.trim() !== "" &&
+    Number.isFinite(numericPurchaseTotal) &&
+    numericPurchaseTotal >= 0;
+  const purchaseTotalCents = Math.round(numericPurchaseTotal * 100);
+  const purchaseTotalPrecisionValid =
+    purchaseTotalNumberValid &&
+    Number.isSafeInteger(purchaseTotalCents) &&
+    Math.abs(numericPurchaseTotal * 100 - purchaseTotalCents) < 0.000001;
+  const purchaseTotalValid =
+    purchaseTotalNumberValid && purchaseTotalPrecisionValid;
+  const detailsValid =
+    mode === "pack"
+      ? Boolean(openedAt) && costValid
+      : mode === "purchase"
+        ? purchaseTotalValid
+        : true;
+  const canReview =
+    catalog !== null &&
+    selectedVolume !== null &&
+    activeRarity !== null &&
+    total > 0 &&
+    total <= MAX_CARD_BATCH_SIZE &&
+    detailsValid;
 
   const selectMode = (nextMode: AcquisitionMode) => {
+    if (total > 0 && nextMode !== mode) return;
     setMode(nextMode);
-    if (nextMode === "pack" && selectedSeries) {
-      setPackVolume(selectedSeries.volume);
-    }
-    setToast(null);
-    setError(null);
+    setReviewing(false);
+    setSubmitError(null);
+    setSuccess(null);
   };
 
-  const selectPackVolume = (volume: number) => {
-    if (volume === packVolume) return;
-    const firstSeries = catalog?.find((item) => item.volume === volume);
-    if (!firstSeries) return;
-    setPackVolume(volume);
-    setSeries(firstSeries.name);
-    setRarity(firstSeries.rarities[0] ?? null);
-    setPurchaseCharacter(firstSeries.characters[0] ?? "");
-    setTally([]);
-    setToast(null);
-    setError(null);
+  const selectVolume = (volume: number) => {
+    if (volume === selectedVolume || total > 0) return;
+    const nextSeries = (catalog ?? []).filter((item) => item.volume === volume);
+    setSelectedVolume(volume);
+    setActiveRarity(volumeRarities(nextSeries)[0] ?? null);
+    setReviewing(false);
+    setSubmitError(null);
+    setSuccess(null);
   };
 
-  const selectSeries = (name: string) => {
-    if (name === series) return;
-    const next = catalog?.find((item) => item.name === name);
-    if (!next || (mode === "pack" && next.volume !== packVolume)) return;
-    setSeries(name);
-    setRarity(next.rarities[0] ?? null);
-    setPurchaseCharacter(next.characters[0] ?? "");
-    setToast(null);
-    setError(null);
-  };
-
-  const addCard = (character: string) => {
-    if (!rarity) return;
-    setTally((entries) => {
-      const index = entries.findIndex(
-        (entry) =>
-          entry.series === series &&
-          entry.character === character &&
-          entry.rarity === rarity,
-      );
-      if (index === -1) {
-        return [...entries, { series, character, rarity, qty: 1 }];
-      }
-      return entries.map((entry, entryIndex) =>
-        entryIndex === index ? { ...entry, qty: entry.qty + 1 } : entry,
-      );
-    });
-  };
-
-  const removeOne = (
-    entrySeries: string,
+  const setQuantity = (
+    series: string,
     character: string,
-    entryRarity: Rarity,
-  ) =>
-    setTally((entries) =>
-      entries
-        .map((entry) =>
-          entry.series === entrySeries &&
-          entry.character === character &&
-          entry.rarity === entryRarity
-            ? { ...entry, qty: entry.qty - 1 }
+    rarity: Rarity,
+    rawValue: string,
+  ) => {
+    const requested = rawValue === "" ? 0 : Math.trunc(Number(rawValue));
+    if (!Number.isFinite(requested)) return;
+    setTally((entries) => {
+      const key = entryKey(series, character, rarity);
+      const currentTotal = entries.reduce((sum, entry) => sum + entry.qty, 0);
+      const current = entries.find(
+        (entry) =>
+          entryKey(entry.series, entry.character, entry.rarity) === key,
+      );
+      const currentQty = current?.qty ?? 0;
+      const maximum = Math.min(
+        MAX_CARD_CELL_QUANTITY,
+        currentQty + MAX_CARD_BATCH_SIZE - currentTotal,
+      );
+      const nextQty = Math.max(0, Math.min(requested, maximum));
+      if (nextQty === 0) {
+        return entries.filter(
+          (entry) =>
+            entryKey(entry.series, entry.character, entry.rarity) !== key,
+        );
+      }
+      if (current) {
+        return entries.map((entry) =>
+          entryKey(entry.series, entry.character, entry.rarity) === key
+            ? { ...entry, qty: nextQty }
             : entry,
-        )
-        .filter((entry) => entry.qty > 0),
-    );
+        );
+      }
+      return [...entries, { series, character, rarity, qty: nextQty }];
+    });
+    setReviewing(false);
+    setSubmitError(null);
+    setSuccess(null);
+  };
 
-  const submitPack = async () => {
-    if (packVolume == null || total === 0 || !openedAt) return;
+  const clearDraft = () => {
+    setTally([]);
+    setCost("");
+    setPurchaseTotal("");
+    setReviewing(false);
+    setSubmitError(null);
+    setSuccess(null);
+  };
+
+  const buildCards = (): AddCardInput[] => {
+    const cards = sortedTally.flatMap((entry) =>
+      Array.from({ length: entry.qty }, () => ({
+        series: entry.series,
+        character: entry.character,
+        rarity: entry.rarity,
+      })),
+    );
+    if (mode !== "purchase") {
+      const source = mode === "other" ? ("other" as const) : ("pull" as const);
+      return cards.map((card) => ({ ...card, source }));
+    }
+
+    const baseCents = Math.floor(purchaseTotalCents / cards.length);
+    const remainder = purchaseTotalCents % cards.length;
+    return cards.map((card, index) => ({
+      ...card,
+      source: "purchase" as const,
+      purchasePrice: (baseCents + (index < remainder ? 1 : 0)) / 100,
+    }));
+  };
+
+  const submit = async () => {
+    if (!canReview || selectedVolume == null) return;
     setBusy(true);
-    setError(null);
-    setToast(null);
+    setSubmitError(null);
+    setSuccess(null);
     try {
-      const cards: AddCardInput[] = tally.flatMap((entry) =>
-        Array.from({ length: entry.qty }, () => ({
-          series: entry.series,
-          character: entry.character,
-          rarity: entry.rarity,
-          source: "pull" as const,
-        })),
-      );
-      const opening: OpeningInput = {
-        volume: packVolume,
-        openedAt,
-        cost: cost.trim() === "" ? undefined : numericCost,
-      };
+      const cards = buildCards();
+      const opening: OpeningInput | undefined =
+        mode === "pack"
+          ? {
+              volume: selectedVolume,
+              openedAt,
+              cost: cost.trim() === "" ? undefined : numericCost,
+            }
+          : undefined;
       const result = await postCards(cards, opening);
-      const packNumber = result.opening?.packNumber ?? nextPackNumber;
-      setToast(
-        packNumber == null
-          ? `已記錄 1 包（${result.ids.length} 張）`
-          : `第 ${packVolume} 彈第 ${packNumber} 包已記錄（${result.ids.length} 張）`,
-      );
-      if (result.opening) setNextPackNumber(result.opening.packNumber + 1);
+      if (mode === "pack") {
+        const packNumber = result.opening?.packNumber ?? nextPackNumber;
+        setSuccess(
+          packNumber == null
+            ? `已記錄 1 包（${result.ids.length} 張）`
+            : `第 ${selectedVolume} 彈第 ${packNumber} 包已記錄（${result.ids.length} 張）`,
+        );
+        if (result.opening) setNextPackNumber(result.opening.packNumber + 1);
+      } else if (mode === "purchase") {
+        setSuccess(
+          `已記錄 ${result.ids.length} 張已收購入（總額 ${formatMoney(numericPurchaseTotal)} TWD）`,
+        );
+      } else {
+        setSuccess(`已記錄 ${result.ids.length} 張其他入藏`);
+      }
       setTally([]);
       setCost("");
-    } catch (e) {
-      setError(String(e));
+      setPurchaseTotal("");
+      setOpenedAt(todayLocal());
+      setReviewing(false);
+    } catch (error) {
+      setSubmitError(String(error));
     } finally {
       setBusy(false);
     }
   };
 
-  const submitPurchase = async () => {
-    if (!rarity || !series || !purchaseCharacter || !purchasePriceValid) return;
-    setBusy(true);
-    setError(null);
-    setToast(null);
-    try {
-      const card: AddCardInput = {
-        series,
-        character: purchaseCharacter,
-        rarity,
-        source: "purchase",
-        purchasePrice: numericPurchasePrice,
-      };
-      await postCards([card]);
-      setToast(
-        `已記錄購入 ${series} ${purchaseCharacter} ${rarity}（${numericPurchasePrice} 元）`,
-      );
-      setPurchasePrice("");
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
+  const openReview = () => {
+    if (!canReview) return;
+    setSubmitError(null);
+    setSuccess(null);
+    setReviewing(true);
   };
-
-  const submitDisabled =
-    busy ||
-    catalog === null ||
-    !series ||
-    !rarity ||
-    (mode === "pack"
-      ? packVolume == null || total === 0 || !openedAt || !costValid
-      : !purchaseCharacter || !purchasePriceValid);
 
   return (
-    <section className={PANEL}>
-      <h2 className={PANEL_TITLE}>新增卡片</h2>
-
-      <div className={FIELD}>
-        <span className={FIELD_LABEL}>取得方式</span>
-        <ToggleGroup
-          type="single"
-          aria-label="取得方式"
-          value={mode}
-          onValueChange={(value) => {
-            if (!value) return;
-            selectMode(value as AcquisitionMode);
-          }}
-          className="justify-start"
-        >
-          <ToggleGroupItem value="pack" className={OPT_TOGGLE}>
-            開卡包
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="purchase"
-            className={OPT_TOGGLE}
-            disabled={total > 0}
-            title={total > 0 ? "本包已有卡片，需先送出或移除" : undefined}
+    <section aria-labelledby="batch-workbench-title" className="grid gap-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-1">
+          <h2
+            id="batch-workbench-title"
+            className="font-serif text-xl font-medium tracking-[0.04em] text-foreground"
           >
-            單卡購入
-          </ToggleGroupItem>
-        </ToggleGroup>
+            批次收藏工作台
+          </h2>
+          <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            先選來源與彈數，再直接在矩陣填入數量；同一批送出後會合併成一筆痕跡。
+          </p>
+        </div>
+        <Badge variant="outline">每批最多 {MAX_CARD_BATCH_SIZE} 張</Badge>
       </div>
 
-      {mode === "pack" ? (
-        <div className={cn(FIELD, "mt-4")}>
-          <span className={FIELD_LABEL}>彈數</span>
-          <ToggleGroup
-            type="single"
-            aria-label="卡包彈數"
-            value={packVolume == null ? "" : String(packVolume)}
-            onValueChange={(value) => {
-              if (value) selectPackVolume(Number(value));
-            }}
-            className="justify-start"
-          >
-            {volumes.map((volume) => (
-              <ToggleGroupItem
-                key={volume}
-                value={String(volume)}
-                className={OPT_TOGGLE}
-                disabled={total > 0 && volume !== packVolume}
-                title={
-                  total > 0 && volume !== packVolume
-                    ? "本包已有卡片，需先送出或移除"
-                    : undefined
-                }
-              >
-                第 {volume} 彈
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
+      {success ? (
+        <Alert className="border-primary/30 bg-primary/5">
+          <AlertTitle>批次入藏完成</AlertTitle>
+          <AlertDescription>{success}</AlertDescription>
+        </Alert>
+      ) : null}
+      {catalogError ? (
+        <Alert variant="destructive">
+          <AlertTitle>無法載入卡片目錄</AlertTitle>
+          <AlertDescription>{catalogError}</AlertDescription>
+        </Alert>
+      ) : null}
+      {submitError ? (
+        <Alert variant="destructive">
+          <AlertTitle>這批卡片尚未寫入</AlertTitle>
+          <AlertDescription>{submitError}</AlertDescription>
+        </Alert>
       ) : null}
 
-      <div className={cn(FIELD, "mt-4")}>
-        <span className={FIELD_LABEL}>系列</span>
-        <div className={OPT_GROUP}>
-          {seriesOptions.map((item) => (
-            <Toggle
-              key={item.name}
-              pressed={item.name === series}
-              onPressedChange={() => selectSeries(item.name)}
-              className={OPT_TOGGLE}
+      {reviewing ? (
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle asChild>
+              <h3 ref={reviewHeadingRef} tabIndex={-1}>
+                確認本次入藏
+              </h3>
+            </CardTitle>
+            <CardDescription>
+              請核對來源、張數與明細；確認後會一次寫入收藏與痕跡。
+            </CardDescription>
+            <CardAction>
+              <Badge>{total} 張</Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="grid gap-5">
+            <dl className="grid gap-3 rounded-lg border bg-muted/30 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-1">
+                <dt className="text-xs text-muted-foreground">入藏來源</dt>
+                <dd className="font-medium text-foreground">
+                  {MODE_COPY[mode].label}
+                </dd>
+              </div>
+              <div className="grid gap-1">
+                <dt className="text-xs text-muted-foreground">彈數</dt>
+                <dd className="font-medium text-foreground">
+                  第 {selectedVolume} 彈
+                </dd>
+              </div>
+              <div className="grid gap-1">
+                <dt className="text-xs text-muted-foreground">卡片</dt>
+                <dd className="font-medium text-foreground">
+                  {total} 張 · {tally.length} 種
+                </dd>
+              </div>
+              <div className="grid gap-1">
+                <dt className="text-xs text-muted-foreground">
+                  {mode === "pack"
+                    ? "開卡資料"
+                    : mode === "purchase"
+                      ? "購入總額"
+                      : "記錄方式"}
+                </dt>
+                <dd className="font-medium text-foreground">
+                  {mode === "pack"
+                    ? `${openedAt} · ${cost.trim() === "" ? "未填花費" : `${formatMoney(numericCost)} TWD`}`
+                    : mode === "purchase"
+                      ? `${formatMoney(numericPurchaseTotal)} TWD`
+                      : "直接計入收藏"}
+                </dd>
+              </div>
+            </dl>
+
+            {mode === "purchase" ? (
+              <Alert>
+                <AlertTitle>購入總額會分攤到每張實體卡</AlertTitle>
+                <AlertDescription>
+                  系統以 0.01 TWD
+                  為單位平均分攤，無法整除的尾差會自動補在前幾張卡。
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            <Table
+              aria-label="本次批次入藏明細"
+              scrollLabel="可左右捲動的本次批次入藏明細"
             >
-              {item.name}
-            </Toggle>
-          ))}
-        </div>
-      </div>
-
-      <div className={cn(FIELD, "mt-4")}>
-        <span className={FIELD_LABEL}>稀有度</span>
-        <div className={OPT_GROUP}>
-          {rarities.map((itemRarity) => (
-            <Toggle
-              key={itemRarity}
-              pressed={itemRarity === rarity}
-              onPressedChange={() => setRarity(itemRarity)}
-              className={cn(OPT_BASE, OPT_RARITY[itemRarity])}
-            >
-              {itemRarity}
-            </Toggle>
-          ))}
-        </div>
-      </div>
-
-      <div className={cn(FIELD, "mt-4")}>
-        <span className={FIELD_LABEL}>
-          {mode === "pack" ? "角色（點一下 = 加一張）" : "角色"}
-        </span>
-        <div className={OPT_GROUP}>
-          {characters.map((character) =>
-            mode === "pack" ? (
-              <Button
-                key={character}
-                type="button"
-                variant="ghost"
-                className={OPT_CHIP}
-                onClick={() => addCard(character)}
-              >
-                {character}
-              </Button>
-            ) : (
-              <Toggle
-                key={character}
-                pressed={character === purchaseCharacter}
-                onPressedChange={() => setPurchaseCharacter(character)}
-                className={OPT_TOGGLE}
-              >
-                {character}
-              </Toggle>
-            ),
-          )}
-        </div>
-      </div>
-
-      {mode === "pack" ? (
-        <>
-          {tally.length > 0 ? (
-            <div className={TALLY}>
-              {tally.map((entry) => (
-                <div
-                  className={TALLY_ROW}
-                  key={`${entry.series}-${entry.character}-${entry.rarity}`}
-                >
-                  <span className={TALLY_SERIES} title={entry.series}>
-                    {entry.series}
-                  </span>
-                  <span className={TALLY_NAME}>{entry.character}</span>
-                  <span className={cn(PILL_BASE, PILL_RARITY[entry.rarity])}>
-                    {entry.rarity}
-                  </span>
-                  <span className={TALLY_QTY}>×{entry.qty}</span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={BTN_GHOST_SM}
-                    aria-label={`移除 ${entry.series} ${entry.character} ${entry.rarity}`}
-                    onClick={() =>
-                      removeOne(entry.series, entry.character, entry.rarity)
-                    }
+              <TableHeader>
+                <TableRow>
+                  <TableHead>系列</TableHead>
+                  <TableHead>角色</TableHead>
+                  <TableHead>稀有度</TableHead>
+                  <TableHead className="text-right">數量</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedTally.map((entry) => (
+                  <TableRow
+                    key={entryKey(entry.series, entry.character, entry.rarity)}
                   >
-                    –
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className={TALLY_EMPTY}>點上方角色加入本包卡片</p>
-          )}
-
-          <div className={cn(FIELD, "mt-5")}>
-            <span className={FIELD_LABEL}>本次開卡</span>
-            <strong className="font-mono text-base font-medium text-primary">
-              {nextPackNumber == null
-                ? "由系統自動編號"
-                : `第 ${packVolume} 彈 · 第 ${nextPackNumber} 包`}
-            </strong>
-          </div>
-          <div className={OPENING_FIELDS}>
-            <label className={FIELD}>
-              <span className={FIELD_LABEL}>開卡日期</span>
-              <Input
-                type="date"
-                className={CONTROL}
-                value={openedAt}
-                onChange={(event) => setOpenedAt(event.target.value)}
-              />
-            </label>
-            <label className={FIELD}>
-              <span className={FIELD_LABEL}>本包花費 (TWD)</span>
-              <Input
-                type="number"
-                min={0}
-                inputMode="decimal"
-                className={CONTROL}
-                value={cost}
-                onChange={(event) => setCost(event.target.value)}
-                placeholder="選填"
-                aria-invalid={!costValid}
-              />
-            </label>
-          </div>
-        </>
+                    <TableCell className="font-medium text-foreground">
+                      {entry.series}
+                    </TableCell>
+                    <TableCell>{entry.character}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={RARITY_CLASS[entry.rarity]}
+                      >
+                        {entry.rarity}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      ×{entry.qty}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+          <CardFooter className="flex flex-wrap justify-between gap-3">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                restoreReviewFocus.current = true;
+                setReviewing(false);
+              }}
+              disabled={busy}
+            >
+              返回修改
+            </Button>
+            <Button type="button" onClick={submit} disabled={busy}>
+              {busy ? "寫入中…" : `確認寫入 ${total} 張`}
+            </Button>
+          </CardFooter>
+        </Card>
       ) : (
         <>
-          <p className={TALLY_EMPTY}>
-            僅適用於已收到的卡片，送出後會立即計入收藏；尚未收貨請使用「購入預約」。
-          </p>
-          <label className={cn(FIELD, "mt-5 max-w-[260px]")}>
-            <span className={FIELD_LABEL}>購入價格 (TWD)</span>
-            <Input
-              type="number"
-              min={0}
-              inputMode="decimal"
-              className={CONTROL}
-              value={purchasePrice}
-              onChange={(event) => setPurchasePrice(event.target.value)}
-              placeholder="必填"
-              aria-invalid={purchasePrice !== "" && !purchasePriceValid}
-            />
-          </label>
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle asChild>
+                <h3>1. 設定這批卡的來源</h3>
+              </CardTitle>
+              <CardDescription>
+                草稿已有卡片時，來源與彈數會鎖定；清空草稿後即可切換。
+              </CardDescription>
+              <CardAction>
+                <Badge variant="secondary">草稿</Badge>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              <FieldGroup>
+                <FieldSet>
+                  <FieldLegend variant="label">取得方式</FieldLegend>
+                  <ToggleGroup
+                    type="single"
+                    variant="outline"
+                    value={mode}
+                    aria-label="取得方式"
+                    className="flex-wrap"
+                    onValueChange={(value) => {
+                      if (value) selectMode(value as AcquisitionMode);
+                    }}
+                  >
+                    {(Object.keys(MODE_COPY) as AcquisitionMode[]).map(
+                      (value) => (
+                        <ToggleGroupItem
+                          key={value}
+                          value={value}
+                          disabled={total > 0 && value !== mode}
+                          className="data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-primary"
+                        >
+                          {MODE_COPY[value].label}
+                        </ToggleGroupItem>
+                      ),
+                    )}
+                  </ToggleGroup>
+                  <FieldDescription>
+                    {MODE_COPY[mode].description}
+                  </FieldDescription>
+                </FieldSet>
+
+                <FieldSet>
+                  <FieldLegend variant="label">彈數</FieldLegend>
+                  <ToggleGroup
+                    type="single"
+                    variant="outline"
+                    value={selectedVolume == null ? "" : String(selectedVolume)}
+                    aria-label="卡片彈數"
+                    className="flex-wrap"
+                    onValueChange={(value) => {
+                      if (value) selectVolume(Number(value));
+                    }}
+                  >
+                    {volumes.map((volume) => (
+                      <ToggleGroupItem
+                        key={volume}
+                        value={String(volume)}
+                        disabled={total > 0 && volume !== selectedVolume}
+                        className="data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-primary"
+                      >
+                        第 {volume} 彈
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                </FieldSet>
+              </FieldGroup>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle asChild>
+                <h3>2. 填入卡片數量</h3>
+              </CardTitle>
+              <CardDescription>
+                切換稀有度填表，數量會保留；空白與 0
+                都代表這批沒有該卡。窄螢幕可左右滑動表格。
+              </CardDescription>
+              <CardAction>
+                <Badge variant={total > 0 ? "default" : "secondary"}>
+                  {total} / {MAX_CARD_BATCH_SIZE} 張
+                </Badge>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <FieldSet>
+                <FieldLegend variant="label">稀有度</FieldLegend>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  value={activeRarity ?? ""}
+                  aria-label="稀有度"
+                  className="flex-wrap"
+                  onValueChange={(value) => {
+                    if (value) setActiveRarity(value as Rarity);
+                  }}
+                >
+                  {rarities.map((rarity) => (
+                    <ToggleGroupItem
+                      key={rarity}
+                      value={rarity}
+                      aria-label={`${rarity}，已選 ${rarityTotals[rarity]} 張`}
+                      className={cn(
+                        "data-[state=on]:border-current data-[state=on]:bg-muted",
+                        RARITY_CLASS[rarity],
+                      )}
+                    >
+                      {rarity}
+                      {rarityTotals[rarity] > 0 ? (
+                        <span className="font-mono text-[0.7rem]">
+                          {rarityTotals[rarity]}
+                        </span>
+                      ) : null}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </FieldSet>
+
+              {catalog === null && !catalogError ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  正在讀取卡片目錄…
+                </p>
+              ) : null}
+              {catalog?.length === 0 ? (
+                <Alert>
+                  <AlertTitle>卡片目錄是空的</AlertTitle>
+                  <AlertDescription>
+                    請先到「系列設定」建立系列、角色與稀有度。
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              {activeRarity && selectedSeries.length > 0 ? (
+                <Table
+                  aria-label={`第 ${selectedVolume} 彈 ${activeRarity} 批次入藏矩陣`}
+                  scrollLabel={`可左右捲動的第 ${selectedVolume} 彈 ${activeRarity} 批次入藏矩陣`}
+                  className="w-max min-w-full"
+                >
+                  <TableCaption className="sr-only">
+                    角色為列、系列為欄；在可用的格子輸入這批卡片數量。
+                  </TableCaption>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="sticky left-0 z-10 min-w-32 bg-card">
+                        角色 ＼ 系列
+                      </TableHead>
+                      {selectedSeries.map((item) => (
+                        <TableHead
+                          key={item.name}
+                          className="min-w-32 text-center"
+                        >
+                          {item.name}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {characters.map((character) => (
+                      <TableRow key={character}>
+                        <TableCell className="sticky left-0 z-10 bg-card font-medium text-foreground">
+                          {character}
+                        </TableCell>
+                        {selectedSeries.map((item) => {
+                          const available =
+                            item.characters.includes(character) &&
+                            item.rarities.includes(activeRarity);
+                          const key = entryKey(
+                            item.name,
+                            character,
+                            activeRarity,
+                          );
+                          const quantity = quantityByKey.get(key) ?? 0;
+                          const maximum = Math.min(
+                            MAX_CARD_CELL_QUANTITY,
+                            quantity + MAX_CARD_BATCH_SIZE - total,
+                          );
+                          return (
+                            <TableCell
+                              key={item.name}
+                              className={cn(
+                                "text-center",
+                                quantity > 0 && "bg-primary/5",
+                              )}
+                            >
+                              {available ? (
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={maximum}
+                                  step={1}
+                                  inputMode="numeric"
+                                  aria-label={`${item.name} ${character} ${activeRarity} 數量`}
+                                  className="mx-auto h-8 w-20 text-center font-mono"
+                                  value={quantity === 0 ? "" : quantity}
+                                  placeholder="0"
+                                  onChange={(event) =>
+                                    setQuantity(
+                                      item.name,
+                                      character,
+                                      activeRarity,
+                                      event.target.value,
+                                    )
+                                  }
+                                />
+                              ) : (
+                                <span
+                                  className="text-muted-foreground/50"
+                                  title={`${item.name} 沒有 ${character} ${activeRarity}`}
+                                >
+                                  —
+                                </span>
+                              )}
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : null}
+            </CardContent>
+            <CardFooter className="flex flex-wrap justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                已選{" "}
+                <strong className="font-medium text-foreground">{total}</strong>{" "}
+                張，共 {tally.length} 種
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={clearDraft}
+                disabled={total === 0}
+              >
+                清空草稿
+              </Button>
+            </CardFooter>
+          </Card>
+
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle asChild>
+                <h3>3. 補上這批資料</h3>
+              </CardTitle>
+              <CardDescription>
+                {mode === "pack"
+                  ? "日期會成為這筆開卡痕跡的時間，花費可留空。"
+                  : mode === "purchase"
+                    ? "填寫這批已收卡片的實付總額。"
+                    : "其他入藏不需要額外資料，確認明細後即可寫入。"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {mode === "pack" ? (
+                <FieldGroup className="sm:grid sm:grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor="batch-opened-at">開卡日期</FieldLabel>
+                    <Input
+                      id="batch-opened-at"
+                      type="date"
+                      value={openedAt}
+                      aria-invalid={!openedAt}
+                      onChange={(event) => {
+                        setOpenedAt(event.target.value);
+                        setSuccess(null);
+                      }}
+                    />
+                    {!openedAt ? <FieldError>開卡日期為必填</FieldError> : null}
+                  </Field>
+                  <Field data-invalid={!costValid}>
+                    <FieldLabel htmlFor="batch-opening-cost">
+                      本包花費 (TWD)
+                    </FieldLabel>
+                    <Input
+                      id="batch-opening-cost"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={cost}
+                      placeholder="選填"
+                      aria-invalid={!costValid}
+                      onChange={(event) => {
+                        setCost(event.target.value);
+                        setSuccess(null);
+                      }}
+                    />
+                    {!costValid ? (
+                      <FieldError>本包花費必須為 0 或正數</FieldError>
+                    ) : null}
+                  </Field>
+                  <Alert className="sm:col-span-2">
+                    <AlertTitle>本次開卡</AlertTitle>
+                    <AlertDescription>
+                      {nextPackNumber == null
+                        ? "送出時由系統自動編號。"
+                        : `第 ${selectedVolume} 彈 · 第 ${nextPackNumber} 包`}
+                      {previewUnavailable
+                        ? " 目前無法預覽下一個包號，但仍可正常送出。"
+                        : ""}
+                    </AlertDescription>
+                  </Alert>
+                </FieldGroup>
+              ) : mode === "purchase" ? (
+                <Field
+                  data-invalid={purchaseTotal !== "" && !purchaseTotalValid}
+                  className="max-w-sm"
+                >
+                  <FieldLabel htmlFor="batch-purchase-total">
+                    購入總額 (TWD)
+                  </FieldLabel>
+                  <Input
+                    id="batch-purchase-total"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={purchaseTotal}
+                    placeholder="必填"
+                    aria-invalid={purchaseTotal !== "" && !purchaseTotalValid}
+                    onChange={(event) => {
+                      setPurchaseTotal(event.target.value);
+                      setSuccess(null);
+                    }}
+                  />
+                  <FieldDescription>
+                    確認時會顯示總額，並平均分攤至這批每張實體卡。
+                  </FieldDescription>
+                  {purchaseTotal !== "" && !purchaseTotalValid ? (
+                    <FieldError>
+                      {purchaseTotalNumberValid
+                        ? "購入總額最多只能有兩位小數"
+                        : "購入總額必須為 0 或正數"}
+                    </FieldError>
+                  ) : null}
+                </Field>
+              ) : (
+                <Alert>
+                  <AlertTitle>會直接計入收藏</AlertTitle>
+                  <AlertDescription>
+                    這批卡片會形成一筆「新增入藏」痕跡，不建立開卡包或購入紀錄。
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+            <CardFooter className="flex flex-wrap justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                送出前還會有一次完整確認，不會在這一步寫入。
+              </p>
+              <Button
+                id="batch-review-button"
+                type="button"
+                onClick={openReview}
+                disabled={!canReview}
+              >
+                檢查本次入藏（{total} 張）
+              </Button>
+            </CardFooter>
+          </Card>
         </>
       )}
-
-      <div className={ADD_ACTIONS}>
-        <Button
-          type="button"
-          className={BTN_PRIMARY}
-          onClick={mode === "pack" ? submitPack : submitPurchase}
-          disabled={submitDisabled}
-        >
-          {busy
-            ? "新增中…"
-            : mode === "pack"
-              ? nextPackNumber == null
-                ? `記錄本包（${total} 張）`
-                : `記錄第 ${nextPackNumber} 包（${total} 張）`
-              : "記錄購入"}
-        </Button>
-        {mode === "pack" && !openedAt ? (
-          <span className={ERROR_TEXT}>開卡日期為必填</span>
-        ) : null}
-        {mode === "pack" && !costValid ? (
-          <span className={ERROR_TEXT}>本包花費必須為 0 或正數</span>
-        ) : null}
-        {mode === "purchase" && purchasePrice !== "" && !purchasePriceValid ? (
-          <span className={ERROR_TEXT}>購入價格必須為 0 或正數</span>
-        ) : null}
-        {toast ? <span className={TOAST}>{toast}</span> : null}
-        {error ? <span className={ERROR_TEXT}>{error}</span> : null}
-      </div>
     </section>
   );
 }

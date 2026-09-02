@@ -17,7 +17,7 @@ const SECTIONS = [
     label: "收藏",
     hint: "入藏與維護",
     tabs: [
-      { id: "add", label: "新增入藏" },
+      { id: "add", label: "批次入藏" },
       { id: "manage", label: "卡片管理" },
       { id: "series", label: "系列設定" },
     ],
