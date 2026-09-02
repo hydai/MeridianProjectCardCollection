@@ -1,6 +1,9 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import type { CatalogMediaEntry } from "../../src/shared/types";
+import type {
+  CatalogMediaEntry,
+  OverviewResponse,
+} from "../../src/shared/types";
 
 async function firstCatalogId(): Promise<number> {
   const row = await env.DB.prepare(
@@ -44,6 +47,12 @@ describe("catalog media", () => {
     const initial = await listMedia();
     const initialEntry = initial.find((entry) => entry.catalogId === catalogId);
     expect(initialEntry).toMatchObject({ catalogId, front: null });
+    const initialOverview = await SELF.fetch(
+      "https://example.com/api/overview",
+    ).then((response) => response.json<OverviewResponse>());
+    expect(
+      initialOverview.cells.find((cell) => cell.catalogId === catalogId)?.image,
+    ).toBeNull();
 
     const firstBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
     const firstUpload = await upload(catalogId, firstBytes);
@@ -65,6 +74,17 @@ describe("catalog media", () => {
     expect(saved?.front?.url).toBe(
       `/api/catalog/${catalogId}/image?side=front&v=1`,
     );
+
+    const publicOverview = await SELF.fetch(
+      "https://example.com/api/overview",
+    ).then((response) => response.json<OverviewResponse>());
+    const publicCell = publicOverview.cells.find(
+      (cell) => cell.catalogId === catalogId,
+    );
+    expect(publicCell?.image).toEqual({
+      url: `/api/catalog/${catalogId}/image?side=front&v=1`,
+    });
+    expect(Object.keys(publicCell?.image ?? {})).toEqual(["url"]);
 
     const publicImage = await SELF.fetch(
       `https://example.com${saved?.front?.url}`,
@@ -144,6 +164,12 @@ describe("catalog media", () => {
         )
       ).status,
     ).toBe(404);
+    const deletedOverview = await SELF.fetch(
+      "https://example.com/api/overview",
+    ).then((response) => response.json<OverviewResponse>());
+    expect(
+      deletedOverview.cells.find((cell) => cell.catalogId === catalogId)?.image,
+    ).toBeNull();
   });
 
   it("rejects unsupported, empty, oversized, and unknown-slot uploads", async () => {

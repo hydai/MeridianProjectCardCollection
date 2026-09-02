@@ -11,6 +11,7 @@ import {
   formatTradeList,
   getAvailableN,
   getHeldN,
+  getImage,
   getN,
   getReservedN,
   getWantN,
@@ -127,6 +128,25 @@ describe("buildMatrix", () => {
     expect(getN(m, 0, 0, 0)).toBe(3);
     expect(getN(m, 0, 0, 1)).toBe(1);
     expect(getN(m, 1, 1, 0)).toBe(1);
+  });
+
+  it("preserves the public card image reference at its catalog coordinate", () => {
+    const withImage = buildMatrix({
+      ...overview,
+      cells: overview.cells.map((entry) =>
+        entry.catalogId === 1
+          ? {
+              ...entry,
+              image: { url: "/api/catalog/1/image?side=front&v=3" },
+            }
+          : entry,
+      ),
+    });
+
+    expect(getImage(withImage, 0, 0, 0)).toEqual({
+      url: "/api/catalog/1/image?side=front&v=3",
+    });
+    expect(getImage(withImage, 0, 0, 1)).toBeNull();
   });
 
   it("places Vol.3 EX cards in the fifth slot without inventing legacy slots", () => {
@@ -391,6 +411,7 @@ describe("formatTradeList", () => {
     held: [],
     wants: [],
     slots: [],
+    images: [],
   };
 
   it("groups surplus by rarity (UR→R) as `角色, 系列, 數量`", () => {
@@ -439,6 +460,7 @@ describe("formatTradeList", () => {
       held: [],
       wants: [],
       slots: [],
+      images: [],
     };
     const items: TradeItem[] = [
       { ri: 2, si: 1, ci: 1, spare: 1 }, // SSR Mizuki BUNNY GIRL

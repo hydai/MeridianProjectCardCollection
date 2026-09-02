@@ -49,6 +49,7 @@ import {
 } from "../../shared/catalog-media";
 import type { CatalogMediaEntry } from "../../shared/types";
 import { deleteCatalogImage, fetchCatalogMedia, putCatalogImage } from "../api";
+import { CatalogCardVisual } from "../components/CatalogCardVisual";
 import { CONTROL } from "./ui";
 
 type PresenceFilter = "missing" | "ready" | "all";
@@ -112,19 +113,12 @@ function CatalogMediaRow({
 
   return (
     <li className="grid grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-4 py-3 last:border-b-0 max-[680px]:grid-cols-[54px_minmax(0,1fr)] max-[680px]:gap-3">
-      <div className="flex aspect-[5/7] w-16 items-center justify-center overflow-hidden rounded-md border border-border bg-muted/35 max-[680px]:w-[54px]">
-        {entry.front ? (
-          <img
-            src={entry.front.url}
-            alt={`${identity} 卡面`}
-            loading="lazy"
-            decoding="async"
-            className="size-full object-contain"
-          />
-        ) : (
-          <ImageOffIcon className="size-5 text-muted-foreground" aria-hidden />
-        )}
-      </div>
+      <CatalogCardVisual
+        src={entry.front?.url}
+        alt={`${identity} 卡面`}
+        emptyLabel={false}
+        className="w-16 max-[680px]:w-[54px]"
+      />
 
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">

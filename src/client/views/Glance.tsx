@@ -1,3 +1,4 @@
+import { CatalogCardVisual } from "@/components/CatalogCardVisual";
 import {
   Accordion,
   AccordionContent,
@@ -22,17 +23,28 @@ import {
 } from "@/components/ui/empty";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { CircleCheckBigIcon } from "lucide-react";
 import { Fragment, useState } from "react";
+import type { CatalogImageRef } from "../../shared/types";
 import {
   type Matrix,
   RARITIES,
   buildVolumeRows,
   existsR,
+  getImage,
   getN,
   getReservedN,
+  getWantN,
 } from "../collection";
 import {
   CARD_FRAME,
@@ -57,6 +69,14 @@ type ProgressSlot = {
   rarityIndex: number;
   owned: number;
   reserved: number;
+  want: number;
+  image: CatalogImageRef | null;
+};
+
+type CardDetail = ProgressSlot & {
+  volume: string;
+  series: string;
+  character: string;
 };
 
 type SeriesProgress = {
@@ -111,6 +131,8 @@ function buildCharacterProgress(m: Matrix): CharacterProgress[] {
                   rarityIndex,
                   owned: getN(m, seriesIndex, index, rarityIndex),
                   reserved: getReservedN(m, seriesIndex, index, rarityIndex),
+                  want: getWantN(m, seriesIndex, index, rarityIndex),
+                  image: getImage(m, seriesIndex, index, rarityIndex),
                 },
               ]
             : [],
@@ -172,57 +194,129 @@ function VolumeSummary({
   );
 }
 
-function Slot({
-  character,
-  series,
-  slot,
-}: {
-  character: string;
-  series: string;
-  slot: ProgressSlot;
-}) {
-  const collected = slot.owned > 0;
+function CardDetailContent({ card }: { card: CardDetail }) {
+  return (
+    <SheetContent className="w-full overflow-y-auto sm:max-w-[420px]">
+      <SheetHeader className="border-b border-border px-5 py-5 pr-12">
+        <SheetTitle className="font-serif text-xl tracking-[0.04em]">
+          {card.character} · {card.rarity}
+        </SheetTitle>
+        <SheetDescription>
+          {card.series} · {card.volume}
+        </SheetDescription>
+      </SheetHeader>
+      <div className="flex flex-col gap-6 px-5 pb-8">
+        <CatalogCardVisual
+          src={card.image?.url}
+          alt={`${card.series} ${card.character} ${card.rarity} 卡面`}
+          className="mx-auto w-full max-w-[280px] bg-background shadow-md"
+        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="font-mono">
+            {card.rarity}
+          </Badge>
+          <Badge variant={card.owned > 0 ? "secondary" : "outline"}>
+            {card.owned > 0 ? "已收藏" : "尚未收藏"}
+          </Badge>
+        </div>
+
+        <dl className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg border border-border bg-muted/25 px-4 py-3">
+            <dt className="text-xs text-muted-foreground">持有張數</dt>
+            <dd className="mt-1 font-mono text-2xl text-foreground">
+              {card.owned}
+            </dd>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/25 px-4 py-3">
+            <dt className="text-xs text-muted-foreground">Want 張數</dt>
+            <dd className="mt-1 font-mono text-2xl text-foreground">
+              {card.want}
+            </dd>
+          </div>
+        </dl>
+
+        {card.reserved > 0 ? (
+          <p className="rounded-lg border border-border bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
+            其中 {card.reserved} 張正在暫定交換中。
+          </p>
+        ) : null}
+      </div>
+    </SheetContent>
+  );
+}
+
+function Slot({ card }: { card: CardDetail }) {
+  const collected = card.owned > 0;
   const label = collected
-    ? `${series} ${character} ${slot.rarity}：持有 ${slot.owned} 張${
-        slot.reserved > 0 ? `，其中 ${slot.reserved} 張暫定換出` : ""
+    ? `${card.series} ${card.character} ${card.rarity}：持有 ${card.owned} 張${
+        card.reserved > 0 ? `，其中 ${card.reserved} 張暫定換出` : ""
       }`
-    : `${series} ${character} ${slot.rarity}：尚未收集`;
+    : `${card.series} ${card.character} ${card.rarity}：尚未收集`;
 
   return (
-    <li
-      aria-label={label}
-      className={cn(
-        "flex min-w-0 flex-col gap-1.5 rounded-md border px-2.5 py-2",
-        collected
-          ? "border-primary/20 bg-primary/[0.04]"
-          : "border-border bg-muted/25",
-      )}
-    >
-      <span
-        className={cn(
-          "font-mono text-xs font-medium tracking-[0.08em]",
-          RARITY_TEXT[slot.rarityIndex],
-        )}
-      >
-        {slot.rarity}
-      </span>
-      <span className="font-mono text-[11px] text-muted-foreground">
-        {collected ? `${slot.owned} 張` : "缺"}
-      </span>
-      {slot.reserved > 0 ? (
-        <Badge variant="outline" className="w-fit font-mono">
-          預 {slot.reserved}
-        </Badge>
-      ) : null}
+    <li className="min-w-0">
+      <Sheet>
+        <SheetTrigger asChild>
+          <button
+            type="button"
+            aria-label={label}
+            className={cn(
+              "group flex size-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-md border text-left transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+              collected
+                ? "border-primary/20 bg-primary/[0.04] hover:border-primary/45"
+                : "border-border bg-muted/25 hover:border-foreground/25",
+            )}
+          >
+            <CatalogCardVisual
+              src={card.image?.url}
+              alt={`${card.series} ${card.character} ${card.rarity} 卡面`}
+              className="w-full rounded-none border-x-0 border-t-0 transition-opacity group-hover:opacity-90"
+            />
+            <span className="flex w-full flex-1 flex-col gap-1.5 px-2.5 py-2">
+              <span className="flex items-center justify-between gap-2">
+                <span
+                  className={cn(
+                    "font-mono text-xs font-medium tracking-[0.08em]",
+                    RARITY_TEXT[card.rarityIndex],
+                  )}
+                >
+                  {card.rarity}
+                </span>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  {collected ? `${card.owned} 張` : "缺"}
+                </span>
+              </span>
+              {card.reserved > 0 || card.want > 0 ? (
+                <span className="flex flex-wrap gap-1">
+                  {card.reserved > 0 ? (
+                    <Badge variant="outline" className="font-mono">
+                      預 {card.reserved}
+                    </Badge>
+                  ) : null}
+                  {card.want > 0 ? (
+                    <Badge variant="secondary" className="font-mono">
+                      Want {card.want}
+                    </Badge>
+                  ) : null}
+                </span>
+              ) : null}
+            </span>
+          </button>
+        </SheetTrigger>
+        <CardDetailContent card={card} />
+      </Sheet>
     </li>
   );
 }
 
 function SeriesDetails({
   character,
+  volume,
   series,
 }: {
   character: string;
+  volume: string;
   series: SeriesProgress;
 }) {
   return (
@@ -241,13 +335,16 @@ function SeriesDetails({
         aria-label={`${character} ${series.name} 進度：${progressLabel(series.stats)}`}
         className="mt-2 h-1"
       />
-      <ul className="mt-3 grid grid-cols-5 gap-2 max-sm:grid-cols-2">
+      <ul
+        className={cn(
+          "mt-3 grid gap-2 max-sm:grid-cols-2",
+          series.slots.length >= 5 ? "grid-cols-5" : "grid-cols-4",
+        )}
+      >
         {series.slots.map((slot) => (
           <Slot
             key={slot.rarity}
-            character={character}
-            series={series.name}
-            slot={slot}
+            card={{ ...slot, volume, series: series.name, character }}
           />
         ))}
       </ul>
@@ -281,6 +378,7 @@ function CharacterDetails({ character }: { character: CharacterProgress }) {
                 <SeriesDetails
                   key={series.name}
                   character={character.name}
+                  volume={volume.label}
                   series={series}
                 />
               ))}
@@ -302,7 +400,6 @@ export function Glance({ m }: { m: Matrix }) {
   const shownCharacters = characters.filter(
     (entry) => filter === "all" || entry.stats.missing > 0,
   );
-
   return (
     <section className="view view-glance">
       <Card className="mb-6 gap-0 rounded-[4px] border-[0.5px] border-border py-0 ring-0">

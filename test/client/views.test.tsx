@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SERIES, buildCatalog, charactersFor } from "../../seed/catalog-def";
 import { type Matrix, buildMatrix } from "../../src/client/collection";
@@ -298,7 +304,8 @@ const progressMatrix = buildMatrix({
       reserved: 0,
       held: 0,
       available: 1,
-      wantCount: 0,
+      wantCount: 2,
+      image: { url: "/api/catalog/1/image?side=front&v=1" },
       volume: 1,
     },
     {
@@ -397,6 +404,41 @@ describe("Glance collection progress guide", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows card artwork and opens a read-only card detail sheet", async () => {
+    render(<Glance m={progressMatrix} />);
+    fireEvent.click(screen.getByRole("button", { name: /Mizuki/ }));
+
+    const illustrated = screen.getByLabelText("NEW YEAR Mizuki R：持有 1 張");
+    expect(
+      within(illustrated).getByRole("img", {
+        name: "NEW YEAR Mizuki R 卡面",
+      }),
+    ).toHaveAttribute("src", "/api/catalog/1/image?side=front&v=1");
+
+    const missing = screen.getByLabelText("NEW YEAR Mizuki SR：尚未收集");
+    expect(within(missing).getByText("尚無卡面")).toBeInTheDocument();
+
+    fireEvent.click(illustrated);
+    const dialog = screen.getByRole("dialog", { name: "Mizuki · R" });
+    expect(within(dialog).getByText("NEW YEAR · Vol.1")).toBeInTheDocument();
+    expect(
+      within(
+        within(dialog).getByText("持有張數").parentElement as HTMLElement,
+      ).getByText("1"),
+    ).toBeInTheDocument();
+    expect(
+      within(
+        within(dialog).getByText("Want 張數").parentElement as HTMLElement,
+      ).getByText("2"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: /儲存|更新|編輯/ }),
+    ).toBeNull();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "關閉" }));
+    await waitFor(() => expect(illustrated).toHaveFocus());
+  });
+
   it("filters the character list down to incomplete collections", () => {
     render(<Glance m={progressMatrix} />);
     const filter = screen.getByRole("radiogroup", { name: "角色篩選" });
@@ -418,15 +460,14 @@ describe("Glance collection progress guide", () => {
 
   it("keeps reserved copies visible without reducing unique-card progress", () => {
     render(<Glance m={progressMatrix} />);
-    fireEvent.click(screen.getByRole("button", { name: /Rei/ }));
+    const rei = screen.getByRole("button", { name: /Rei/ });
+    fireEvent.click(rei);
 
     expect(
       screen.getByLabelText("NEW YEAR Rei SR：持有 2 張，其中 1 張暫定換出"),
     ).toBeInTheDocument();
     expect(screen.getByText("預 1")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Rei/ })).toHaveTextContent(
-      "2 / 2",
-    );
+    expect(rei).toHaveTextContent("2 / 2");
   });
 
   it("shows a completion state when the incomplete filter has no matches", () => {

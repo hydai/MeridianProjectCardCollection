@@ -522,11 +522,14 @@ export async function getOverview(db: D1Database): Promise<OverviewResponse> {
                 COALESCE(g.reserved, 0) AS reserved,
                 COALESCE(w.desired_count, 0) AS wantCount,
                 COALESCE(r.incoming, 0) AS incomingTrade,
-                COALESCE(p.incoming, 0) AS incomingPurchase
+                COALESCE(p.incoming, 0) AS incomingPurchase,
+                m.revision AS imageRevision
          FROM card_catalog c
          JOIN series s ON s.name = c.series
          LEFT JOIN cards k ON k.catalog_id = c.id AND k.status IN ${ACTIVE}
          LEFT JOIN catalog_wants w ON w.catalog_id = c.id
+         LEFT JOIN catalog_media m
+           ON m.catalog_id = c.id AND m.side = 'front'
          LEFT JOIN (
            SELECT catalog_id, SUM(qty) AS reserved
            FROM trade_reservation_lines
@@ -550,14 +553,22 @@ export async function getOverview(db: D1Database): Promise<OverviewResponse> {
          GROUP BY c.id
          ORDER BY c.sort_order`,
       )
-      .all<Omit<OverviewCell, "available">>()
+      .all<
+        Omit<OverviewCell, "available" | "image"> & {
+          imageRevision: number | null;
+        }
+      >()
   ).results;
   // held and reserved never cover the same physical card (holding requires an
   // unreserved card; reservation allocation skips held cards), so subtracting
   // both never double-counts.
-  const cells: OverviewCell[] = rawCells.map((cell) => ({
+  const cells: OverviewCell[] = rawCells.map(({ imageRevision, ...cell }) => ({
     ...cell,
     available: Math.max(0, cell.owned - cell.reserved - cell.held),
+    image:
+      imageRevision === null
+        ? null
+        : { url: catalogMediaUrl(cell.catalogId, "front", imageRevision) },
   }));
 
   const progress = (

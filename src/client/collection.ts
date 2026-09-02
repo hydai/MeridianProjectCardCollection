@@ -1,5 +1,6 @@
 import { RARITY_ORDER } from "../shared/rarity";
 import type {
+  CatalogImageRef,
   OverviewResponse,
   PublicPendingPurchase,
   PublicPendingTrade,
@@ -12,6 +13,13 @@ export type RarityKey = (typeof RARITY_KEYS)[number];
 
 export type Counts = [number, number, number, number, number];
 export type Slots = [boolean, boolean, boolean, boolean, boolean];
+export type ImageSlots = [
+  CatalogImageRef | null,
+  CatalogImageRef | null,
+  CatalogImageRef | null,
+  CatalogImageRef | null,
+  CatalogImageRef | null,
+];
 
 // The artifact's data shape: cards[seriesIdx][charIdx] = [R,SR,SSR,UR,EX] or null
 // (null = that character does not appear in that series, e.g. KSP outside MP 4TH).
@@ -28,6 +36,7 @@ export interface Matrix {
   // actively wanted.
   wants: (Counts | null)[][];
   slots: (Slots | null)[][];
+  images: (ImageSlots | null)[][];
 }
 
 const RARITY_INDEX: Record<Rarity, number> = {
@@ -47,6 +56,7 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
   const heldMap = new Map<string, Counts>();
   const wantMap = new Map<string, Counts>();
   const slotMap = new Map<string, Slots>();
+  const imageMap = new Map<string, ImageSlots>();
 
   // Cells arrive ordered by catalog sort_order (series-major, then character,
   // then rarity), so first appearance establishes character order and the
@@ -92,6 +102,13 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
       slotMap.set(key, slots);
     }
     slots[RARITY_INDEX[cell.rarity]] = true;
+
+    let images = imageMap.get(key);
+    if (!images) {
+      images = [null, null, null, null, null];
+      imageMap.set(key, images);
+    }
+    images[RARITY_INDEX[cell.rarity]] = cell.image ?? null;
   }
 
   // Keep every public view on one canonical series order: ascending volume,
@@ -117,6 +134,9 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
   const slots = orderedSeries.map((s) =>
     characters.map((c) => slotMap.get(`${s}|${c}`) ?? null),
   );
+  const images = orderedSeries.map((s) =>
+    characters.map((c) => imageMap.get(`${s}|${c}`) ?? null),
+  );
   return {
     series: orderedSeries,
     volumes: orderedSeries.map((s) => volumeBySeries.get(s) ?? 0),
@@ -126,6 +146,7 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
     held,
     wants,
     slots,
+    images,
   };
 }
 
@@ -203,6 +224,12 @@ export const getWantN = (
   const x = m.wants[s]?.[c];
   return x === null || x === undefined ? 0 : x[r];
 };
+export const getImage = (
+  m: Matrix,
+  s: number,
+  c: number,
+  r: number,
+): CatalogImageRef | null => m.images[s]?.[c]?.[r] ?? null;
 // Tradeable copies exclude both pending-trade reservations and owner holds
 // (保留). held and reserved never cover the same card, so subtracting both is safe.
 export const getAvailableN = (

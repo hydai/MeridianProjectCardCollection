@@ -82,6 +82,12 @@ export interface CatalogMediaEntry {
   front: CatalogMediaAsset | null;
 }
 
+// Minimal public reference to catalog artwork. Storage metadata remains
+// admin-only; the versioned URL is all public collection views need.
+export interface CatalogImageRef {
+  url: string;
+}
+
 export interface CreateSeriesInput {
   name: string;
   volume: number;
@@ -102,6 +108,10 @@ export interface OverviewCell {
   // Owner-held copies (保留): still owned, but kept out of the tradeable pool.
   held: number;
   available: number;
+  // Present when a shared front image has been uploaded for this catalog slot.
+  // Optional keeps older cached overview payloads readable during rollout;
+  // current API responses always return either a reference or null.
+  image?: CatalogImageRef | null;
   // Explicit collection target. This is deliberately independent from
   // "missing": zero means the owner has not marked this catalog slot as Want.
   wantCount?: number;
