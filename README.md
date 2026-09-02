@@ -37,10 +37,11 @@ with a live site you edit directly.
   numbered per volume; purchase totals are allocated to the physical cards.
 - **Card management** — search/filter by series, character, rarity, and status;
   open a card-slot workspace to set explicit Want targets, inspect incoming and
-  owned quantities, review scoped history, or operate physical copies; mark cards
-  sold/traded (writes history and removes them from active inventory). **保留
-  (hold)** locks a duplicate so it stays owned but never shows up in the
-  auto-computed trade list.
+  owned quantities, review scoped history, or operate physical copies. The same
+  workspace records already-received purchases, sales, trades, gifts, and catalog
+  corrections with their date, counterparty, amount, and note. **保留 (hold)**
+  locks a duplicate so it stays owned but never shows up in the auto-computed
+  trade list.
 - **Pending trades** — track reserved / in-progress trades, with
   reservation-aware duplicate flags. A published exchange announcement can
   prefill an adjustable private reservation without closing the announcement;
@@ -50,10 +51,10 @@ with a live site you edit directly.
 - **Exchange announcement drafts** — compose, edit, and delete private drafts,
   publish a fixed public snapshot, copy its share URL, and close it without
   erasing its history. Published posts show total and active reservation counts.
-- **Unified activity stream** — every acquisition, card adjustment, hold,
-  reservation, purchase, sale, and trade appears in one append-only audit trail;
-  untouched direct acquisitions and openings can be safely undone without
-  erasing history.
+- **Unified activity stream** — every acquisition, card adjustment or catalog
+  correction, hold, reservation, purchase, sale, trade, and gift appears in one
+  append-only audit trail; untouched direct acquisitions and openings can be
+  safely undone without erasing history.
 - **Cost analysis & transaction history** — *private* (owner only) reports kept
   alongside the activity stream for per-opening and completed-trade analysis.
 

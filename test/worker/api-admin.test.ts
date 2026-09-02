@@ -50,6 +50,80 @@ describe("admin api", () => {
     });
   });
 
+  it("POST /api/admin/cards records direct-purchase metadata", async () => {
+    const res = await post("/api/admin/cards", {
+      cards: [
+        {
+          series: "KILLER",
+          character: "Rei",
+          rarity: "UR",
+          source: "purchase",
+          purchasePrice: 88,
+        },
+      ],
+      acquisition: {
+        occurredAt: "2026-09-02",
+        counterparty: "Meridian Shop",
+        note: "現場購入",
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ids: number[] };
+    const cards =
+      await getJson<
+        Array<{
+          id: number;
+          purchaseSeller: string | null;
+          purchaseOrderedAt: string | null;
+          purchaseNote: string | null;
+        }>
+      >("/api/admin/cards");
+    expect(cards.find((card) => card.id === body.ids[0])).toMatchObject({
+      purchaseSeller: "Meridian Shop",
+      purchaseOrderedAt: "2026-09-02",
+      purchaseNote: "現場購入",
+    });
+    const activities = await getJson<
+      Array<{
+        kind: string;
+        occurredAt: string;
+        counterparty: string | null;
+        amount: number | null;
+        note: string | null;
+      }>
+    >("/api/admin/activities?limit=5");
+    expect(activities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "purchase",
+          occurredAt: "2026-09-02",
+          counterparty: "Meridian Shop",
+          amount: 88,
+          note: "現場購入",
+        }),
+      ]),
+    );
+  });
+
+  it("POST /api/admin/cards validates direct-purchase dates", async () => {
+    const res = await post("/api/admin/cards", {
+      cards: [
+        {
+          series: "KILLER",
+          character: "Rei",
+          rarity: "UR",
+          source: "purchase",
+          purchasePrice: 88,
+        },
+      ],
+      acquisition: { occurredAt: "2026-02-30" },
+    });
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "occurredAt must be a valid YYYY-MM-DD date",
+    });
+  });
+
   it("POST /api/admin/cards rejects oversized batches", async () => {
     const res = await post("/api/admin/cards", {
       cards: Array.from({ length: MAX_CARD_BATCH_SIZE + 1 }, () => ({
@@ -111,6 +185,90 @@ describe("admin api", () => {
       "/api/admin/transactions",
     );
     expect(txns.some((t) => t.counterparty === "Carol")).toBe(true);
+  });
+
+  it("POST /api/admin/transactions records a gift without a price", async () => {
+    const add = (await (
+      await post("/api/admin/cards", {
+        cards: [{ series: "NEW YEAR", character: "Sachi", rarity: "SR" }],
+      })
+    ).json()) as { ids: number[] };
+    const res = await post("/api/admin/transactions", {
+      cardId: add.ids[0],
+      type: "gift",
+      counterparty: "Dana",
+      happenedAt: "2026-09-02",
+      note: "生日禮物",
+    });
+    expect(res.status).toBe(200);
+
+    const cards =
+      await getJson<Array<{ id: number; status: string }>>("/api/admin/cards");
+    expect(cards.find((card) => card.id === add.ids[0])?.status).toBe("gifted");
+    const transactions = await getJson<
+      Array<{ type: string; price: number | null; note: string | null }>
+    >("/api/admin/transactions");
+    expect(transactions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "gift",
+          price: null,
+          note: "生日禮物",
+        }),
+      ]),
+    );
+  });
+
+  it("POST /api/admin/transactions rejects a priced gift", async () => {
+    const res = await post("/api/admin/transactions", {
+      cardId: 1,
+      type: "gift",
+      price: 1,
+      happenedAt: "2026-09-02",
+    });
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "a gift cannot have a price",
+    });
+  });
+
+  it("POST /api/admin/cards/:id/reclassify moves one physical card", async () => {
+    const add = (await (
+      await post("/api/admin/cards", {
+        cards: [{ series: "KILLER", character: "Rei", rarity: "UR" }],
+      })
+    ).json()) as { ids: number[] };
+    const overview = await getJson<{
+      cells: Array<{
+        catalogId: number;
+        series: string;
+        character: string;
+        rarity: string;
+      }>;
+    }>("/api/overview");
+    const target = overview.cells.find(
+      (cell) =>
+        cell.series === "KILLER" &&
+        cell.character === "Rei" &&
+        cell.rarity === "SR",
+    );
+    expect(target).toBeDefined();
+
+    const res = await post(`/api/admin/cards/${add.ids[0]}/reclassify`, {
+      targetCatalogId: target?.catalogId,
+      happenedAt: "2026-09-02",
+      note: "稀有度更正",
+    });
+    expect(res.status).toBe(200);
+    const cards =
+      await getJson<
+        Array<{ id: number; series: string; character: string; rarity: string }>
+      >("/api/admin/cards");
+    expect(cards.find((card) => card.id === add.ids[0])).toMatchObject({
+      series: "KILLER",
+      character: "Rei",
+      rarity: "SR",
+    });
   });
 
   it("PATCH /api/admin/cards/:id lists a card for sale on the public market", async () => {

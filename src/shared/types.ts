@@ -1,19 +1,27 @@
 export type Rarity = "R" | "SR" | "SSR" | "UR" | "EX";
-export type CardStatus = "owned" | "for_sale" | "for_trade" | "sold" | "traded";
+export type CardStatus =
+  | "owned"
+  | "for_sale"
+  | "for_trade"
+  | "sold"
+  | "traded"
+  | "gifted";
 export type CardSource = "pull" | "purchase" | "trade_in" | "other";
-export type TransactionType = "sale" | "trade";
+export type TransactionType = "sale" | "trade" | "gift";
 
 export type ActivityKind =
   | "opening"
   | "purchase"
   | "acquisition"
   | "card_classified"
+  | "card_reclassified"
   | "card_updated"
   | "want_updated"
   | "hold"
   | "unhold"
   | "sale"
   | "trade"
+  | "gift"
   | "trade_reserved"
   | "trade_reservation_cancelled"
   | "trade_completed"
@@ -30,6 +38,8 @@ export type ActivityLineAction =
   | "received"
   | "ordered"
   | "classified"
+  | "reclassified_from"
+  | "reclassified_to"
   | "updated"
   | "wanted"
   | "held"
@@ -225,6 +235,12 @@ export interface OpeningInput {
   note?: string;
 }
 
+export interface AcquisitionEventInput {
+  occurredAt: string;
+  counterparty?: string;
+  note?: string;
+}
+
 export interface OpeningCreated {
   id: number;
   volume: number;
@@ -240,6 +256,12 @@ export interface UpdateCardInput {
 
 export interface UpdateCatalogWantInput {
   wantCount: number;
+}
+
+export interface ReclassifyCardInput {
+  targetCatalogId: number;
+  happenedAt: string;
+  note?: string;
 }
 
 export interface RecordTxnInput {

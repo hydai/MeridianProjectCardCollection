@@ -35,13 +35,15 @@ const EVENT_LABEL: Record<ActivityKind, string> = {
   opening: "開卡入藏",
   purchase: "購入入藏",
   acquisition: "新增入藏",
-  card_classified: "卡片分類變更",
+  card_classified: "持有狀態變更",
+  card_reclassified: "卡位更正",
   card_updated: "卡片資料更新",
   want_updated: "Want 目標變更",
   hold: "設為保留",
   unhold: "取消保留",
   sale: "售出卡片",
   trade: "交換卡片",
+  gift: "贈送卡片",
   trade_reserved: "建立交換預約",
   trade_reservation_cancelled: "取消交換預約",
   trade_completed: "完成交換",
@@ -59,6 +61,7 @@ const STATUS_LABEL: Record<CardStatus, string> = {
   for_trade: "待換",
   sold: "已售出",
   traded: "已交換",
+  gifted: "已贈送",
 };
 
 const COLLECTION_KINDS = new Set<ActivityKind>([
@@ -72,6 +75,7 @@ const COLLECTION_KINDS = new Set<ActivityKind>([
 const TRADE_KINDS = new Set<ActivityKind>([
   "sale",
   "trade",
+  "gift",
   "trade_reserved",
   "trade_reservation_cancelled",
   "trade_completed",
@@ -117,6 +121,8 @@ function lineAction(line: ActivityLine): string {
   }
   if (line.action === "held") return "設為保留";
   if (line.action === "released") return "取消保留";
+  if (line.action === "reclassified_from") return "更正前 · 移出";
+  if (line.action === "reclassified_to") return "更正後 · 移入";
   if (line.action === "updated") return "更新資料";
   if (line.action === "wanted") {
     return `Want ${line.beforeWant ?? 0} → ${line.afterWant ?? 0}`;

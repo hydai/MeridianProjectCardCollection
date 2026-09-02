@@ -135,6 +135,7 @@ export const PILL_STATUS: Record<string, string> = {
   for_trade: "border-[rgba(214,138,163,0.4)] text-rarity-ssr",
   sold: "text-[var(--text-quaternary)]",
   traded: "text-[var(--text-quaternary)]",
+  gifted: "text-[var(--text-quaternary)]",
 };
 export const PILL_DUP =
   "border-[rgba(201,161,74,0.4)] bg-[rgba(201,161,74,0.08)] text-primary";

@@ -75,10 +75,18 @@ export function History() {
                       <span
                         className={cn(
                           PILL_BASE,
-                          t.type === "sale" ? PILL_RARITY.SR : PILL_RARITY.SSR,
+                          t.type === "sale"
+                            ? PILL_RARITY.SR
+                            : t.type === "trade"
+                              ? PILL_RARITY.SSR
+                              : PILL_RARITY.R,
                         )}
                       >
-                        {t.type === "sale" ? "賣出" : "交換"}
+                        {t.type === "sale"
+                          ? "賣出"
+                          : t.type === "trade"
+                            ? "交換"
+                            : "贈送"}
                       </span>
                     </td>
                     <td className={TD}>

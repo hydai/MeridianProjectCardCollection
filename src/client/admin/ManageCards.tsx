@@ -1,3 +1,4 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +24,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { todayLocal } from "@/lib/date";
 import { cn } from "@/lib/utils";
@@ -53,19 +55,18 @@ import {
   holdCard,
   listCards,
   patchCard,
+  postCards,
   postTransaction,
   putCatalogWant,
+  reclassifyCard,
   unholdCard,
 } from "../api";
 import {
   ACTION_FORM,
   BTN_GHOST_SM,
-  BTN_PRIMARY_SM,
   CONTROL,
   ERROR_TEXT,
-  FIELD,
   FIELD_LABEL,
-  INLINE_FIELDS,
   OPT_TOGGLE,
   PANEL,
   PANEL_TITLE,
@@ -81,7 +82,13 @@ import {
   TH,
 } from "./ui";
 
-type ActionKind = "list_sale" | "list_trade" | "sale" | "trade";
+type ActionKind =
+  | "list_sale"
+  | "list_trade"
+  | "sale"
+  | "trade"
+  | "gift"
+  | "reclassify";
 type StatusFilter = "catalog" | "wanted" | "active" | CardStatus;
 
 type FilterValue = string | number;
@@ -112,6 +119,7 @@ const CARD_STATUSES: CardStatus[] = [
   "for_trade",
   "sold",
   "traded",
+  "gifted",
 ];
 const FILTER_BUTTON = cn(
   OPT_TOGGLE,
@@ -127,6 +135,7 @@ const STATUS_FILTER_OPTIONS: FilterOption<StatusFilter>[] = [
   { value: "for_trade", label: "待換" },
   { value: "sold", label: "已售出" },
   { value: "traded", label: "已交換" },
+  { value: "gifted", label: "已贈送" },
 ];
 
 const STATUS_LABEL: Record<string, string> = {
@@ -135,6 +144,7 @@ const STATUS_LABEL: Record<string, string> = {
   for_trade: "待換",
   sold: "已售出",
   traded: "已交換",
+  gifted: "已贈送",
 };
 
 const cardGroupKey = (card: Pick<CardRow, "series" | "character" | "rarity">) =>
@@ -168,6 +178,7 @@ function groupCards(visibleRows: CardRow[], allRows: CardRow[]): CardGroup[] {
           for_trade: 0,
           sold: 0,
           traded: 0,
+          gifted: 0,
         },
       };
       groups.set(key, group);
@@ -206,6 +217,7 @@ function groupCatalogCells(
       for_trade: 0,
       sold: 0,
       traded: 0,
+      gifted: 0,
     };
     for (const card of cards) statusCounts[card.status] += 1;
     return {
@@ -226,13 +238,15 @@ const ACTIVITY_LABEL: Record<ActivityEvent["kind"], string> = {
   opening: "開卡入藏",
   purchase: "購入入藏",
   acquisition: "新增入藏",
-  card_classified: "卡片分類變更",
+  card_classified: "持有狀態變更",
+  card_reclassified: "卡位更正",
   card_updated: "卡片資料更新",
   want_updated: "Want 目標變更",
   hold: "設為保留",
   unhold: "取消保留",
   sale: "售出卡片",
   trade: "交換卡片",
+  gift: "贈送卡片",
   trade_reserved: "建立交換預約",
   trade_reservation_cancelled: "取消交換預約",
   trade_completed: "完成交換",
@@ -305,63 +319,117 @@ function FilterButtonGroup<T extends FilterValue>({
 
 function ActionForm({
   card,
-  catalog,
+  catalogCells = [],
   kind,
   onDone,
   onCancel,
 }: {
   card: CardRow;
-  catalog: CatalogSeries[];
+  catalogCells: OverviewCell[];
   kind: ActionKind;
   onDone: () => void;
   onCancel: () => void;
 }) {
+  const fieldId = useId();
   const [price, setPrice] = useState("");
   const [want, setWant] = useState("");
   const [counterparty, setCounterparty] = useState("");
   const [happenedAt, setHappenedAt] = useState(todayLocal);
-  const firstSeries = catalog[0];
-  const [rSeries, setRSeries] = useState(firstSeries?.name ?? "");
-  const selectedSeries =
-    catalog.find((entry) => entry.name === rSeries) ?? firstSeries;
-  const rChars = selectedSeries?.characters ?? [];
-  const rRarities = selectedSeries?.rarities ?? [];
-  const [rChar, setRChar] = useState(rChars[0] ?? "");
-  const [rRarity, setRRarity] = useState<Rarity>(rRarities[0] ?? "R");
+  const [note, setNote] = useState("");
+  const currentCatalogId = catalogCells.find(
+    (cell) =>
+      cell.series === card.series &&
+      cell.character === card.character &&
+      cell.rarity === card.rarity,
+  )?.catalogId;
+  const targetCells =
+    kind === "reclassify"
+      ? catalogCells.filter((cell) => cell.catalogId !== currentCatalogId)
+      : catalogCells;
+  const [targetCatalogId, setTargetCatalogId] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const selectedTarget = catalogCells.find(
+    (cell) => cell.catalogId === Number(targetCatalogId),
+  );
+
+  const actionLabel: Record<ActionKind, string> = {
+    list_sale: "設為待售",
+    list_trade: "設為待換",
+    sale: "記錄售出",
+    trade: "記錄交換",
+    gift: "記錄贈送",
+    reclassify: "更正卡位",
+  };
 
   const submit = async () => {
     setBusy(true);
     setErr(null);
     try {
+      const priceText = price.trim();
+      const numericPrice = priceText === "" ? undefined : Number(priceText);
+      if (
+        priceText !== "" &&
+        (!/^\d+(?:\.\d{1,2})?$/.test(priceText) ||
+          numericPrice === undefined ||
+          !Number.isFinite(numericPrice))
+      ) {
+        throw new Error("金額必須是 0 以上、最多兩位小數的數字。");
+      }
+      if (
+        (kind === "sale" ||
+          kind === "trade" ||
+          kind === "gift" ||
+          kind === "reclassify") &&
+        !happenedAt
+      ) {
+        throw new Error("請選擇日期。");
+      }
       if (kind === "list_sale") {
         await patchCard(card.id, {
           status: "for_sale",
-          askingPrice: price ? Number(price) : null,
+          askingPrice: numericPrice ?? null,
         });
       } else if (kind === "list_trade") {
         await patchCard(card.id, {
           status: "for_trade",
-          wantInReturn: want || null,
+          wantInReturn: want.trim() || null,
         });
       } else if (kind === "sale") {
         await postTransaction({
           cardId: card.id,
           type: "sale",
-          price: price ? Number(price) : undefined,
-          counterparty: counterparty || undefined,
+          price: numericPrice,
+          counterparty: counterparty.trim() || undefined,
           happenedAt,
+          note: note.trim() || undefined,
         });
-      } else {
+      } else if (kind === "trade") {
+        if (!selectedTarget) throw new Error("請選擇換得的卡位。");
         await postTransaction({
           cardId: card.id,
           type: "trade",
-          counterparty: counterparty || undefined,
+          counterparty: counterparty.trim() || undefined,
           happenedAt,
-          receivedSeries: rSeries,
-          receivedCharacter: rChar,
-          receivedRarity: rRarity,
+          note: note.trim() || undefined,
+          receivedSeries: selectedTarget.series,
+          receivedCharacter: selectedTarget.character,
+          receivedRarity: selectedTarget.rarity,
+        });
+      } else if (kind === "gift") {
+        await postTransaction({
+          cardId: card.id,
+          type: "gift",
+          counterparty: counterparty.trim() || undefined,
+          happenedAt,
+          note: note.trim() || undefined,
+        });
+      } else {
+        if (!selectedTarget) throw new Error("請選擇正確的卡位。");
+        await reclassifyCard(card.id, {
+          targetCatalogId: selectedTarget.catalogId,
+          happenedAt,
+          note: note.trim() || undefined,
         });
       }
       onDone();
@@ -372,136 +440,327 @@ function ActionForm({
   };
 
   return (
-    <div className={ACTION_FORM}>
-      <div className={INLINE_FIELDS}>
+    <form
+      className={ACTION_FORM}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <p className="mb-3 text-sm font-medium text-foreground">
+        {actionLabel[kind]}
+      </p>
+      <FieldGroup className="gap-3 sm:grid sm:grid-cols-2">
         {kind === "list_sale" || kind === "sale" ? (
-          <label className={FIELD}>
-            <span className={FIELD_LABEL}>價格 (TWD)</span>
+          <Field>
+            <FieldLabel htmlFor={`${fieldId}-price`}>價格 (TWD)</FieldLabel>
             <Input
+              id={`${fieldId}-price`}
               type="number"
-              className={CONTROL}
+              min={0}
+              step="0.01"
+              inputMode="decimal"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
+              placeholder="選填"
             />
-          </label>
+          </Field>
         ) : null}
         {kind === "list_trade" ? (
-          <label className={FIELD}>
-            <span className={FIELD_LABEL}>想換的卡 / 條件</span>
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor={`${fieldId}-want`}>想換的卡 / 條件</FieldLabel>
             <Input
-              className={CONTROL}
+              id={`${fieldId}-want`}
               value={want}
               onChange={(e) => setWant(e.target.value)}
               placeholder="例如 KILLER Kirali UR"
             />
-          </label>
+          </Field>
         ) : null}
-        {kind === "sale" || kind === "trade" ? (
-          <>
-            <label className={FIELD}>
-              <span className={FIELD_LABEL}>對象</span>
-              <Input
-                className={CONTROL}
-                value={counterparty}
-                onChange={(e) => setCounterparty(e.target.value)}
-              />
-            </label>
-            <label className={FIELD}>
-              <span className={FIELD_LABEL}>日期</span>
-              <Input
-                type="date"
-                className={CONTROL}
-                value={happenedAt}
-                onChange={(e) => setHappenedAt(e.target.value)}
-              />
-            </label>
-          </>
+        {kind === "sale" || kind === "trade" || kind === "gift" ? (
+          <Field>
+            <FieldLabel htmlFor={`${fieldId}-counterparty`}>
+              {kind === "gift" ? "贈與對象" : "對象"}
+            </FieldLabel>
+            <Input
+              id={`${fieldId}-counterparty`}
+              maxLength={200}
+              value={counterparty}
+              onChange={(e) => setCounterparty(e.target.value)}
+              placeholder="選填"
+            />
+          </Field>
         ) : null}
-        {kind === "trade" ? (
-          <>
-            <label className={FIELD}>
-              <span className={FIELD_LABEL}>換得系列</span>
-              <select
-                className={CONTROL}
-                value={rSeries}
-                onChange={(e) => {
-                  const next = catalog.find(
-                    (entry) => entry.name === e.target.value,
-                  );
-                  setRSeries(e.target.value);
-                  setRChar(next?.characters[0] ?? "");
-                  setRRarity(next?.rarities[0] ?? "R");
-                }}
-              >
-                {catalog.map((entry) => (
-                  <option key={entry.name} value={entry.name}>
-                    {entry.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={FIELD}>
-              <span className={FIELD_LABEL}>換得角色</span>
-              <select
-                className={CONTROL}
-                value={rChar}
-                onChange={(e) => setRChar(e.target.value)}
-              >
-                {rChars.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={FIELD}>
-              <span className={FIELD_LABEL}>稀有度</span>
-              <select
-                className={CONTROL}
-                value={rRarity}
-                onChange={(e) => setRRarity(e.target.value as Rarity)}
-              >
-                {rRarities.map((rr) => (
-                  <option key={rr} value={rr}>
-                    {rr}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </>
+        {kind === "sale" ||
+        kind === "trade" ||
+        kind === "gift" ||
+        kind === "reclassify" ? (
+          <Field>
+            <FieldLabel htmlFor={`${fieldId}-date`}>日期</FieldLabel>
+            <Input
+              id={`${fieldId}-date`}
+              type="date"
+              required
+              value={happenedAt}
+              onChange={(e) => setHappenedAt(e.target.value)}
+            />
+          </Field>
         ) : null}
-        <Button
-          type="button"
-          className={BTN_PRIMARY_SM}
-          onClick={submit}
-          disabled={busy}
-        >
-          {busy ? "處理中…" : "確認"}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className={BTN_GHOST_SM}
-          onClick={onCancel}
-        >
-          取消
-        </Button>
-      </div>
-      {err ? <div className={cn(ERROR_TEXT, "mt-2")}>{err}</div> : null}
-    </div>
+        {kind === "trade" || kind === "reclassify" ? (
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor={`${fieldId}-target`}>
+              {kind === "trade" ? "換得卡位" : "正確卡位"}
+            </FieldLabel>
+            <select
+              id={`${fieldId}-target`}
+              className={CONTROL}
+              value={targetCatalogId}
+              required
+              onChange={(e) => setTargetCatalogId(e.target.value)}
+            >
+              {targetCells.length === 0 ? (
+                <option value="">沒有其他卡位</option>
+              ) : (
+                <option value="" disabled>
+                  {kind === "trade" ? "請選擇換得卡位" : "請選擇正確卡位"}
+                </option>
+              )}
+              {Array.from(new Set(targetCells.map((cell) => cell.series))).map(
+                (series) => (
+                  <optgroup key={series} label={series}>
+                    {targetCells
+                      .filter((cell) => cell.series === series)
+                      .map((cell) => (
+                        <option key={cell.catalogId} value={cell.catalogId}>
+                          {cell.series} · {cell.character} · {cell.rarity}
+                        </option>
+                      ))}
+                  </optgroup>
+                ),
+              )}
+            </select>
+            <FieldDescription>
+              {kind === "trade"
+                ? "完成後會把這個卡位的新卡一併加入收藏。"
+                : "只更正這張實體卡的歸屬，不會新增或刪除卡片。"}
+            </FieldDescription>
+          </Field>
+        ) : null}
+        {kind === "sale" ||
+        kind === "trade" ||
+        kind === "gift" ||
+        kind === "reclassify" ? (
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor={`${fieldId}-note`}>備註</FieldLabel>
+            <Textarea
+              id={`${fieldId}-note`}
+              maxLength={1000}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="選填"
+            />
+          </Field>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+          <Button
+            type="submit"
+            size="sm"
+            disabled={
+              busy ||
+              ((kind === "trade" || kind === "reclassify") &&
+                (targetCells.length === 0 || !targetCatalogId))
+            }
+          >
+            {busy ? "處理中…" : "確認"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            取消
+          </Button>
+        </div>
+      </FieldGroup>
+      {err ? (
+        <p role="alert" className={cn(ERROR_TEXT, "mt-3")}>
+          {err}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+function DirectPurchaseForm({
+  cell,
+  onDone,
+  onCancel,
+}: {
+  cell: OverviewCell;
+  onDone: (quantity: number) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const fieldId = useId();
+  const [quantity, setQuantity] = useState("1");
+  const [totalAmount, setTotalAmount] = useState("");
+  const [seller, setSeller] = useState("");
+  const [occurredAt, setOccurredAt] = useState(todayLocal);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    const numericQuantity = Number(quantity);
+    const amountText = totalAmount.trim();
+    if (
+      !Number.isInteger(numericQuantity) ||
+      numericQuantity < 1 ||
+      numericQuantity > 99
+    ) {
+      setError("張數必須是 1 到 99 的整數。");
+      return;
+    }
+    if (
+      !/^\d+(?:\.\d{1,2})?$/.test(amountText) ||
+      !Number.isFinite(Number(amountText))
+    ) {
+      setError("購入總額必須是 0 以上、最多兩位小數的數字。");
+      return;
+    }
+    if (!occurredAt) {
+      setError("請選擇入藏日期。");
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const totalCents = Math.round(Number(amountText) * 100);
+      const baseCents = Math.floor(totalCents / numericQuantity);
+      const remainder = totalCents % numericQuantity;
+      const cards = Array.from({ length: numericQuantity }, (_, index) => ({
+        series: cell.series,
+        character: cell.character,
+        rarity: cell.rarity,
+        source: "purchase" as const,
+        purchasePrice: (baseCents + (index < remainder ? 1 : 0)) / 100,
+      }));
+      await postCards(cards, undefined, {
+        occurredAt,
+        counterparty: seller.trim() || undefined,
+        note: note.trim() || undefined,
+      });
+      await onDone(numericQuantity);
+    } catch (cause) {
+      setError(String(cause));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      className="rounded-lg border border-border bg-muted/20 p-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <FieldGroup className="gap-3 sm:grid sm:grid-cols-2">
+        <Field>
+          <FieldLabel htmlFor={`${fieldId}-quantity`}>張數</FieldLabel>
+          <Input
+            id={`${fieldId}-quantity`}
+            type="number"
+            min={1}
+            max={99}
+            step={1}
+            inputMode="numeric"
+            required
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${fieldId}-amount`}>購入總額 (TWD)</FieldLabel>
+          <Input
+            id={`${fieldId}-amount`}
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            required
+            value={totalAmount}
+            onChange={(event) => setTotalAmount(event.target.value)}
+            placeholder="必填"
+          />
+          <FieldDescription>總額會平均分攤到每張實體卡。</FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${fieldId}-seller`}>賣家 / 來源</FieldLabel>
+          <Input
+            id={`${fieldId}-seller`}
+            maxLength={200}
+            value={seller}
+            onChange={(event) => setSeller(event.target.value)}
+            placeholder="選填"
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${fieldId}-date`}>入藏日期</FieldLabel>
+          <Input
+            id={`${fieldId}-date`}
+            type="date"
+            required
+            value={occurredAt}
+            onChange={(event) => setOccurredAt(event.target.value)}
+          />
+        </Field>
+        <Field className="sm:col-span-2">
+          <FieldLabel htmlFor={`${fieldId}-note`}>備註</FieldLabel>
+          <Textarea
+            id={`${fieldId}-note`}
+            maxLength={1000}
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="選填"
+          />
+        </Field>
+        <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+          <Button type="submit" size="sm" disabled={busy}>
+            {busy ? "記錄中…" : "記錄購入"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={onCancel}
+          >
+            取消
+          </Button>
+        </div>
+      </FieldGroup>
+      {error ? (
+        <p role="alert" className="mt-3 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </form>
   );
 }
 
 function CardWorkspaceSheet({
   cell,
   cards,
-  catalog,
+  catalogCells,
   onOpenChange,
   onChanged,
 }: {
   cell: OverviewCell | null;
   cards: CardRow[];
-  catalog: CatalogSeries[];
+  catalogCells: OverviewCell[];
   onOpenChange: (open: boolean) => void;
   onChanged: () => Promise<void>;
 }) {
@@ -515,12 +774,16 @@ function CardWorkspaceSheet({
   } | null>(null);
   const [activities, setActivities] = useState<ActivityEvent[] | null>(null);
   const [activityError, setActivityError] = useState<string | null>(null);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [purchaseMessage, setPurchaseMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setWantInput(String(cell?.wantCount ?? 0));
     setWantError(null);
     setCardError(null);
     setAction(null);
+    setPurchaseOpen(false);
+    setPurchaseMessage(null);
   }, [cell]);
 
   useEffect(() => {
@@ -545,6 +808,13 @@ function CardWorkspaceSheet({
 
   const refresh = async () => {
     await onChanged();
+    if (!cell) return;
+    try {
+      setActivities(await fetchCatalogActivities(cell.catalogId));
+      setActivityError(null);
+    } catch (error) {
+      setActivityError(String(error));
+    }
   };
 
   const saveWant = async () => {
@@ -703,6 +973,59 @@ function CardWorkspaceSheet({
 
               <Separator />
 
+              <section aria-labelledby="workspace-purchase-title">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3
+                      id="workspace-purchase-title"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      直接購入
+                    </h3>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      已收到卡片時直接入藏；尚未到貨的購入請先建立購入預約。
+                    </p>
+                  </div>
+                  {!purchaseOpen ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setPurchaseOpen(true);
+                        setPurchaseMessage(null);
+                      }}
+                    >
+                      記錄購入
+                    </Button>
+                  ) : null}
+                </div>
+                {purchaseMessage ? (
+                  <Alert className="mt-3 border-primary/30 bg-primary/5">
+                    <AlertTitle>購入入藏完成</AlertTitle>
+                    <AlertDescription>{purchaseMessage}</AlertDescription>
+                  </Alert>
+                ) : null}
+                {purchaseOpen ? (
+                  <div className="mt-3">
+                    <DirectPurchaseForm
+                      key={cell.catalogId}
+                      cell={cell}
+                      onDone={async (quantity) => {
+                        setPurchaseOpen(false);
+                        setPurchaseMessage(
+                          `已新增 ${quantity} 張 ${cell.character} ${cell.rarity}。`,
+                        );
+                        await refresh();
+                      }}
+                      onCancel={() => setPurchaseOpen(false)}
+                    />
+                  </div>
+                ) : null}
+              </section>
+
+              <Separator />
+
               <section aria-labelledby="workspace-cards-title">
                 <div className="mb-3 flex items-baseline justify-between gap-3">
                   <h3
@@ -735,8 +1058,29 @@ function CardWorkspaceSheet({
                             <CardTitle className="font-mono">
                               實體卡 #{card.id}
                             </CardTitle>
-                            <CardDescription>
-                              {sourceLabel(card)}
+                            <CardDescription className="grid gap-0.5">
+                              <span>{sourceLabel(card)}</span>
+                              {card.source === "purchase" &&
+                              (card.purchaseSeller ||
+                                card.purchaseOrderedAt) ? (
+                                <span className="text-xs">
+                                  {[
+                                    card.purchaseSeller
+                                      ? `賣家 ${card.purchaseSeller}`
+                                      : "",
+                                    card.purchaseOrderedAt
+                                      ? `日期 ${card.purchaseOrderedAt}`
+                                      : "",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </span>
+                              ) : null}
+                              {card.purchaseNote ? (
+                                <span className="text-xs">
+                                  {card.purchaseNote}
+                                </span>
+                              ) : null}
                             </CardDescription>
                           </CardHeader>
                           <CardContent className="flex flex-col gap-3">
@@ -786,6 +1130,7 @@ function CardWorkspaceSheet({
                                     ["list_trade", "待換"],
                                     ["sale", "賣出"],
                                     ["trade", "交換"],
+                                    ["gift", "贈送"],
                                   ] as const
                                 ).map(([kind, label]) => (
                                   <Button
@@ -800,6 +1145,21 @@ function CardWorkspaceSheet({
                                     {label}
                                   </Button>
                                 ))}
+                                {card.status === "owned" ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      setAction({
+                                        cardId: card.id,
+                                        kind: "reclassify",
+                                      })
+                                    }
+                                  >
+                                    卡位更正
+                                  </Button>
+                                ) : null}
                                 {card.status !== "owned" ? (
                                   <Button
                                     type="button"
@@ -833,8 +1193,9 @@ function CardWorkspaceSheet({
                             ) : null}
                             {actionOpen && action ? (
                               <ActionForm
+                                key={`${card.id}-${action.kind}`}
                                 card={card}
-                                catalog={catalog}
+                                catalogCells={catalogCells}
                                 kind={action.kind}
                                 onDone={() => {
                                   setAction(null);
@@ -903,11 +1264,36 @@ function CardWorkspaceSheet({
                             <p className="mt-1 text-xs text-muted-foreground">
                               公告想找 ×{line.qty}
                             </p>
+                          ) : line?.action === "reclassified_from" ? (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              已從這個卡位移出
+                            </p>
+                          ) : line?.action === "reclassified_to" ? (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              已更正到這個卡位
+                            </p>
                           ) : line ? (
                             <p className="mt-1 text-xs text-muted-foreground">
                               {line.delta > 0 ? "+" : ""}
                               {line.delta} 張
                               {line.note ? ` · ${line.note}` : ""}
+                            </p>
+                          ) : null}
+                          {event.counterparty ||
+                          event.amount != null ||
+                          event.note ? (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {[
+                                event.counterparty
+                                  ? `對象 ${event.counterparty}`
+                                  : "",
+                                event.amount != null
+                                  ? `${event.amount} 元`
+                                  : "",
+                                event.note ?? "",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
                             </p>
                           ) : null}
                         </li>
@@ -1302,7 +1688,7 @@ export function ManageCards() {
                                       ? `賣家 ${card.purchaseSeller}`
                                       : "",
                                     card.purchaseOrderedAt
-                                      ? `訂購 ${card.purchaseOrderedAt}`
+                                      ? `日期 ${card.purchaseOrderedAt}`
                                       : "",
                                   ]
                                     .filter(Boolean)
@@ -1482,6 +1868,34 @@ export function ManageCards() {
                                               >
                                                 交換
                                               </Button>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                className={BTN_GHOST_SM}
+                                                onClick={() =>
+                                                  setAction({
+                                                    cardId: card.id,
+                                                    kind: "gift",
+                                                  })
+                                                }
+                                              >
+                                                贈送
+                                              </Button>
+                                              {card.status === "owned" ? (
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  className={BTN_GHOST_SM}
+                                                  onClick={() =>
+                                                    setAction({
+                                                      cardId: card.id,
+                                                      kind: "reclassify",
+                                                    })
+                                                  }
+                                                >
+                                                  卡位更正
+                                                </Button>
+                                              ) : null}
                                               {card.status !== "owned" ? (
                                                 <Button
                                                   type="button"
@@ -1530,8 +1944,9 @@ export function ManageCards() {
                                         <tr>
                                           <td className={TD} colSpan={4}>
                                             <ActionForm
+                                              key={`${card.id}-${action.kind}`}
                                               card={card}
-                                              catalog={catalog}
+                                              catalogCells={overview.cells}
                                               kind={action.kind}
                                               onDone={onDone}
                                               onCancel={() => setAction(null)}
@@ -1558,7 +1973,7 @@ export function ManageCards() {
       <CardWorkspaceSheet
         cell={selectedCell}
         cards={selectedCards}
-        catalog={catalog ?? []}
+        catalogCells={overview?.cells ?? []}
         onOpenChange={(open) => {
           if (!open) setSelectedCatalogId(null);
         }}

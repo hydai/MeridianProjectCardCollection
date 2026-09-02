@@ -1,4 +1,5 @@
 import type {
+  AcquisitionEventInput,
   ActivityEvent,
   AddCardInput,
   AdminPendingPurchase,
@@ -17,6 +18,7 @@ import type {
   OverviewResponse,
   PublicPendingPurchase,
   PublicPendingTrade,
+  ReclassifyCardInput,
   RecordTxnInput,
   SaveTradePostInput,
   StatsResponse,
@@ -67,11 +69,15 @@ export const fetchTradePost = (publicId: string) =>
   get<TradePost>(`/api/trade-posts/${encodeURIComponent(publicId)}`);
 
 // ---- Admin ----
-export const postCards = (cards: AddCardInput[], opening?: OpeningInput) =>
+export const postCards = (
+  cards: AddCardInput[],
+  opening?: OpeningInput,
+  acquisition?: AcquisitionEventInput,
+) =>
   send<{
     ids: number[];
     opening?: { id: number; volume: number; packNumber: number };
-  }>("POST", "/api/admin/cards", { cards, opening });
+  }>("POST", "/api/admin/cards", { cards, opening, acquisition });
 
 export const postSeries = (input: CreateSeriesInput) =>
   send<CatalogSeries>("POST", "/api/admin/series", input);
@@ -85,6 +91,8 @@ export const patchSeries = (name: string, input: UpdateSeriesInput) =>
 
 export const patchCard = (id: number, update: UpdateCardInput) =>
   send<{ ok: true }>("PATCH", `/api/admin/cards/${id}`, update);
+export const reclassifyCard = (id: number, input: ReclassifyCardInput) =>
+  send<{ ok: true }>("POST", `/api/admin/cards/${id}/reclassify`, input);
 
 // Lock a card out of the tradeable list (保留); unhold releases it.
 export const holdCard = (id: number) =>

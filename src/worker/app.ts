@@ -6,6 +6,7 @@ import {
   supportsEx,
 } from "../shared/rarity";
 import type {
+  AcquisitionEventInput,
   AddCardInput,
   CompleteReservationInput,
   CreatePurchaseReservationInput,
@@ -14,6 +15,7 @@ import type {
   CreateTradePostReservationInput,
   OpeningInput,
   Rarity,
+  ReclassifyCardInput,
   RecordTxnInput,
   SaveTradePostInput,
   UpdateCardInput,
@@ -55,6 +57,7 @@ import {
   getTransactions,
   listCards,
   publishTradePost,
+  reclassifyCard,
   recordTransaction,
   setCardHeld,
   setCatalogWant,
@@ -247,6 +250,171 @@ function validIsoDate(value: unknown): value is string {
   return (
     !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value
   );
+}
+
+function normalizeAcquisitionEventInput(body: unknown): {
+  value?: AcquisitionEventInput;
+  error?: string;
+} {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { error: "invalid acquisition details" };
+  }
+  const input = body as Record<string, unknown>;
+  if (!validIsoDate(input.occurredAt)) {
+    return { error: "occurredAt must be a valid YYYY-MM-DD date" };
+  }
+  if (
+    input.counterparty !== undefined &&
+    typeof input.counterparty !== "string"
+  ) {
+    return { error: "counterparty must be a string" };
+  }
+  if (input.note !== undefined && typeof input.note !== "string") {
+    return { error: "note must be a string" };
+  }
+  const counterparty = (input.counterparty as string | undefined)?.trim();
+  const note = (input.note as string | undefined)?.trim();
+  if (counterparty && counterparty.length > 200) {
+    return { error: "counterparty must be at most 200 characters" };
+  }
+  if (note && note.length > 1000) {
+    return { error: "note must be at most 1000 characters" };
+  }
+  return {
+    value: {
+      occurredAt: input.occurredAt,
+      ...(counterparty ? { counterparty } : {}),
+      ...(note ? { note } : {}),
+    },
+  };
+}
+
+function normalizeTransactionInput(body: unknown): {
+  cardId?: number;
+  value?: RecordTxnInput;
+  error?: string;
+} {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { error: "invalid transaction" };
+  }
+  const input = body as Record<string, unknown>;
+  if (!Number.isInteger(input.cardId) || (input.cardId as number) < 1) {
+    return { error: "cardId must be a positive integer" };
+  }
+  if (
+    input.type !== "sale" &&
+    input.type !== "trade" &&
+    input.type !== "gift"
+  ) {
+    return { error: "unsupported transaction type" };
+  }
+  if (!validIsoDate(input.happenedAt)) {
+    return { error: "happenedAt must be a valid YYYY-MM-DD date" };
+  }
+  if (
+    input.counterparty !== undefined &&
+    typeof input.counterparty !== "string"
+  ) {
+    return { error: "counterparty must be a string" };
+  }
+  if (input.note !== undefined && typeof input.note !== "string") {
+    return { error: "note must be a string" };
+  }
+  const counterparty = (input.counterparty as string | undefined)?.trim();
+  const note = (input.note as string | undefined)?.trim();
+  if (counterparty && counterparty.length > 200) {
+    return { error: "counterparty must be at most 200 characters" };
+  }
+  if (note && note.length > 1000) {
+    return { error: "note must be at most 1000 characters" };
+  }
+  if (
+    input.price !== undefined &&
+    (typeof input.price !== "number" ||
+      !Number.isFinite(input.price) ||
+      input.price < 0)
+  ) {
+    return { error: "price must be finite and nonnegative" };
+  }
+  if (input.type === "gift" && input.price !== undefined) {
+    return { error: "a gift cannot have a price" };
+  }
+
+  const receivedValues = [
+    input.receivedSeries,
+    input.receivedCharacter,
+    input.receivedRarity,
+  ];
+  const receivedCount = receivedValues.filter(
+    (value) => value !== undefined,
+  ).length;
+  if (input.type !== "trade" && receivedCount > 0) {
+    return { error: "only a trade can include a received card" };
+  }
+  if (input.type === "trade" && receivedCount !== 0 && receivedCount !== 3) {
+    return { error: "a received card needs series, character, and rarity" };
+  }
+  if (
+    receivedCount === 3 &&
+    (typeof input.receivedSeries !== "string" ||
+      !input.receivedSeries.trim() ||
+      typeof input.receivedCharacter !== "string" ||
+      !input.receivedCharacter.trim() ||
+      !isRarity(input.receivedRarity))
+  ) {
+    return { error: "invalid received card" };
+  }
+
+  return {
+    cardId: input.cardId as number,
+    value: {
+      type: input.type,
+      happenedAt: input.happenedAt,
+      ...(counterparty ? { counterparty } : {}),
+      ...(note ? { note } : {}),
+      ...(typeof input.price === "number" ? { price: input.price } : {}),
+      ...(receivedCount === 3
+        ? {
+            receivedSeries: (input.receivedSeries as string).trim(),
+            receivedCharacter: (input.receivedCharacter as string).trim(),
+            receivedRarity: input.receivedRarity as Rarity,
+          }
+        : {}),
+    },
+  };
+}
+
+function normalizeReclassifyCardInput(body: unknown): {
+  value?: ReclassifyCardInput;
+  error?: string;
+} {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { error: "invalid reclassification" };
+  }
+  const input = body as Record<string, unknown>;
+  if (
+    !Number.isInteger(input.targetCatalogId) ||
+    (input.targetCatalogId as number) < 1
+  ) {
+    return { error: "targetCatalogId must be a positive integer" };
+  }
+  if (!validIsoDate(input.happenedAt)) {
+    return { error: "happenedAt must be a valid YYYY-MM-DD date" };
+  }
+  if (input.note !== undefined && typeof input.note !== "string") {
+    return { error: "note must be a string" };
+  }
+  const note = (input.note as string | undefined)?.trim();
+  if (note && note.length > 1000) {
+    return { error: "note must be at most 1000 characters" };
+  }
+  return {
+    value: {
+      targetCatalogId: input.targetCatalogId as number,
+      happenedAt: input.happenedAt,
+      ...(note ? { note } : {}),
+    },
+  };
 }
 
 function normalizePurchaseReservationInput(body: unknown): {
@@ -650,13 +818,32 @@ admin.post("/cards", async (c) => {
     }
     opening = normalized.value;
   }
+  let acquisition: AcquisitionEventInput | undefined;
+  if (input.acquisition !== undefined) {
+    if (opening) {
+      return c.json(
+        { error: "pack cards cannot include separate acquisition details" },
+        400,
+      );
+    }
+    const normalized = normalizeAcquisitionEventInput(input.acquisition);
+    if (!normalized.value) {
+      return c.json(
+        { error: normalized.error ?? "invalid acquisition details" },
+        400,
+      );
+    }
+    acquisition = normalized.value;
+  }
   const validationError = validateCards(cards, opening);
   if (validationError) return c.json({ error: validationError }, 400);
   try {
     if (opening) {
       return c.json(await addPack(c.env.DB, cards, opening));
     }
-    return c.json({ ids: await addCards(c.env.DB, cards) });
+    return c.json({
+      ids: await addCards(c.env.DB, cards, undefined, acquisition),
+    });
   } catch (error) {
     return c.json({ error: String(error) }, 400);
   }
@@ -668,6 +855,30 @@ admin.patch("/cards/:id", async (c) => {
   const body = await c.req.json<UpdateCardInput>();
   try {
     await updateCard(c.env.DB, id, body);
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+  return c.json({ ok: true });
+});
+
+admin.post("/cards/:id/reclassify", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) return c.json({ error: "bad id" }, 400);
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const normalized = normalizeReclassifyCardInput(body);
+  if (!normalized.value) {
+    return c.json(
+      { error: normalized.error ?? "invalid reclassification" },
+      400,
+    );
+  }
+  try {
+    await reclassifyCard(c.env.DB, id, normalized.value);
   } catch (error) {
     return c.json({ error: String(error) }, 409);
   }
@@ -742,12 +953,22 @@ admin.post("/openings", async (c) => {
 admin.get("/openings", async (c) => c.json(await getOpenings(c.env.DB)));
 
 admin.post("/transactions", async (c) => {
-  const body = await c.req.json<{ cardId: number } & RecordTxnInput>();
-  if (!body.cardId || !body.type || !body.happenedAt) {
-    return c.json({ error: "cardId, type, happenedAt required" }, 400);
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const normalized = normalizeTransactionInput(body);
+  if (!normalized.value || normalized.cardId === undefined) {
+    return c.json({ error: normalized.error ?? "invalid transaction" }, 400);
   }
   try {
-    const id = await recordTransaction(c.env.DB, body.cardId, body);
+    const id = await recordTransaction(
+      c.env.DB,
+      normalized.cardId,
+      normalized.value,
+    );
     return c.json({ id });
   } catch (error) {
     return c.json({ error: String(error) }, 409);

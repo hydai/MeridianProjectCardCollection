@@ -1,5 +1,6 @@
 import { RARITY_ORDER, canonicalizeRarities } from "../../shared/rarity";
 import type {
+  AcquisitionEventInput,
   ActivityEvent,
   ActivityKind,
   ActivityLine,
@@ -29,6 +30,7 @@ import type {
   PurchaseReservationLine,
   Rarity,
   RarityCount,
+  ReclassifyCardInput,
   RecordTxnInput,
   ReservationLine,
   SaveTradePostInput,
@@ -47,8 +49,9 @@ import type {
   UpdateSeriesInput,
 } from "../../shared/types";
 
-// Cards still in the owner's possession (excludes sold/traded history).
+// Cards still in the owner's possession (excludes sold/traded/gifted history).
 const ACTIVE = "('owned','for_sale','for_trade')";
+const ACTIVE_STATUSES = new Set<CardStatus>(["owned", "for_sale", "for_trade"]);
 
 interface ActivityEventInput {
   sourceKey: string;
@@ -1262,7 +1265,11 @@ export async function addCards(
   db: D1Database,
   cards: AddCardInput[],
   openingId?: number,
+  acquisition?: AcquisitionEventInput,
 ): Promise<number[]> {
+  if (openingId !== undefined && acquisition !== undefined) {
+    throw new Error("pack cards cannot include separate acquisition details");
+  }
   validateCardAcquisition(cards, openingId !== undefined);
   const resolved = await resolveCards(db, cards);
   let sourceKey: string;
@@ -1318,13 +1325,18 @@ export async function addCards(
     insertEvent = insertActivityEventStatement(db, {
       sourceKey,
       kind: isPurchase ? "purchase" : "acquisition",
+      occurredAt: acquisition?.occurredAt,
       sourceType: "card_batch",
+      counterparty: acquisition?.counterparty ?? null,
       amount: isPurchase
-        ? resolved.reduce(
-            (sum, { input }) => sum + (input.purchasePrice ?? 0),
-            0,
-          )
+        ? Math.round(
+            resolved.reduce(
+              (sum, { input }) => sum + (input.purchasePrice ?? 0),
+              0,
+            ) * 100,
+          ) / 100
         : null,
+      note: acquisition?.note ?? null,
     });
   }
   if (resolved.length === 0) return [];
@@ -1610,11 +1622,97 @@ export async function updateCard(
   ]);
 }
 
+export async function reclassifyCard(
+  db: D1Database,
+  id: number,
+  input: ReclassifyCardInput,
+): Promise<void> {
+  await assertCardNotReserved(db, id);
+  await assertCardNotHeld(db, id);
+  const card = await db
+    .prepare("SELECT catalog_id AS catalogId, status FROM cards WHERE id = ?")
+    .bind(id)
+    .first<{ catalogId: number; status: CardStatus }>();
+  if (!card) throw new Error(`card ${id} not found`);
+  if (card.status !== "owned") {
+    throw new Error(
+      `only an owned card can be reclassified; card ${id} is ${card.status}`,
+    );
+  }
+  if (card.catalogId === input.targetCatalogId) {
+    throw new Error(`card ${id} is already assigned to this catalog slot`);
+  }
+  const target = await db
+    .prepare("SELECT id FROM card_catalog WHERE id = ?")
+    .bind(input.targetCatalogId)
+    .first<{ id: number }>();
+  if (!target) throw new Error(`catalog ${input.targetCatalogId} not found`);
+
+  const sourceKey = activityKey("reclassification");
+  await db.batch([
+    insertActivityEventStatement(db, {
+      sourceKey,
+      kind: "card_reclassified",
+      occurredAt: input.happenedAt,
+      sourceType: "card",
+      sourceId: id,
+      note: input.note ?? null,
+    }),
+    db
+      .prepare(
+        `UPDATE cards
+         SET catalog_id = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .bind(input.targetCatalogId, id),
+    insertActivityLineStatement(db, sourceKey, {
+      catalogId: card.catalogId,
+      action: "reclassified_from",
+      delta: -1,
+      beforeStatus: card.status,
+      afterStatus: card.status,
+    }),
+    insertActivityLineStatement(db, sourceKey, {
+      catalogId: input.targetCatalogId,
+      action: "reclassified_to",
+      delta: 1,
+      beforeStatus: card.status,
+      afterStatus: card.status,
+    }),
+  ]);
+}
+
 export async function recordTransaction(
   db: D1Database,
   cardId: number,
   t: RecordTxnInput,
 ): Promise<number> {
+  if (t.type !== "sale" && t.type !== "trade" && t.type !== "gift") {
+    throw new Error(`unsupported transaction type: ${String(t.type)}`);
+  }
+  if (t.type === "gift" && t.price !== undefined) {
+    throw new Error("a gift cannot have a price");
+  }
+  if (
+    t.type !== "trade" &&
+    (t.receivedSeries !== undefined ||
+      t.receivedCharacter !== undefined ||
+      t.receivedRarity !== undefined)
+  ) {
+    throw new Error("only a trade can include a received card");
+  }
+  const receivedFieldCount = [
+    t.receivedSeries,
+    t.receivedCharacter,
+    t.receivedRarity,
+  ].filter((value) => value !== undefined).length;
+  if (
+    t.type === "trade" &&
+    receivedFieldCount !== 0 &&
+    receivedFieldCount !== 3
+  ) {
+    throw new Error("a received card needs series, character, and rarity");
+  }
   await assertCardNotReserved(db, cardId);
   await assertCardNotHeld(db, cardId);
   const outgoing = await db
@@ -1622,6 +1720,9 @@ export async function recordTransaction(
     .bind(cardId)
     .first<{ catalogId: number; status: CardStatus }>();
   if (!outgoing) throw new Error(`card ${cardId} not found`);
+  if (!ACTIVE_STATUSES.has(outgoing.status)) {
+    throw new Error(`card ${cardId} is no longer in the collection`);
+  }
   let receivedCatalogId: number | null = null;
   if (
     t.type === "trade" &&
@@ -1637,7 +1738,8 @@ export async function recordTransaction(
     );
   }
   const sourceKey = activityKey(t.type);
-  const nextStatus: CardStatus = t.type === "sale" ? "sold" : "traded";
+  const nextStatus: CardStatus =
+    t.type === "sale" ? "sold" : t.type === "trade" ? "traded" : "gifted";
   const statements: D1PreparedStatement[] = [
     insertActivityEventStatement(db, {
       sourceKey,
@@ -1646,7 +1748,7 @@ export async function recordTransaction(
       sourceType: "card",
       sourceId: cardId,
       counterparty: t.counterparty ?? null,
-      amount: t.price ?? null,
+      amount: t.type === "gift" ? null : (t.price ?? null),
       note: t.note ?? null,
     }),
   ];
@@ -1692,7 +1794,7 @@ export async function recordTransaction(
         cardId,
         t.type,
         t.counterparty ?? null,
-        t.price ?? null,
+        t.type === "gift" ? null : (t.price ?? null),
         receivedCatalogId,
         sourceKey,
         receivedCatalogId,
@@ -2097,9 +2199,18 @@ export async function listCards(
   const stmt = db.prepare(
     `SELECT k.id, c.series, c.character, c.rarity, k.status, k.source,
             k.purchase_price AS purchasePrice,
-            p.seller AS purchaseSeller,
-            p.ordered_at AS purchaseOrderedAt,
-            p.note AS purchaseNote,
+            COALESCE(
+              p.seller,
+              CASE WHEN k.source = 'purchase' THEN acquired.counterparty END
+            ) AS purchaseSeller,
+            COALESCE(
+              p.ordered_at,
+              CASE WHEN k.source = 'purchase' THEN acquired.occurred_at END
+            ) AS purchaseOrderedAt,
+            COALESCE(
+              p.note,
+              CASE WHEN k.source = 'purchase' THEN acquired.note END
+            ) AS purchaseNote,
             k.asking_price AS askingPrice,
             k.want_in_return AS wantInReturn, k.note,
             (SELECT COUNT(*) FROM cards k2
@@ -2114,6 +2225,7 @@ export async function listCards(
      FROM cards k
      JOIN card_catalog c ON c.id = k.catalog_id
      LEFT JOIN purchase_reservations p ON p.id = k.purchase_reservation_id
+     LEFT JOIN activity_events acquired ON acquired.id = k.acquired_event_id
      ${where}
      ORDER BY c.sort_order, k.id`,
   );
