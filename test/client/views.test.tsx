@@ -125,7 +125,10 @@ describe("views render against full collection data", () => {
     view.unmount();
 
     view = render(<Glance m={volumeOrderedMatrix} />);
-    expectSeriesOrder(view.container, ".view-glance thead th");
+    fireEvent.click(
+      within(view.container).getByRole("button", { name: /Mizuki/ }),
+    );
+    expectSeriesOrder(view.container, ".progress-series-name");
     view.unmount();
 
     view = render(<Grid m={volumeOrderedMatrix} />);
@@ -284,39 +287,167 @@ describe("Trade pending overlay", () => {
   });
 });
 
-describe("Glance mode toggle", () => {
-  it("keeps series columns readable as the catalog grows", () => {
-    const { container } = render(<Glance m={m} />);
-    const tableWrap = container.querySelector(
-      ".glance-table-wrap",
-    ) as HTMLElement;
-    const table = container.querySelector(".glance-table") as HTMLTableElement;
-    const seriesHead = table.querySelector("thead th:nth-child(2)");
+const progressMatrix = buildMatrix({
+  cells: [
+    {
+      catalogId: 1,
+      series: "NEW YEAR",
+      character: "Mizuki",
+      rarity: "R",
+      owned: 1,
+      reserved: 0,
+      held: 0,
+      available: 1,
+      wantCount: 0,
+      volume: 1,
+    },
+    {
+      catalogId: 2,
+      series: "NEW YEAR",
+      character: "Mizuki",
+      rarity: "SR",
+      owned: 0,
+      reserved: 0,
+      held: 0,
+      available: 0,
+      wantCount: 1,
+      volume: 1,
+    },
+    {
+      catalogId: 3,
+      series: "NEW YEAR",
+      character: "Rei",
+      rarity: "R",
+      owned: 1,
+      reserved: 0,
+      held: 0,
+      available: 1,
+      wantCount: 0,
+      volume: 1,
+    },
+    {
+      catalogId: 4,
+      series: "NEW YEAR",
+      character: "Rei",
+      rarity: "SR",
+      owned: 2,
+      reserved: 1,
+      held: 0,
+      available: 1,
+      wantCount: 0,
+      volume: 1,
+    },
+    {
+      catalogId: 5,
+      series: "MP 4TH",
+      character: "Mizuki",
+      rarity: "R",
+      owned: 0,
+      reserved: 0,
+      held: 0,
+      available: 0,
+      wantCount: 0,
+      volume: 2,
+    },
+    {
+      catalogId: 6,
+      series: "MP 4TH",
+      character: "Mizuki",
+      rarity: "SR",
+      owned: 0,
+      reserved: 0,
+      held: 0,
+      available: 0,
+      wantCount: 0,
+      volume: 2,
+    },
+  ],
+  progress: [],
+});
 
-    expect(tableWrap).toHaveClass("overflow-x-auto");
-    expect(tableWrap).not.toHaveClass("overflow-hidden");
-    expect(table).toHaveClass("w-max", "min-w-full", "table-auto");
-    expect(seriesHead).toHaveClass("whitespace-nowrap");
-    expect(table.querySelector(".glance-chip-stack")).toHaveClass(
-      "flex",
-      "flex-col",
+describe("Glance collection progress guide", () => {
+  it("summarizes the whole collection before revealing character details", () => {
+    render(<Glance m={progressMatrix} />);
+
+    expect(
+      screen.getByRole("heading", { name: "典藏進度" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("3 / 6")).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", {
+        name: "整體典藏進度：已收集 3 / 6 種",
+      }),
+    ).toHaveAttribute("aria-valuenow", "3");
+    expect(screen.getByText("完成角色 1 / 2")).toBeInTheDocument();
+
+    const mizuki = screen.getByRole("button", { name: /Mizuki/ });
+    expect(mizuki).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByLabelText("NEW YEAR Mizuki R：持有 1 張")).toBeNull();
+
+    fireEvent.click(mizuki);
+    expect(mizuki).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByLabelText("NEW YEAR Mizuki R：持有 1 張"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("NEW YEAR Mizuki SR：尚未收集"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("MP 4TH", { selector: ".progress-series-name" }),
+    ).toBeInTheDocument();
+  });
+
+  it("filters the character list down to incomplete collections", () => {
+    render(<Glance m={progressMatrix} />);
+    const filter = screen.getByRole("radiogroup", { name: "角色篩選" });
+    const all = within(filter).getByRole("radio", { name: "全部角色" });
+    const incomplete = within(filter).getByRole("radio", {
+      name: "僅看未完成",
+    });
+
+    expect(all).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: /Mizuki/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Rei/ })).toBeInTheDocument();
+
+    fireEvent.click(incomplete);
+    expect(incomplete).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: /Mizuki/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Rei/ })).toBeNull();
+    expect(screen.getByText("顯示 1 / 2 位角色")).toBeInTheDocument();
+  });
+
+  it("keeps reserved copies visible without reducing unique-card progress", () => {
+    render(<Glance m={progressMatrix} />);
+    fireEvent.click(screen.getByRole("button", { name: /Rei/ }));
+
+    expect(
+      screen.getByLabelText("NEW YEAR Rei SR：持有 2 張，其中 1 張暫定換出"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("預 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Rei/ })).toHaveTextContent(
+      "2 / 2",
     );
   });
 
-  it("switches wishlist↔collection via the radio toggle", () => {
-    render(<Glance m={m} />);
-    // the single-select mode switch is a radiogroup with an accessible name
-    expect(
-      screen.getByRole("radiogroup", { name: "顯示模式" }),
-    ).toBeInTheDocument();
-    const wish = screen.getByRole("radio", { name: "缺卡清單" });
-    const coll = screen.getByRole("radio", { name: "收集清單" });
-    expect(wish).toHaveAttribute("aria-checked", "true");
-    // collection mode shows the "已收集 … 種 · 共 … 張" progress line
-    expect(screen.queryByText(/已收集/)).toBeNull();
-    fireEvent.click(coll);
-    expect(coll).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByText(/已收集/)).toBeInTheDocument();
+  it("shows a completion state when the incomplete filter has no matches", () => {
+    const complete = buildMatrix({
+      ...full,
+      cells: full.cells.map((cell) => ({
+        ...cell,
+        owned: Math.max(1, cell.owned),
+        available: Math.max(1, cell.owned),
+      })),
+    });
+    render(<Glance m={complete} />);
+
+    fireEvent.click(
+      within(screen.getByRole("radiogroup", { name: "角色篩選" })).getByRole(
+        "radio",
+        { name: "僅看未完成" },
+      ),
+    );
+
+    expect(screen.getByText("所有角色都已完成典藏")).toBeInTheDocument();
   });
 });
 

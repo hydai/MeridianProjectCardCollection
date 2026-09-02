@@ -14,8 +14,9 @@ with a live site you edit directly.
 
 ### Public (no login, read-only)
 
-- **Collection overview** — a series × character × rarity grid showing owned
-  counts, per-series completion %, and missing cards highlighted.
+- **Collection progress guide** — start with overall, per-character, and
+  per-volume completion, then expand into series and rarity details; a full
+  series × character × rarity grid remains available for exhaustive inventory.
 - **Trade board** — an explicit "want" list that tracks target quantities after
   pending purchases and incoming trades, plus a "for trade / for sale" list with
   asking prices or desired cards.

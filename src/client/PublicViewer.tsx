@@ -31,7 +31,7 @@ const TABS = [
   { id: "series", zh: "系列", en: "By Series" },
   { id: "rarity", zh: "稀有度", en: "By Rarity" },
   { id: "wishlist", zh: "缺卡", en: "Wishlist" },
-  { id: "glance", zh: "速覽", en: "At a Glance" },
+  { id: "glance", zh: "進度", en: "Progress" },
   { id: "grid", zh: "格表", en: "Grid" },
   { id: "posts", zh: "公告", en: "Posts" },
   { id: "trade", zh: "交換", en: "Trade" },
