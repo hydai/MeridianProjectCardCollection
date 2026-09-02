@@ -4,5 +4,5 @@
     "lib": ["ES2022"],
     "types": ["node"]
   },
-  "include": ["scripts", "seed"]
+  "include": ["scripts", "seed", "test/node", "vitest.backup.config.ts"]
 }

@@ -115,8 +115,12 @@ When `ACCESS_TEAM_DOMAIN` is set, the worker verifies the Access JWT on every
 ## Updating later
 
 - Code changes: `npm run deploy`.
-- Schema changes: run `npx wrangler d1 migrations apply meridian-cards --remote`
-  before deploying the code that depends on them.
+- Before a production schema or data migration, create and verify a versioned
+  snapshot with `npm run backup:create -- --remote`. Keep its printed directory
+  intact and follow [BACKUP.md](BACKUP.md) for verification and restore.
+- Schema changes: after the backup passes, run
+  `npx wrangler d1 migrations apply meridian-cards --remote` before deploying
+  the code that depends on them.
 - **New series or character:** use the **manage-card-catalog** skill (`.claude/skills/`).
   Do NOT run `npm run seed:gen` for this — it would overwrite `0002`/`0003` and
   re-import the collection. Edit `seed/catalog-def.ts`, then `npm run catalog:sync`

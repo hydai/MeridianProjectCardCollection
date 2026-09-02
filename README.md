@@ -46,6 +46,10 @@ with a live site you edit directly.
   workflow. Upload, replace, or remove a shared front image without attaching
   it to one physical copy. Uploads are converted to fixed 320px and 960px WebP
   variants; the service does not retain the upload source in R2.
+- **Versioned operator backups** — export D1 schema and data, readable catalog /
+  inventory / activity CSVs, and every retained R2 image variant into one
+  portable snapshot with a versioned manifest and SHA-256 checksums. Verification
+  rejects undeclared or altered files; restore is restricted to new resources.
 - **Pending trades** — track reserved / in-progress trades, with
   reservation-aware duplicate flags. A published exchange announcement can
   prefill an adjustable private reservation without closing the announcement;
@@ -113,9 +117,11 @@ src/
   client/        React SPA — public viewer + /admin
   worker/        Hono app, Cloudflare Access guard, D1 queries
   shared/        Types shared by client and worker
-  migrations/      D1 schema, seed data, and additive feature migrations
+migrations/      D1 schema, seed data, and additive feature migrations
 seed/            Source-of-truth card catalog + owned-card list (TypeScript)
-scripts/         Seed generation + catalog sync
+scripts/         Seed generation, catalog sync, and backup tooling
+backups/         Gitignored local snapshots (created on demand)
+docs/BACKUP.md   Backup, verification, retention, and restore runbook
 docs/DEPLOY.md   Full deployment + Cloudflare Access setup guide
 ```
 
@@ -148,6 +154,17 @@ npm run typecheck    # tsc across client / worker / node configs
 npm run lint         # Biome
 npm run format       # Biome --write
 ```
+
+### Versioned backups
+
+```bash
+npm run backup:create -- --remote              # D1 + optimized R2 images
+npm run backup:verify -- <printed-backup-path> # size, path, and SHA-256 checks
+```
+
+Snapshots stay local and are gitignored. They can contain private collection
+data, so copy them only to private storage. See **[docs/BACKUP.md](docs/BACKUP.md)**
+for the snapshot format, retention guidance, and the new-resource restore drill.
 
 ## Deployment
 
