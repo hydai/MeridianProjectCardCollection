@@ -35,7 +35,19 @@ npx wrangler d1 execute meridian-cards --remote --command "SELECT COUNT(*) FROM 
 > The collection is now in production. From here on, edit via the `/admin`
 > UI — never re-run `0003`, or it would duplicate the import.
 
-## 3. Attach your custom domain
+## 3. Create the private card-image bucket
+
+Create the R2 bucket named by the `CARD_IMAGES` binding in `wrangler.jsonc`:
+
+```bash
+npx wrangler r2 bucket create meridian-card-images
+```
+
+The bucket remains private. The Worker streams catalog images through
+`/api/catalog/:id/image`, while upload, replacement, and deletion stay behind
+the owner-only `/api/admin/*` gate.
+
+## 4. Attach your custom domain
 
 Add a custom domain route to `wrangler.jsonc` (replace `cards.example.com`):
 
@@ -43,7 +55,7 @@ Add a custom domain route to `wrangler.jsonc` (replace `cards.example.com`):
 "routes": [{ "pattern": "cards.example.com", "custom_domain": true }]
 ```
 
-## 4. First deploy
+## 5. First deploy
 
 ```bash
 npm run deploy   # vite build + wrangler deploy
@@ -52,7 +64,7 @@ npm run deploy   # vite build + wrangler deploy
 Smoke-test: `https://cards.example.com/api/overview` should return 180 cells,
 and the root should load the collection viewer.
 
-## 5. Configure Cloudflare Access (gate the admin)
+## 6. Configure Cloudflare Access (gate the admin)
 
 In the Cloudflare dashboard → **Zero Trust → Access → Applications**, add a
 **Self-hosted** application. Create **two** apps (or one app with two paths):
@@ -72,7 +84,7 @@ Copy each application's **Application Audience (AUD) tag** (Overview tab). If yo
 made two apps, give them the same AUD by using one app with both paths, or set
 `ACCESS_AUD` to the admin app's AUD and protect both paths under it.
 
-## 6. Wire the in-Worker guard (defense in depth)
+## 7. Wire the in-Worker guard (defense in depth)
 
 Set these in `wrangler.jsonc` `vars` (or as secrets) and redeploy:
 
@@ -91,7 +103,7 @@ npm run deploy
 When `ACCESS_TEAM_DOMAIN` is set, the worker verifies the Access JWT on every
 `/api/admin/*` request and rejects anything not signed for your email + AUD.
 
-## 7. Verify the gate
+## 8. Verify the gate
 
 - Public: `https://cards.example.com/` and `/api/overview` load without login.
 - Admin: visiting `/admin` redirects to the Access login; only your Google
@@ -102,6 +114,8 @@ When `ACCESS_TEAM_DOMAIN` is set, the worker verifies the Access JWT on every
 ## Updating later
 
 - Code changes: `npm run deploy`.
+- Schema changes: run `npx wrangler d1 migrations apply meridian-cards --remote`
+  before deploying the code that depends on them.
 - **New series or character:** use the **manage-card-catalog** skill (`.claude/skills/`).
   Do NOT run `npm run seed:gen` for this — it would overwrite `0002`/`0003` and
   re-import the collection. Edit `seed/catalog-def.ts`, then `npm run catalog:sync`

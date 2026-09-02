@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { MAX_CARD_BATCH_SIZE } from "../shared/card-batch";
 import {
+  CATALOG_IMAGE_MAX_BYTES,
+  catalogImageExtension,
+  isCatalogImageContentType,
+} from "../shared/catalog-media";
+import {
   RARITY_ORDER,
   canonicalizeRarities,
   supportsEx,
@@ -8,6 +13,7 @@ import {
 import type {
   AcquisitionEventInput,
   AddCardInput,
+  CatalogMediaSide,
   CompleteReservationInput,
   CreatePurchaseReservationInput,
   CreateReservationInput,
@@ -28,6 +34,7 @@ import {
   addPack,
   cancelPurchaseReservation,
   cancelReservation,
+  catalogSlotExists,
   closeTradePost,
   completePurchaseReservation,
   completeReservation,
@@ -37,6 +44,7 @@ import {
   createSeries,
   createTradePost,
   createTradePostReservation,
+  deleteCatalogMediaMetadata,
   deleteTradePost,
   getActivities,
   getAdminPendingPurchases,
@@ -53,12 +61,15 @@ import {
   getPublicTradePost,
   getPublicTradePosts,
   getStats,
+  getStoredCatalogMedia,
   getTradePostCandidates,
   getTransactions,
   listCards,
+  listCatalogMedia,
   publishTradePost,
   reclassifyCard,
   recordTransaction,
+  saveCatalogMedia,
   setCardHeld,
   setCatalogWant,
   undoActivity,
@@ -72,6 +83,51 @@ export const app = new Hono<{ Bindings: Env }>();
 
 const RARITIES = new Set<string>(RARITY_ORDER);
 const CARD_SOURCES = new Set(["pull", "purchase", "trade_in", "other"]);
+
+function catalogMediaSide(value: string | undefined): CatalogMediaSide | null {
+  if (value === undefined || value === "front") return "front";
+  return value === "back" ? "back" : null;
+}
+
+function decodedUploadFilename(value: string | undefined): {
+  filename: string | null;
+  error?: string;
+} {
+  if (!value) return { filename: null };
+  let filename: string;
+  try {
+    filename = decodeURIComponent(value).trim();
+  } catch {
+    return { filename: null, error: "invalid image filename" };
+  }
+  const hasControlCharacter = [...filename].some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint < 32 || codePoint === 127;
+  });
+  if (!filename || filename.length > 255 || hasControlCharacter) {
+    return { filename: null, error: "invalid image filename" };
+  }
+  return { filename };
+}
+
+function claimedUploadSize(request: Request): number | null {
+  const value =
+    request.headers.get("x-card-image-size") ??
+    request.headers.get("content-length");
+  if (value === null) return null;
+  const size = Number(value);
+  return Number.isInteger(size) ? size : Number.NaN;
+}
+
+function immutableImageRequest(request: Request, revision: number): boolean {
+  return new URL(request.url).searchParams.get("v") === String(revision);
+}
+
+function etagMatches(request: Request, etag: string): boolean {
+  return (request.headers.get("if-none-match") ?? "")
+    .split(",")
+    .some((candidate) => candidate.trim() === etag);
+}
 
 function isRarity(value: unknown): value is Rarity {
   return typeof value === "string" && RARITIES.has(value);
@@ -660,6 +716,51 @@ function normalizeTradePostReservationInput(body: unknown): {
 
 // ---- Public read API (no auth) ----
 app.get("/api/catalog", async (c) => c.json(await getCatalog(c.env.DB)));
+app.get("/api/catalog/:id/image", async (c) => {
+  const catalogId = Number(c.req.param("id"));
+  if (!Number.isInteger(catalogId) || catalogId < 1) {
+    return c.json({ error: "bad catalog id" }, 400);
+  }
+  const side = catalogMediaSide(c.req.query("side"));
+  if (!side) return c.json({ error: "unsupported image side" }, 400);
+
+  const stored = await getStoredCatalogMedia(c.env.DB, catalogId, side);
+  if (!stored) {
+    return c.json({ error: "image not found" }, 404, {
+      "cache-control": "no-store",
+    });
+  }
+  const object = await c.env.CARD_IMAGES.get(stored.objectKey);
+  if (!object) {
+    console.error(
+      JSON.stringify({
+        message: "catalog media object is missing",
+        catalogId,
+        side,
+        objectKey: stored.objectKey,
+      }),
+    );
+    return c.json({ error: "image not found" }, 404, {
+      "cache-control": "no-store",
+    });
+  }
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("content-type", stored.contentType);
+  headers.set("etag", object.httpEtag);
+  headers.set("x-content-type-options", "nosniff");
+  headers.set(
+    "cache-control",
+    immutableImageRequest(c.req.raw, stored.revision)
+      ? "public, max-age=31536000, immutable"
+      : "public, max-age=0, must-revalidate",
+  );
+  if (etagMatches(c.req.raw, object.httpEtag)) {
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(object.body, { headers });
+});
 app.get("/api/overview", async (c) => c.json(await getOverview(c.env.DB)));
 app.get("/api/missing", async (c) => c.json(await getMissing(c.env.DB)));
 app.get("/api/market", async (c) => c.json(await getMarket(c.env.DB)));
@@ -683,6 +784,172 @@ app.get("/api/stats", async (c) => c.json(await getStats(c.env.DB)));
 // ---- Admin write API (gated by Cloudflare Access) ----
 const admin = new Hono<{ Bindings: Env }>();
 admin.use("*", accessGuard);
+
+admin.get("/catalog-media", async (c) =>
+  c.json(await listCatalogMedia(c.env.DB)),
+);
+
+admin.put("/catalog/:id/image", async (c) => {
+  const catalogId = Number(c.req.param("id"));
+  if (!Number.isInteger(catalogId) || catalogId < 1) {
+    return c.json({ error: "bad catalog id" }, 400);
+  }
+  if (!(await catalogSlotExists(c.env.DB, catalogId))) {
+    return c.json({ error: "catalog slot not found" }, 404);
+  }
+
+  const contentType = (c.req.header("content-type") ?? "")
+    .split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  if (!isCatalogImageContentType(contentType)) {
+    return c.json({ error: "image must be JPEG, PNG, WebP, or AVIF" }, 415);
+  }
+  const claimedSize = claimedUploadSize(c.req.raw);
+  if (
+    claimedSize !== null &&
+    (!Number.isInteger(claimedSize) || claimedSize < 1)
+  ) {
+    return c.json({ error: "image size must be a positive integer" }, 400);
+  }
+  if (claimedSize !== null && claimedSize > CATALOG_IMAGE_MAX_BYTES) {
+    return c.json({ error: "image exceeds the 15 MB limit" }, 413);
+  }
+  if (claimedSize === null) {
+    return c.json({ error: "image size required" }, 411);
+  }
+  if (!c.req.raw.body) return c.json({ error: "image body required" }, 400);
+
+  let imageBytes: ArrayBuffer;
+  try {
+    imageBytes = await c.req.arrayBuffer();
+  } catch {
+    return c.json({ error: "image body could not be read" }, 400);
+  }
+  if (imageBytes.byteLength !== claimedSize) {
+    return c.json({ error: "image size does not match the request body" }, 400);
+  }
+
+  const uploadFilename = decodedUploadFilename(
+    c.req.header("x-card-image-filename"),
+  );
+  if (uploadFilename.error) {
+    return c.json({ error: uploadFilename.error }, 400);
+  }
+
+  const side: CatalogMediaSide = "front";
+  const oldMedia = await getStoredCatalogMedia(c.env.DB, catalogId, side);
+  const objectKey = `catalog/${catalogId}/${side}/${crypto.randomUUID()}.${catalogImageExtension(contentType)}`;
+  let uploaded: R2Object;
+  try {
+    uploaded = await c.env.CARD_IMAGES.put(objectKey, imageBytes, {
+      httpMetadata: {
+        contentType,
+        contentDisposition: "inline",
+        cacheControl: "public, max-age=31536000, immutable",
+      },
+      customMetadata: { catalogId: String(catalogId), side },
+    });
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        message: "catalog media upload failed",
+        catalogId,
+        side,
+        error: String(error),
+      }),
+    );
+    return c.json({ error: "image storage is unavailable" }, 503);
+  }
+
+  if (uploaded.size < 1 || uploaded.size > CATALOG_IMAGE_MAX_BYTES) {
+    await c.env.CARD_IMAGES.delete(objectKey);
+    return uploaded.size < 1
+      ? c.json({ error: "image body required" }, 400)
+      : c.json({ error: "image exceeds the 15 MB limit" }, 413);
+  }
+
+  let revision: number;
+  try {
+    revision = await saveCatalogMedia(c.env.DB, {
+      catalogId,
+      side,
+      objectKey,
+      contentType,
+      byteSize: uploaded.size,
+      etag: uploaded.etag,
+      originalFilename: uploadFilename.filename,
+    });
+  } catch (error) {
+    try {
+      await c.env.CARD_IMAGES.delete(objectKey);
+    } catch (cleanupError) {
+      console.error(
+        JSON.stringify({
+          message: "failed to clean up an unreferenced catalog media object",
+          catalogId,
+          side,
+          objectKey,
+          error: String(cleanupError),
+        }),
+      );
+    }
+    console.error(
+      JSON.stringify({
+        message: "catalog media metadata save failed",
+        catalogId,
+        side,
+        error: String(error),
+      }),
+    );
+    return c.json({ error: "image metadata could not be saved" }, 500);
+  }
+
+  if (oldMedia && oldMedia.objectKey !== objectKey) {
+    try {
+      await c.env.CARD_IMAGES.delete(oldMedia.objectKey);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          message: "failed to clean up a replaced catalog media object",
+          catalogId,
+          side,
+          objectKey: oldMedia.objectKey,
+          error: String(error),
+        }),
+      );
+    }
+  }
+  return c.json({ ok: true as const, revision });
+});
+
+admin.delete("/catalog/:id/image", async (c) => {
+  const catalogId = Number(c.req.param("id"));
+  if (!Number.isInteger(catalogId) || catalogId < 1) {
+    return c.json({ error: "bad catalog id" }, 400);
+  }
+  const side: CatalogMediaSide = "front";
+  const stored = await getStoredCatalogMedia(c.env.DB, catalogId, side);
+  if (!stored) return c.json({ error: "image not found" }, 404);
+
+  try {
+    await c.env.CARD_IMAGES.delete(stored.objectKey);
+    if (!(await deleteCatalogMediaMetadata(c.env.DB, catalogId, side))) {
+      return c.json({ error: "image not found" }, 404);
+    }
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        message: "catalog media delete failed",
+        catalogId,
+        side,
+        error: String(error),
+      }),
+    );
+    return c.json({ error: "image could not be deleted" }, 503);
+  }
+  return c.json({ ok: true as const });
+});
 
 admin.get("/cards", async (c) =>
   c.json(

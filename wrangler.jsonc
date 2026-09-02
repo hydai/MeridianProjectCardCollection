@@ -17,6 +17,12 @@
       "migrations_dir": "migrations"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "CARD_IMAGES",
+      "bucket_name": "meridian-card-images"
+    }
+  ],
   "vars": {
     "OWNER_EMAIL": "z54981220@gmail.com",
     "ACCESS_TEAM_DOMAIN": "hydai.cloudflareaccess.com",

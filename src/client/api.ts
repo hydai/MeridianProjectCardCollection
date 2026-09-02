@@ -6,6 +6,7 @@ import type {
   AdminPendingTrade,
   AdminTradePost,
   CardRow,
+  CatalogMediaEntry,
   CatalogSeries,
   CreatePurchaseReservationInput,
   CreateReservationInput,
@@ -31,8 +32,35 @@ import type {
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path);
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  return readJson<T>(path, res);
+}
+
+async function readJson<T>(path: string, res: Response): Promise<T> {
+  if (!res.ok) {
+    let detail: string | null = null;
+    try {
+      const payload = (await res.json()) as { error?: unknown };
+      if (typeof payload.error === "string") detail = payload.error;
+    } catch {
+      // Fall back to the endpoint/status message for non-JSON errors.
+    }
+    throw new Error(detail ?? `${path} → ${res.status}`);
+  }
   return (await res.json()) as T;
+}
+
+function readFileBytes(file: File): Promise<ArrayBuffer> {
+  if (typeof file.arrayBuffer === "function") return file.arrayBuffer();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () =>
+      reject(reader.error ?? new Error("image file could not be read"));
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+      else reject(new Error("image file could not be read"));
+    };
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 async function send<T>(
@@ -45,17 +73,7 @@ async function send<T>(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    let detail: string | null = null;
-    try {
-      const payload = (await res.json()) as { error?: unknown };
-      if (typeof payload.error === "string") detail = payload.error;
-    } catch {
-      // Fall back to the endpoint/status message for non-JSON errors.
-    }
-    throw new Error(detail ?? `${path} → ${res.status}`);
-  }
-  return (await res.json()) as T;
+  return readJson<T>(path, res);
 }
 
 // ---- Public ----
@@ -134,6 +152,33 @@ export const putCatalogWant = (catalogId: number, wantCount: number) =>
   });
 export const undoActivity = (id: number) =>
   send<{ ok: true }>("POST", `/api/admin/activities/${id}/undo`, {});
+
+export const fetchCatalogMedia = () =>
+  get<CatalogMediaEntry[]>("/api/admin/catalog-media");
+
+export async function putCatalogImage(
+  catalogId: number,
+  file: File,
+): Promise<{ ok: true; revision: number }> {
+  const path = `/api/admin/catalog/${catalogId}/image`;
+  // Files are bounded to 15 MB by the caller. Materializing the bytes before
+  // fetch keeps the upload independent from the transient file-picker handle
+  // (important on mobile browsers and automated Chromium sessions).
+  const body = await readFileBytes(file);
+  const res = await fetch(path, {
+    method: "PUT",
+    headers: {
+      "content-type": file.type,
+      "x-card-image-size": String(file.size),
+      "x-card-image-filename": encodeURIComponent(file.name),
+    },
+    body,
+  });
+  return readJson(path, res);
+}
+
+export const deleteCatalogImage = (catalogId: number) =>
+  send<{ ok: true }>("DELETE", `/api/admin/catalog/${catalogId}/image`, {});
 
 // ---- Exchange announcements ----
 export const fetchAdminTradePosts = () =>

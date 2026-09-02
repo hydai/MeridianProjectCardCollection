@@ -12,6 +12,8 @@ import type {
   AdminTradePost,
   CardRow,
   CardStatus,
+  CatalogMediaEntry,
+  CatalogMediaSide,
   CatalogSeries,
   CharacterStat,
   CreatePurchaseReservationInput,
@@ -184,6 +186,165 @@ export async function getCatalog(db: D1Database): Promise<CatalogSeries[]> {
   }));
 }
 
+export interface StoredCatalogMedia {
+  catalogId: number;
+  side: CatalogMediaSide;
+  objectKey: string;
+  contentType: string;
+  byteSize: number;
+  etag: string;
+  originalFilename: string | null;
+  revision: number;
+  updatedAt: string;
+}
+
+interface CatalogMediaListRow {
+  catalogId: number;
+  series: string;
+  volume: number;
+  character: string;
+  rarity: Rarity;
+  side: CatalogMediaSide | null;
+  objectKey: string | null;
+  contentType: string | null;
+  byteSize: number | null;
+  originalFilename: string | null;
+  revision: number | null;
+  updatedAt: string | null;
+}
+
+function catalogMediaUrl(
+  catalogId: number,
+  side: CatalogMediaSide,
+  revision: number,
+): string {
+  const params = new URLSearchParams({ side, v: String(revision) });
+  return `/api/catalog/${catalogId}/image?${params}`;
+}
+
+export async function listCatalogMedia(
+  db: D1Database,
+): Promise<CatalogMediaEntry[]> {
+  const rows = (
+    await db
+      .prepare(
+        `SELECT c.id AS catalogId, c.series,
+                s.volume_number AS volume, c.character, c.rarity,
+                m.side, m.object_key AS objectKey,
+                m.content_type AS contentType, m.byte_size AS byteSize,
+                m.original_filename AS originalFilename,
+                m.revision, m.updated_at AS updatedAt
+         FROM card_catalog c
+         JOIN series s ON s.name = c.series
+         LEFT JOIN catalog_media m
+           ON m.catalog_id = c.id AND m.side = 'front'
+         WHERE s.is_active = 1
+         ORDER BY s.sort_order, c.sort_order, c.id`,
+      )
+      .all<CatalogMediaListRow>()
+  ).results;
+
+  return rows.map((row) => ({
+    catalogId: row.catalogId,
+    series: row.series,
+    volume: row.volume,
+    character: row.character,
+    rarity: row.rarity,
+    front:
+      row.side &&
+      row.objectKey &&
+      row.contentType &&
+      row.byteSize !== null &&
+      row.revision !== null &&
+      row.updatedAt
+        ? {
+            side: row.side,
+            url: catalogMediaUrl(row.catalogId, row.side, row.revision),
+            contentType: row.contentType,
+            byteSize: row.byteSize,
+            originalFilename: row.originalFilename,
+            revision: row.revision,
+            updatedAt: row.updatedAt,
+          }
+        : null,
+  }));
+}
+
+export async function catalogSlotExists(
+  db: D1Database,
+  catalogId: number,
+): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 AS found FROM card_catalog WHERE id = ?")
+    .bind(catalogId)
+    .first<{ found: number }>();
+  return Boolean(row?.found);
+}
+
+export async function getStoredCatalogMedia(
+  db: D1Database,
+  catalogId: number,
+  side: CatalogMediaSide,
+): Promise<StoredCatalogMedia | null> {
+  return db
+    .prepare(
+      `SELECT catalog_id AS catalogId, side, object_key AS objectKey,
+              content_type AS contentType, byte_size AS byteSize, etag,
+              original_filename AS originalFilename, revision,
+              updated_at AS updatedAt
+       FROM catalog_media
+       WHERE catalog_id = ? AND side = ?`,
+    )
+    .bind(catalogId, side)
+    .first<StoredCatalogMedia>();
+}
+
+export async function saveCatalogMedia(
+  db: D1Database,
+  input: Omit<StoredCatalogMedia, "revision" | "updatedAt">,
+): Promise<number> {
+  const saved = await db
+    .prepare(
+      `INSERT INTO catalog_media
+         (catalog_id, side, object_key, content_type, byte_size, etag,
+          original_filename)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(catalog_id, side) DO UPDATE SET
+         object_key = excluded.object_key,
+         content_type = excluded.content_type,
+         byte_size = excluded.byte_size,
+         etag = excluded.etag,
+         original_filename = excluded.original_filename,
+         revision = catalog_media.revision + 1,
+         updated_at = datetime('now')
+       RETURNING revision`,
+    )
+    .bind(
+      input.catalogId,
+      input.side,
+      input.objectKey,
+      input.contentType,
+      input.byteSize,
+      input.etag,
+      input.originalFilename,
+    )
+    .first<{ revision: number }>();
+  if (!saved) throw new Error("catalog media was not saved");
+  return saved.revision;
+}
+
+export async function deleteCatalogMediaMetadata(
+  db: D1Database,
+  catalogId: number,
+  side: CatalogMediaSide,
+): Promise<boolean> {
+  const result = await db
+    .prepare("DELETE FROM catalog_media WHERE catalog_id = ? AND side = ?")
+    .bind(catalogId, side)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
 export async function createSeries(
   db: D1Database,
   input: CreateSeriesInput,
@@ -263,6 +424,9 @@ export async function updateSeries(
                   OR EXISTS(
                     SELECT 1 FROM activity_event_lines WHERE catalog_id = c.id
                   )
+                  OR EXISTS(
+                    SELECT 1 FROM catalog_media WHERE catalog_id = c.id
+                  )
                 ) AS referenced
          FROM card_catalog c
          WHERE c.series = ?
@@ -284,7 +448,7 @@ export async function updateSeries(
     (row) => !desiredKeys.has(`${row.character}\u0000${row.rarity}`),
   );
   if (removed.some((row) => Boolean(row.referenced))) {
-    throw new Error("無法移除已有卡片、交易紀錄或預約資料的角色／級別");
+    throw new Error("無法移除已有卡片、卡圖、交易紀錄或預約資料的角色／級別");
   }
 
   const existingByKey = new Map(

@@ -61,6 +61,27 @@ export interface CatalogSeries {
   rarities: Rarity[];
 }
 
+export type CatalogMediaSide = "front" | "back";
+
+export interface CatalogMediaAsset {
+  side: CatalogMediaSide;
+  url: string;
+  contentType: string;
+  byteSize: number;
+  originalFilename: string | null;
+  revision: number;
+  updatedAt: string;
+}
+
+export interface CatalogMediaEntry {
+  catalogId: number;
+  series: string;
+  volume: number;
+  character: string;
+  rarity: Rarity;
+  front: CatalogMediaAsset | null;
+}
+
 export interface CreateSeriesInput {
   name: string;
   volume: number;

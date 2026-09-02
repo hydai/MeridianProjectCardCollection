@@ -42,6 +42,10 @@ with a live site you edit directly.
   corrections with their date, counterparty, amount, and note. **保留 (hold)**
   locks a duplicate so it stays owned but never shows up in the auto-computed
   trade list.
+- **Catalog image queue** — every catalog slot has an owner-only missing-image
+  workflow. Upload, replace, or remove a shared front image without attaching
+  it to one physical copy; originals stay private in R2 and are served through
+  stable, revisioned Worker URLs.
 - **Pending trades** — track reserved / in-progress trades, with
   reservation-aware duplicate flags. A published exchange announcement can
   prefill an adjustable private reservation without closing the announcement;
@@ -69,6 +73,7 @@ with day-to-day actions in one flat navigation bar.
 | Runtime  | Cloudflare Workers (a single Worker)                                          |
 | API      | [Hono](https://hono.dev/)                                                     |
 | Database | Cloudflare D1 (SQLite) — all stats computed live via SQL, no derived tables  |
+| Media    | Cloudflare R2 — private catalog-image originals, streamed through the Worker |
 | Frontend | React + React Router + Tailwind v4 + shadcn/ui, bundled by Vite, served via Workers Static Assets |
 | Auth     | Cloudflare Access (JWT verified in-Worker with [jose](https://github.com/panva/jose)) |
 | Tooling  | Wrangler, Biome (lint/format), Vitest (+ `@cloudflare/vitest-pool-workers`)  |
@@ -92,6 +97,7 @@ theme switcher.
             │   D1 (SQLite): card_catalog / series / cards /                 │
             │                openings / transactions / reservations /        │
             │                trade_posts / activity_events + event lines      │
+            │   R2: private catalog card-image originals                     │
             └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -149,9 +155,10 @@ See **[docs/DEPLOY.md](docs/DEPLOY.md)** for the full walkthrough. In short:
 
 1. `npx wrangler d1 create meridian-cards` → put the printed `database_id` into `wrangler.jsonc`.
 2. `npx wrangler d1 migrations apply meridian-cards --remote` (applies schema + seed).
-3. Set your custom domain route in `wrangler.jsonc`.
-4. `npm run deploy` (Vite build + `wrangler deploy`).
-5. Create a Cloudflare Access application over `/admin*` and `/api/admin/*`
+3. `npx wrangler r2 bucket create meridian-card-images` (one-time private image bucket).
+4. Set your custom domain route in `wrangler.jsonc`.
+5. `npm run deploy` (Vite build + `wrangler deploy`).
+6. Create a Cloudflare Access application over `/admin*` and `/api/admin/*`
    allowing only the owner's email, then set `OWNER_EMAIL` /
    `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` in `wrangler.jsonc` and redeploy.
 
@@ -159,6 +166,8 @@ See **[docs/DEPLOY.md](docs/DEPLOY.md)** for the full walkthrough. In short:
 
 - **New owned cards:** use the `/admin` UI. Never re-run the seed migration — it
   would duplicate the original import.
+- **Card images:** use **收藏 → 卡圖資料**. JPEG, PNG, WebP, and AVIF files up
+  to 15 MB are accepted; one front image is shared by the whole catalog slot.
 - **New series or character** (e.g. an "MP 5TH"): edit `seed/catalog-def.ts`,
   then `npm run catalog:sync` to generate an additive migration. (Claude Code
   users: the bundled `manage-card-catalog` skill walks through this.)

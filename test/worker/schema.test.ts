@@ -218,4 +218,32 @@ describe("schema", () => {
       ]),
     );
   });
+
+  it("stores catalog media metadata separately from R2 objects", async () => {
+    const tables = (
+      await env.DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'catalog_media'",
+      ).all<{ name: string }>()
+    ).results.map((row) => row.name);
+    expect(tables).toContain("catalog_media");
+
+    const columns = (
+      await env.DB.prepare("PRAGMA table_info(catalog_media)").all<{
+        name: string;
+      }>()
+    ).results.map((column) => column.name);
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "catalog_id",
+        "side",
+        "object_key",
+        "content_type",
+        "byte_size",
+        "etag",
+        "original_filename",
+        "revision",
+        "updated_at",
+      ]),
+    );
+  });
 });

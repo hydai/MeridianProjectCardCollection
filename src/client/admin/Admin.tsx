@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { Activity } from "./Activity";
 import { AddCards } from "./AddCards";
+import { CatalogMedia } from "./CatalogMedia";
 import { History } from "./History";
 import { ManageCards } from "./ManageCards";
 import { Openings } from "./Openings";
@@ -22,6 +23,7 @@ const SECTIONS = [
       { id: "pack", label: "單包開卡" },
       { id: "add", label: "批次入藏" },
       { id: "manage", label: "卡片管理" },
+      { id: "media", label: "卡圖資料" },
       { id: "series", label: "系列設定" },
     ],
   },
@@ -82,6 +84,8 @@ function ActivePanel({
       return <AddCards />;
     case "manage":
       return <ManageCards />;
+    case "media":
+      return <CatalogMedia />;
     case "series":
       return <SeriesManager />;
     case "posts":
