@@ -82,4 +82,41 @@ describe("schema", () => {
     ).results.map((row) => row.name);
     expect(indexes).toContain("idx_cards_held");
   });
+
+  it("adds the append-only activity tables and acquisition link", async () => {
+    const tables = (
+      await env.DB.prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table'
+           AND name IN ('activity_events', 'activity_event_lines')`,
+      ).all<{ name: string }>()
+    ).results.map((row) => row.name);
+    expect(tables).toEqual(
+      expect.arrayContaining(["activity_events", "activity_event_lines"]),
+    );
+
+    const cardColumns = (
+      await env.DB.prepare("PRAGMA table_info(cards)").all<{ name: string }>()
+    ).results.map((column) => column.name);
+    expect(cardColumns).toContain("acquired_event_id");
+
+    const indexes = (
+      await env.DB.prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'index'
+           AND name IN (
+             'idx_activity_events_occurred',
+             'idx_cards_acquired_event',
+             'idx_txn_received_card'
+           )`,
+      ).all<{ name: string }>()
+    ).results.map((row) => row.name);
+    expect(indexes).toEqual(
+      expect.arrayContaining([
+        "idx_activity_events_occurred",
+        "idx_cards_acquired_event",
+        "idx_txn_received_card",
+      ]),
+    );
+  });
 });

@@ -34,8 +34,16 @@ with a live site you edit directly.
   reservation-aware duplicate flags.
 - **Pending purchases** — record ordered cards without counting them as owned;
   confirm receipt to add them to inventory, or cancel if the seller never ships.
-- **Cost analysis & transaction history** — *private* (owner only): per-opening
-  average cost, per-UR cost, and the full transaction log.
+- **Unified activity stream** — every acquisition, card adjustment, hold,
+  reservation, purchase, sale, and trade appears in one append-only audit trail;
+  untouched direct acquisitions and openings can be safely undone without
+  erasing history.
+- **Cost analysis & transaction history** — *private* (owner only) reports kept
+  alongside the activity stream for per-opening and completed-trade analysis.
+
+The public viewer is grouped by **收藏 / 盤點 / 交易**. The owner workspace is
+grouped by **收藏 / 交易 / 痕跡**, so view modes and reports no longer compete
+with day-to-day actions in one flat navigation bar.
 
 ## Tech stack
 
@@ -65,7 +73,8 @@ theme switcher.
             │              │                                                 │
             │              ▼                                                 │
             │   D1 (SQLite): card_catalog / series / cards /                 │
-            │                openings / transactions / pending_trades        │
+            │                openings / transactions / reservations /        │
+            │                activity_events + activity_event_lines           │
             └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -81,7 +90,7 @@ src/
   client/        React SPA — public viewer + /admin
   worker/        Hono app, Cloudflare Access guard, D1 queries
   shared/        Types shared by client and worker
-migrations/      D1 schema + seed (0001 schema, 0002/0003 seed, 0004 pending trades)
+  migrations/      D1 schema, seed data, and additive feature migrations
 seed/            Source-of-truth card catalog + owned-card list (TypeScript)
 scripts/         Seed generation + catalog sync
 docs/DEPLOY.md   Full deployment + Cloudflare Access setup guide

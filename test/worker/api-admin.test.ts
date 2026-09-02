@@ -77,4 +77,45 @@ describe("admin api", () => {
       true,
     );
   });
+
+  it("GET activities and POST undo expose the append-only activity workflow", async () => {
+    const add = (await (
+      await post("/api/admin/cards", {
+        cards: [{ series: "KILLER", character: "998", rarity: "R" }],
+      })
+    ).json()) as { ids: number[] };
+
+    const activities = await getJson<
+      Array<{
+        id: number;
+        kind: string;
+        canUndo: boolean;
+        lines: Array<{ character: string; action: string }>;
+      }>
+    >("/api/admin/activities?limit=1");
+    expect(activities).toHaveLength(1);
+    expect(activities[0]).toMatchObject({
+      kind: "acquisition",
+      canUndo: true,
+      lines: [
+        expect.objectContaining({ character: "998", action: "acquired" }),
+      ],
+    });
+
+    const undone = await post(
+      `/api/admin/activities/${activities[0].id}/undo`,
+      {},
+    );
+    expect(undone.status).toBe(200);
+    const cards = await getJson<Array<{ id: number }>>("/api/admin/cards");
+    expect(cards.some((card) => card.id === add.ids[0])).toBe(false);
+
+    const after = await getJson<
+      Array<{ kind: string; revertsEventId: number }>
+    >("/api/admin/activities?limit=2");
+    expect(after[0]).toMatchObject({
+      kind: "undo",
+      revertsEventId: activities[0].id,
+    });
+  });
 });

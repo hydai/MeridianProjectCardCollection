@@ -1,4 +1,5 @@
 import type {
+  ActivityEvent,
   AddCardInput,
   AdminPendingPurchase,
   AdminPendingTrade,
@@ -103,6 +104,12 @@ export const fetchNextPackNumber = (volume: number) =>
   );
 export const fetchTransactions = () =>
   get<TxnRecord[]>("/api/admin/transactions");
+export const fetchActivities = (limit = 100) =>
+  get<ActivityEvent[]>(
+    `/api/admin/activities?${new URLSearchParams({ limit: String(limit) })}`,
+  );
+export const undoActivity = (id: number) =>
+  send<{ ok: true }>("POST", `/api/admin/activities/${id}/undo`, {});
 
 // ---- Pending trades ----
 export const fetchPendingTrades = () =>

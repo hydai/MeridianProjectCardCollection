@@ -86,10 +86,11 @@ function stubFetch(initialPending: AdminPendingPurchase[] = pending) {
 }
 
 describe("PendingPurchases", () => {
-  it("is available from the admin tab list", () => {
+  it("is grouped under the admin trade section", () => {
     vi.stubGlobal("fetch", stubFetch([]));
     render(<Admin />);
 
+    fireEvent.click(screen.getByRole("button", { name: /交易 進行中的約定/ }));
     expect(screen.getByRole("tab", { name: "購入預約" })).toBeInTheDocument();
   });
 

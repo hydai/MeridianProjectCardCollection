@@ -172,7 +172,12 @@ export function Glance({ m }: { m: Matrix }) {
           )}
         </span>
       </div>
-      <div className={`glance-table-wrap overflow-x-auto ${CARD_FRAME}`}>
+      <section
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need a focus target to scroll through every table column.
+        tabIndex={0}
+        aria-label="角色與系列收集進度表，可水平捲動"
+        className={`glance-table-wrap overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${CARD_FRAME}`}
+      >
         <table className="glance-table w-max min-w-full table-auto border-collapse text-[13px] max-sm:text-xs">
           <thead>
             <tr>
@@ -214,7 +219,7 @@ export function Glance({ m }: { m: Matrix }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </section>
     </section>
   );
 }

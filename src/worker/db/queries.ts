@@ -1,10 +1,15 @@
 import { RARITY_ORDER, canonicalizeRarities } from "../../shared/rarity";
 import type {
+  ActivityEvent,
+  ActivityKind,
+  ActivityLine,
+  ActivityLineAction,
   AddCardInput,
   AdminPendingPurchase,
   AdminPendingTrade,
   AdminPurchaseReservationLine,
   CardRow,
+  CardStatus,
   CatalogSeries,
   CharacterStat,
   CreatePurchaseReservationInput,
@@ -34,6 +39,84 @@ import type {
 
 // Cards still in the owner's possession (excludes sold/traded history).
 const ACTIVE = "('owned','for_sale','for_trade')";
+
+interface ActivityEventInput {
+  sourceKey: string;
+  kind: ActivityKind;
+  occurredAt?: string;
+  sourceType?: string;
+  sourceId?: number;
+  counterparty?: string | null;
+  amount?: number | null;
+  note?: string | null;
+  revertsEventId?: number;
+}
+
+interface ActivityLineInput {
+  catalogId?: number | null;
+  action: ActivityLineAction;
+  qty?: number;
+  delta?: number;
+  beforeStatus?: CardStatus | null;
+  afterStatus?: CardStatus | null;
+  unitAmount?: number | null;
+  note?: string | null;
+}
+
+function activityKey(prefix: string): string {
+  return `${prefix}:${crypto.randomUUID()}`;
+}
+
+function insertActivityEventStatement(
+  db: D1Database,
+  input: ActivityEventInput,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO activity_events
+         (source_key, kind, occurred_at, source_type, source_id,
+          counterparty, amount, note, reverts_event_id)
+       VALUES (?, ?, COALESCE(?, datetime('now')), ?, ?, ?, ?, ?, ?)
+       RETURNING id`,
+    )
+    .bind(
+      input.sourceKey,
+      input.kind,
+      input.occurredAt ?? null,
+      input.sourceType ?? null,
+      input.sourceId ?? null,
+      input.counterparty ?? null,
+      input.amount ?? null,
+      input.note ?? null,
+      input.revertsEventId ?? null,
+    );
+}
+
+function insertActivityLineStatement(
+  db: D1Database,
+  sourceKey: string,
+  input: ActivityLineInput,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO activity_event_lines
+         (event_id, catalog_id, action, qty, delta,
+          before_status, after_status, unit_amount, note)
+       SELECT id, ?, ?, ?, ?, ?, ?, ?, ?
+       FROM activity_events WHERE source_key = ?`,
+    )
+    .bind(
+      input.catalogId ?? null,
+      input.action,
+      input.qty ?? 1,
+      input.delta ?? 0,
+      input.beforeStatus ?? null,
+      input.afterStatus ?? null,
+      input.unitAmount ?? null,
+      input.note ?? null,
+      sourceKey,
+    );
+}
 
 export async function getCatalog(db: D1Database): Promise<CatalogSeries[]> {
   const rows = (
@@ -156,6 +239,9 @@ export async function updateSeries(
                   )
                   OR EXISTS(
                     SELECT 1 FROM purchase_reservation_lines WHERE catalog_id = c.id
+                  )
+                  OR EXISTS(
+                    SELECT 1 FROM activity_event_lines WHERE catalog_id = c.id
                   )
                 ) AS referenced
          FROM card_catalog c
@@ -413,23 +499,44 @@ export async function createOpening(
   db: D1Database,
   input: OpeningInput,
 ): Promise<OpeningCreated> {
-  const row = await db
-    .prepare(
-      `INSERT INTO openings
-         (series, volume_number, opened_at, cost, note, pack_number)
-       SELECT NULL, ?, ?, ?, ?, COALESCE(MAX(pack_number), 0) + 1
-       FROM openings
-       WHERE volume_number = ?
-       RETURNING id, volume_number AS volume, pack_number AS packNumber`,
-    )
-    .bind(
-      input.volume,
-      input.openedAt,
-      input.cost ?? null,
-      input.note ?? null,
-      input.volume,
-    )
-    .first<OpeningCreated>();
+  const sourceKey = activityKey("opening");
+  const results = await db.batch([
+    insertActivityEventStatement(db, {
+      sourceKey,
+      kind: "opening",
+      occurredAt: input.openedAt,
+      sourceType: "opening",
+      amount: input.cost ?? null,
+      note: input.note ?? null,
+    }),
+    db
+      .prepare(
+        `INSERT INTO openings
+           (series, volume_number, opened_at, cost, note, pack_number)
+         SELECT NULL, ?, ?, ?, ?, COALESCE(MAX(pack_number), 0) + 1
+         FROM openings
+         WHERE volume_number = ?
+         RETURNING id, volume_number AS volume, pack_number AS packNumber`,
+      )
+      .bind(
+        input.volume,
+        input.openedAt,
+        input.cost ?? null,
+        input.note ?? null,
+        input.volume,
+      ),
+    db
+      .prepare(
+        `UPDATE activity_events
+         SET source_id = (
+           SELECT id FROM openings
+           WHERE volume_number = ? ORDER BY pack_number DESC LIMIT 1
+         )
+         WHERE source_key = ?`,
+      )
+      .bind(input.volume, sourceKey),
+  ]);
+  const row = results[1].results[0] as OpeningCreated | undefined;
   if (!row) throw new Error("failed to create opening");
   return row;
 }
@@ -512,16 +619,24 @@ export async function addCards(
 ): Promise<number[]> {
   validateCardAcquisition(cards, openingId !== undefined);
   const resolved = await resolveCards(db, cards);
+  let sourceKey: string;
+  let insertEvent: D1PreparedStatement | null = null;
   if (openingId !== undefined) {
     const opening = await db
       .prepare(
-        `SELECT COALESCE(o.volume_number, s.volume_number) AS volume
+        `SELECT COALESCE(o.volume_number, s.volume_number) AS volume,
+                o.opened_at AS openedAt, o.cost, o.note
          FROM openings o
          LEFT JOIN series s ON s.name = o.series
          WHERE o.id = ?`,
       )
       .bind(openingId)
-      .first<{ volume: number | null }>();
+      .first<{
+        volume: number | null;
+        openedAt: string;
+        cost: number | null;
+        note: string | null;
+      }>();
     if (!opening) throw new Error(`opening ${openingId} not found`);
     if (
       opening.volume == null ||
@@ -529,15 +644,58 @@ export async function addCards(
     ) {
       throw new Error("every pack card must belong to the opening volume");
     }
+    const event = await db
+      .prepare(
+        `SELECT source_key AS sourceKey FROM activity_events
+         WHERE source_type = 'opening' AND source_id = ? AND kind = 'opening'
+         ORDER BY id LIMIT 1`,
+      )
+      .bind(openingId)
+      .first<{ sourceKey: string }>();
+    sourceKey = event?.sourceKey ?? activityKey("opening");
+    if (!event) {
+      insertEvent = insertActivityEventStatement(db, {
+        sourceKey,
+        kind: "opening",
+        occurredAt: opening.openedAt,
+        sourceType: "opening",
+        sourceId: openingId,
+        amount: opening.cost,
+        note: opening.note,
+      });
+    }
+  } else {
+    sourceKey = activityKey("acquisition");
+    const isPurchase = resolved.every(
+      ({ input }) => (input.source ?? "pull") === "purchase",
+    );
+    insertEvent = insertActivityEventStatement(db, {
+      sourceKey,
+      kind: isPurchase ? "purchase" : "acquisition",
+      sourceType: "card_batch",
+      amount: isPurchase
+        ? resolved.reduce(
+            (sum, { input }) => sum + (input.purchasePrice ?? 0),
+            0,
+          )
+        : null,
+    });
   }
   if (resolved.length === 0) return [];
-  const results = await db.batch(
-    resolved.map(({ input, catalogId: id }) =>
+  const statements: D1PreparedStatement[] = [];
+  if (insertEvent) statements.push(insertEvent);
+  const cardResultStart = statements.length;
+  for (const { input, catalogId: id } of resolved) {
+    statements.push(
       db
         .prepare(
           `INSERT INTO cards
-             (catalog_id, status, source, opening_id, purchase_price, note)
-           VALUES (?, 'owned', ?, ?, ?, ?)
+             (catalog_id, status, source, opening_id, purchase_price, note,
+              acquired_event_id)
+           VALUES (
+             ?, 'owned', ?, ?, ?, ?,
+             (SELECT id FROM activity_events WHERE source_key = ?)
+           )
            RETURNING id`,
         )
         .bind(
@@ -546,10 +704,26 @@ export async function addCards(
           openingId ?? null,
           input.purchasePrice ?? null,
           input.note ?? null,
+          sourceKey,
         ),
-    ),
-  );
-  return results.map((result) => insertedId(result, "failed to add card"));
+    );
+  }
+  for (const { input, catalogId: id } of resolved) {
+    statements.push(
+      insertActivityLineStatement(db, sourceKey, {
+        catalogId: id,
+        action: "acquired",
+        delta: 1,
+        afterStatus: "owned",
+        unitAmount: input.purchasePrice ?? null,
+        note: input.note ?? null,
+      }),
+    );
+  }
+  const results = await db.batch(statements);
+  return results
+    .slice(cardResultStart, cardResultStart + resolved.length)
+    .map((result) => insertedId(result, "failed to add card"));
 }
 
 export async function addPack(
@@ -562,7 +736,16 @@ export async function addPack(
   if (resolved.some((card) => card.volume !== opening.volume)) {
     throw new Error("every pack card must belong to the opening volume");
   }
+  const sourceKey = activityKey("opening");
   const statements: D1PreparedStatement[] = [
+    insertActivityEventStatement(db, {
+      sourceKey,
+      kind: "opening",
+      occurredAt: opening.openedAt,
+      sourceType: "opening",
+      amount: opening.cost ?? null,
+      note: opening.note ?? null,
+    }),
     db
       .prepare(
         `INSERT INTO openings
@@ -579,30 +762,53 @@ export async function addPack(
         opening.note ?? null,
         opening.volume,
       ),
+    db
+      .prepare(
+        `UPDATE activity_events
+         SET source_id = (
+           SELECT id FROM openings
+           WHERE volume_number = ? ORDER BY pack_number DESC LIMIT 1
+         )
+         WHERE source_key = ?`,
+      )
+      .bind(opening.volume, sourceKey),
   ];
   for (const { input, catalogId: id } of resolved) {
     statements.push(
       db
         .prepare(
           `INSERT INTO cards
-             (catalog_id, status, source, opening_id, purchase_price, note)
+             (catalog_id, status, source, opening_id, purchase_price, note,
+              acquired_event_id)
            VALUES (
              ?, 'owned', 'pull',
              (SELECT id FROM openings
               WHERE volume_number = ?
               ORDER BY pack_number DESC LIMIT 1),
-             NULL, ?
+             NULL, ?,
+             (SELECT id FROM activity_events WHERE source_key = ?)
            )
            RETURNING id`,
         )
-        .bind(id, opening.volume, input.note ?? null),
+        .bind(id, opening.volume, input.note ?? null, sourceKey),
+    );
+  }
+  for (const { input, catalogId: id } of resolved) {
+    statements.push(
+      insertActivityLineStatement(db, sourceKey, {
+        catalogId: id,
+        action: "acquired",
+        delta: 1,
+        afterStatus: "owned",
+        note: input.note ?? null,
+      }),
     );
   }
   const results = await db.batch(statements);
-  const created = results[0].results[0] as OpeningCreated | undefined;
+  const created = results[1].results[0] as OpeningCreated | undefined;
   if (!created) throw new Error("failed to create opening");
   const ids = results
-    .slice(1)
+    .slice(3, 3 + resolved.length)
     .map((result) => insertedId(result, "failed to add pack card"));
   return { ids, opening: created };
 }
@@ -647,13 +853,15 @@ export async function setCardHeld(
   id: number,
   held: boolean,
 ): Promise<void> {
+  const card = await db
+    .prepare(
+      "SELECT catalog_id AS catalogId, status, held FROM cards WHERE id = ?",
+    )
+    .bind(id)
+    .first<{ catalogId: number; status: CardStatus; held: number }>();
+  if (!card) throw new Error(`card ${id} not found`);
+  if (card.held === (held ? 1 : 0)) return;
   if (held) {
-    const card = await db
-      .prepare("SELECT status, held FROM cards WHERE id = ?")
-      .bind(id)
-      .first<{ status: string; held: number }>();
-    if (!card) throw new Error(`card ${id} not found`);
-    if (card.held) return;
     if (card.status !== "owned") {
       throw new Error(
         `only an owned card can be held; card ${id} is ${card.status}`,
@@ -661,12 +869,26 @@ export async function setCardHeld(
     }
     await assertCardNotReserved(db, id);
   }
-  await db
-    .prepare(
-      "UPDATE cards SET held = ?, updated_at = datetime('now') WHERE id = ?",
-    )
-    .bind(held ? 1 : 0, id)
-    .run();
+  const sourceKey = activityKey(held ? "hold" : "unhold");
+  await db.batch([
+    insertActivityEventStatement(db, {
+      sourceKey,
+      kind: held ? "hold" : "unhold",
+      sourceType: "card",
+      sourceId: id,
+    }),
+    db
+      .prepare(
+        "UPDATE cards SET held = ?, updated_at = datetime('now') WHERE id = ?",
+      )
+      .bind(held ? 1 : 0, id),
+    insertActivityLineStatement(db, sourceKey, {
+      catalogId: card.catalogId,
+      action: held ? "held" : "released",
+      beforeStatus: card.status,
+      afterStatus: card.status,
+    }),
+  ]);
 }
 
 export async function updateCard(
@@ -695,12 +917,51 @@ export async function updateCard(
   if (sets.length === 0) return;
   await assertCardNotReserved(db, id);
   await assertCardNotHeld(db, id);
+  const card = await db
+    .prepare(
+      `SELECT catalog_id AS catalogId, status
+       FROM cards WHERE id = ?`,
+    )
+    .bind(id)
+    .first<{ catalogId: number; status: CardStatus }>();
+  if (!card) throw new Error(`card ${id} not found`);
   sets.push("updated_at = datetime('now')");
   const args = [...values, id];
-  await db
-    .prepare(`UPDATE cards SET ${sets.join(", ")} WHERE id = ?`)
-    .bind(...args)
-    .run();
+  const nextStatus = update.status ?? card.status;
+  const classified = nextStatus !== card.status;
+  const details = [
+    update.askingPrice !== undefined
+      ? update.askingPrice == null
+        ? "清除售價"
+        : `售價 ${update.askingPrice} 元`
+      : null,
+    update.wantInReturn !== undefined
+      ? update.wantInReturn
+        ? `想換 ${update.wantInReturn}`
+        : "清除交換條件"
+      : null,
+    update.note !== undefined ? "更新備註" : null,
+  ].filter((detail): detail is string => detail !== null);
+  const sourceKey = activityKey(classified ? "classification" : "card-update");
+  await db.batch([
+    insertActivityEventStatement(db, {
+      sourceKey,
+      kind: classified ? "card_classified" : "card_updated",
+      sourceType: "card",
+      sourceId: id,
+    }),
+    db
+      .prepare(`UPDATE cards SET ${sets.join(", ")} WHERE id = ?`)
+      .bind(...args),
+    insertActivityLineStatement(db, sourceKey, {
+      catalogId: card.catalogId,
+      action: classified ? "classified" : "updated",
+      beforeStatus: card.status,
+      afterStatus: nextStatus,
+      unitAmount: update.askingPrice === undefined ? null : update.askingPrice,
+      note: details.join("、") || null,
+    }),
+  ]);
 }
 
 export async function recordTransaction(
@@ -710,8 +971,12 @@ export async function recordTransaction(
 ): Promise<number> {
   await assertCardNotReserved(db, cardId);
   await assertCardNotHeld(db, cardId);
+  const outgoing = await db
+    .prepare("SELECT catalog_id AS catalogId, status FROM cards WHERE id = ?")
+    .bind(cardId)
+    .first<{ catalogId: number; status: CardStatus }>();
+  if (!outgoing) throw new Error(`card ${cardId} not found`);
   let receivedCatalogId: number | null = null;
-  let receivedCardId: number | null = null;
   if (
     t.type === "trade" &&
     t.receivedSeries &&
@@ -724,42 +989,93 @@ export async function recordTransaction(
       t.receivedCharacter,
       t.receivedRarity,
     );
-    const rc = await db
-      .prepare(
-        "INSERT INTO cards (catalog_id, status, source) VALUES (?, 'owned', 'trade_in') RETURNING id",
-      )
-      .bind(receivedCatalogId)
-      .first<{ id: number }>();
-    if (!rc) throw new Error("failed to add received card");
-    receivedCardId = rc.id;
   }
-
-  await db
-    .prepare(
-      "UPDATE cards SET status = ?, updated_at = datetime('now') WHERE id = ?",
-    )
-    .bind(t.type === "sale" ? "sold" : "traded", cardId)
-    .run();
-
-  const row = await db
-    .prepare(
-      `INSERT INTO transactions
-         (card_id, type, counterparty, price, received_catalog_id, received_card_id, happened_at, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-    )
-    .bind(
-      cardId,
-      t.type,
-      t.counterparty ?? null,
-      t.price ?? null,
-      receivedCatalogId,
-      receivedCardId,
-      t.happenedAt,
-      t.note ?? null,
-    )
-    .first<{ id: number }>();
-  if (!row) throw new Error("failed to record transaction");
-  return row.id;
+  const sourceKey = activityKey(t.type);
+  const nextStatus: CardStatus = t.type === "sale" ? "sold" : "traded";
+  const statements: D1PreparedStatement[] = [
+    insertActivityEventStatement(db, {
+      sourceKey,
+      kind: t.type,
+      occurredAt: t.happenedAt,
+      sourceType: "card",
+      sourceId: cardId,
+      counterparty: t.counterparty ?? null,
+      amount: t.price ?? null,
+      note: t.note ?? null,
+    }),
+  ];
+  if (receivedCatalogId != null) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO cards
+             (catalog_id, status, source, acquired_event_id)
+           VALUES (
+             ?, 'owned', 'trade_in',
+             (SELECT id FROM activity_events WHERE source_key = ?)
+           )`,
+        )
+        .bind(receivedCatalogId, sourceKey),
+    );
+  }
+  statements.push(
+    db
+      .prepare(
+        "UPDATE cards SET status = ?, updated_at = datetime('now') WHERE id = ?",
+      )
+      .bind(nextStatus, cardId),
+  );
+  const transactionResultIndex = statements.length;
+  statements.push(
+    db
+      .prepare(
+        `INSERT INTO transactions
+           (card_id, type, counterparty, price, received_catalog_id,
+            received_card_id, happened_at, note)
+         VALUES (
+           ?, ?, ?, ?, ?,
+           (SELECT k.id FROM cards k
+            JOIN activity_events e ON e.id = k.acquired_event_id
+            WHERE e.source_key = ? AND k.catalog_id = ?
+            ORDER BY k.id DESC LIMIT 1),
+           ?, ?
+         )
+         RETURNING id`,
+      )
+      .bind(
+        cardId,
+        t.type,
+        t.counterparty ?? null,
+        t.price ?? null,
+        receivedCatalogId,
+        sourceKey,
+        receivedCatalogId,
+        t.happenedAt,
+        t.note ?? null,
+      ),
+    insertActivityLineStatement(db, sourceKey, {
+      catalogId: outgoing.catalogId,
+      action: "given",
+      delta: -1,
+      beforeStatus: outgoing.status,
+      afterStatus: nextStatus,
+    }),
+  );
+  if (receivedCatalogId != null) {
+    statements.push(
+      insertActivityLineStatement(db, sourceKey, {
+        catalogId: receivedCatalogId,
+        action: "received",
+        delta: 1,
+        afterStatus: "owned",
+      }),
+    );
+  }
+  const results = await db.batch(statements);
+  return insertedId(
+    results[transactionResultIndex],
+    "failed to record transaction",
+  );
 }
 
 export async function getOpenings(db: D1Database): Promise<OpeningSummary[]> {
@@ -797,6 +1113,259 @@ export async function getTransactions(db: D1Database): Promise<TxnRecord[]> {
       )
       .all<TxnRecord>()
   ).results;
+}
+
+interface ActivityEventRow {
+  id: number;
+  kind: ActivityKind;
+  occurredAt: string;
+  sourceType: string | null;
+  sourceId: number | null;
+  counterparty: string | null;
+  amount: number | null;
+  note: string | null;
+  revertsEventId: number | null;
+  reversedAt: string | null;
+  createdAt: string;
+  canUndo: number;
+}
+
+interface ActivityLineRow extends Omit<ActivityLine, "action"> {
+  eventId: number;
+  action: ActivityLineAction;
+}
+
+export async function getActivities(
+  db: D1Database,
+  limit = 100,
+): Promise<ActivityEvent[]> {
+  const safeLimit = Math.max(1, Math.min(250, Math.trunc(limit) || 100));
+  const rows = (
+    await db
+      .prepare(
+        `SELECT e.id, e.kind, e.occurred_at AS occurredAt,
+                e.source_type AS sourceType, e.source_id AS sourceId,
+                e.counterparty, e.amount, e.note,
+                e.reverts_event_id AS revertsEventId,
+                e.reversed_at AS reversedAt, e.created_at AS createdAt,
+                CASE
+                  WHEN e.kind IN ('opening', 'purchase', 'acquisition')
+                   AND e.reversed_at IS NULL
+                   AND EXISTS (
+                     SELECT 1 FROM activity_event_lines l
+                     WHERE l.event_id = e.id AND l.delta > 0
+                   )
+                   AND (
+                     SELECT COALESCE(SUM(l.qty), 0)
+                     FROM activity_event_lines l
+                     WHERE l.event_id = e.id AND l.delta > 0
+                   ) = (
+                     SELECT COUNT(*) FROM cards k
+                     WHERE k.acquired_event_id = e.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM cards k
+                     WHERE k.acquired_event_id = e.id
+                       AND (
+                         k.status <> 'owned'
+                         OR k.held <> 0
+                         OR k.updated_at <> k.created_at
+                         OR EXISTS (
+                           SELECT 1 FROM trade_reservation_lines l
+                           WHERE l.card_id = k.id
+                         )
+                         OR EXISTS (
+                           SELECT 1 FROM trade_reservation_lines legacy
+                           WHERE legacy.direction = 'give'
+                             AND legacy.card_id IS NULL
+                             AND legacy.catalog_id = k.catalog_id
+                         )
+                         OR EXISTS (
+                           SELECT 1 FROM transactions t
+                           WHERE t.card_id = k.id OR t.received_card_id = k.id
+                         )
+                         OR EXISTS (
+                           SELECT 1 FROM activity_events later
+                           WHERE later.source_type = 'card'
+                             AND later.source_id = k.id
+                         )
+                       )
+                   )
+                   AND (
+                     e.kind <> 'opening'
+                     OR EXISTS (
+                       SELECT 1 FROM openings o WHERE o.id = e.source_id
+                     )
+                   )
+                  THEN 1 ELSE 0
+                END AS canUndo
+         FROM activity_events e
+         ORDER BY e.occurred_at DESC, e.id DESC
+         LIMIT ?`,
+      )
+      .bind(safeLimit)
+      .all<ActivityEventRow>()
+  ).results;
+  if (rows.length === 0) return [];
+
+  const lines = (
+    await db
+      .prepare(
+        `WITH recent AS (
+           SELECT id FROM activity_events
+           ORDER BY occurred_at DESC, id DESC
+           LIMIT ?
+         )
+         SELECT l.event_id AS eventId, l.catalog_id AS catalogId,
+                c.series, c.character, c.rarity, l.action,
+                SUM(l.qty) AS qty, SUM(l.delta) AS delta,
+                l.before_status AS beforeStatus,
+                l.after_status AS afterStatus,
+                l.unit_amount AS unitAmount, l.note
+         FROM activity_event_lines l
+         JOIN recent r ON r.id = l.event_id
+         LEFT JOIN card_catalog c ON c.id = l.catalog_id
+         GROUP BY l.event_id, l.catalog_id, l.action,
+                  l.before_status, l.after_status, l.unit_amount, l.note
+         ORDER BY l.event_id DESC, c.sort_order, MIN(l.id)`,
+      )
+      .bind(safeLimit)
+      .all<ActivityLineRow>()
+  ).results;
+
+  const events = rows.map(
+    (row): ActivityEvent => ({
+      ...row,
+      canUndo: row.canUndo === 1,
+      lines: [],
+    }),
+  );
+  const byId = new Map(events.map((event) => [event.id, event]));
+  for (const { eventId, ...line } of lines) {
+    byId.get(eventId)?.lines.push(line);
+  }
+  return events;
+}
+
+export async function undoActivity(db: D1Database, id: number): Promise<void> {
+  const state = await db
+    .prepare(
+      `SELECT e.kind, e.source_type AS sourceType, e.source_id AS sourceId,
+              e.reversed_at AS reversedAt,
+              (SELECT COALESCE(SUM(l.qty), 0)
+               FROM activity_event_lines l
+               WHERE l.event_id = e.id AND l.delta > 0) AS expectedCards,
+              (SELECT COUNT(*) FROM cards k
+               WHERE k.acquired_event_id = e.id) AS currentCards,
+              (SELECT COUNT(*) FROM cards k
+               WHERE k.acquired_event_id = e.id
+                 AND k.status = 'owned'
+                 AND k.held = 0
+                 AND k.updated_at = k.created_at
+                 AND NOT EXISTS (
+                   SELECT 1 FROM trade_reservation_lines l
+                   WHERE l.card_id = k.id
+                 )
+                 AND NOT EXISTS (
+                   SELECT 1 FROM trade_reservation_lines legacy
+                   WHERE legacy.direction = 'give'
+                     AND legacy.card_id IS NULL
+                     AND legacy.catalog_id = k.catalog_id
+                 )
+                 AND NOT EXISTS (
+                   SELECT 1 FROM transactions t
+                   WHERE t.card_id = k.id OR t.received_card_id = k.id
+                 )
+                 AND NOT EXISTS (
+                   SELECT 1 FROM activity_events later
+                   WHERE later.source_type = 'card'
+                     AND later.source_id = k.id
+                 )) AS eligibleCards
+       FROM activity_events e WHERE e.id = ?`,
+    )
+    .bind(id)
+    .first<{
+      kind: ActivityKind;
+      sourceType: string | null;
+      sourceId: number | null;
+      reversedAt: string | null;
+      expectedCards: number;
+      currentCards: number;
+      eligibleCards: number;
+    }>();
+  if (!state) throw new Error(`activity ${id} not found`);
+  if (
+    !(["opening", "purchase", "acquisition"] as ActivityKind[]).includes(
+      state.kind,
+    )
+  ) {
+    throw new Error("this activity cannot be undone");
+  }
+  if (state.reversedAt) throw new Error("this activity was already undone");
+  if (state.expectedCards < 1) {
+    throw new Error("this activity has no acquired cards to undo");
+  }
+  if (
+    state.expectedCards !== state.currentCards ||
+    state.currentCards !== state.eligibleCards
+  ) {
+    throw new Error(
+      "cards from this activity have later changes and cannot be undone",
+    );
+  }
+  if (state.kind === "opening") {
+    if (state.sourceType !== "opening" || state.sourceId == null) {
+      throw new Error("opening source is missing");
+    }
+    const opening = await db
+      .prepare("SELECT id FROM openings WHERE id = ?")
+      .bind(state.sourceId)
+      .first<{ id: number }>();
+    if (!opening) throw new Error("opening source is missing");
+  }
+
+  const undoKey = `undo:${id}`;
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare(
+        `UPDATE activity_events
+         SET reversed_at = datetime('now')
+         WHERE id = ? AND reversed_at IS NULL
+         RETURNING id`,
+      )
+      .bind(id),
+    insertActivityEventStatement(db, {
+      sourceKey: undoKey,
+      kind: "undo",
+      sourceType: "activity",
+      sourceId: id,
+      revertsEventId: id,
+      note: `撤銷 #${id}`,
+    }),
+    db
+      .prepare(
+        `INSERT INTO activity_event_lines
+           (event_id, catalog_id, action, qty, delta,
+            before_status, after_status, unit_amount, note)
+         SELECT undo.id, original.catalog_id, 'undone', original.qty,
+                -original.delta, original.after_status, original.before_status,
+                original.unit_amount, original.note
+         FROM activity_event_lines original
+         JOIN activity_events undo ON undo.source_key = ?
+         WHERE original.event_id = ?`,
+      )
+      .bind(undoKey, id),
+    db.prepare("DELETE FROM cards WHERE acquired_event_id = ?").bind(id),
+  ];
+  if (state.kind === "opening" && state.sourceId != null) {
+    statements.push(
+      db.prepare("DELETE FROM openings WHERE id = ?").bind(state.sourceId),
+    );
+  }
+  const results = await db.batch(statements);
+  if (results[0].results.length === 0) {
+    throw new Error("this activity was already undone");
+  }
 }
 
 async function legacyReservedCardIds(db: D1Database): Promise<Set<number>> {
@@ -1091,7 +1660,17 @@ export async function createReservation(
         )
         .first<{ id: number }>()
     )?.id ?? 1;
+  const sourceKey = activityKey("trade-reserved");
   const statements: D1PreparedStatement[] = [
+    insertActivityEventStatement(db, {
+      sourceKey,
+      kind: "trade_reserved",
+      occurredAt: input.reservedAt,
+      sourceType: "trade_reservation",
+      sourceId: id,
+      counterparty: input.counterparty ?? null,
+      note: input.note ?? null,
+    }),
     db
       .prepare(
         `INSERT INTO trade_reservations
@@ -1116,20 +1695,93 @@ export async function createReservation(
         .bind(id, line.direction, line.catalogId, line.qty, line.cardId),
     );
   }
+  for (const line of lines) {
+    statements.push(
+      insertActivityLineStatement(db, sourceKey, {
+        catalogId: line.catalogId,
+        action:
+          line.direction === "give" ? "reserved_give" : "reserved_receive",
+        qty: line.qty,
+      }),
+    );
+  }
   await db.batch(statements);
   return id;
+}
+
+async function tradeReservationActivityId(
+  db: D1Database,
+  reservationId: number,
+): Promise<number> {
+  const event = await db
+    .prepare(
+      `SELECT id FROM activity_events
+       WHERE source_type = 'trade_reservation'
+         AND source_id = ?
+         AND kind = 'trade_reserved'
+       ORDER BY id DESC
+       LIMIT 1`,
+    )
+    .bind(reservationId)
+    .first<{ id: number }>();
+  if (!event) {
+    throw new Error(`reservation ${reservationId} has no activity lifecycle`);
+  }
+  return event.id;
 }
 
 export async function cancelReservation(
   db: D1Database,
   id: number,
 ): Promise<void> {
-  await db.batch([
+  const header = await db
+    .prepare("SELECT counterparty, note FROM trade_reservations WHERE id = ?")
+    .bind(id)
+    .first<{ counterparty: string | null; note: string | null }>();
+  if (!header) throw new Error(`reservation ${id} not found`);
+  const lifecycleId = await tradeReservationActivityId(db, id);
+  const lines = (
+    await db
+      .prepare(
+        `SELECT direction, catalog_id AS catalogId, SUM(qty) AS qty
+         FROM trade_reservation_lines WHERE reservation_id = ?
+         GROUP BY direction, catalog_id`,
+      )
+      .bind(id)
+      .all<{
+        direction: TradeDirection;
+        catalogId: number;
+        qty: number;
+      }>()
+  ).results;
+  const sourceKey = `trade-terminal:${lifecycleId}`;
+  const statements: D1PreparedStatement[] = [
+    insertActivityEventStatement(db, {
+      sourceKey,
+      kind: "trade_reservation_cancelled",
+      sourceType: "trade_reservation",
+      sourceId: id,
+      counterparty: header.counterparty,
+      note: header.note,
+    }),
+  ];
+  for (const line of lines) {
+    statements.push(
+      insertActivityLineStatement(db, sourceKey, {
+        catalogId: line.catalogId,
+        action: "cancelled",
+        qty: line.qty,
+        note: line.direction === "give" ? "取消給出預約" : "取消換入預約",
+      }),
+    );
+  }
+  statements.push(
     db
       .prepare("DELETE FROM trade_reservation_lines WHERE reservation_id = ?")
       .bind(id),
     db.prepare("DELETE FROM trade_reservations WHERE id = ?").bind(id),
-  ]);
+  );
+  await db.batch(statements);
 }
 
 const RARITY_RANK: Record<Rarity, number> = {
@@ -1151,6 +1803,7 @@ export async function completeReservation(
     .bind(id)
     .first<{ counterparty: string | null; note: string | null }>();
   if (!header) throw new Error(`reservation ${id} not found`);
+  const lifecycleId = await tradeReservationActivityId(db, id);
 
   const raw = (
     await db
@@ -1245,19 +1898,47 @@ export async function completeReservation(
       : "";
 
   // ---- WRITE PHASE (single atomic batch; reservation claimed within it) ----
+  const sourceKey = `trade-terminal:${lifecycleId}`;
   const stmts: D1PreparedStatement[] = [
+    insertActivityEventStatement(db, {
+      sourceKey,
+      kind: "trade_completed",
+      occurredAt: happenedAt,
+      sourceType: "trade_reservation",
+      sourceId: id,
+      counterparty: header.counterparty,
+      note: header.note,
+    }),
+  ];
+  for (const line of raw) {
+    stmts.push(
+      insertActivityLineStatement(db, sourceKey, {
+        catalogId: line.catalogId,
+        action: line.direction === "give" ? "given" : "received",
+        qty: line.qty,
+        delta: line.direction === "give" ? -line.qty : line.qty,
+        afterStatus: line.direction === "give" ? "traded" : "owned",
+      }),
+    );
+  }
+  stmts.push(
     db
       .prepare("DELETE FROM trade_reservation_lines WHERE reservation_id = ?")
       .bind(id),
     db.prepare("DELETE FROM trade_reservations WHERE id = ?").bind(id),
-  ];
+  );
   for (const r of receives) {
     stmts.push(
       db
         .prepare(
-          "INSERT INTO cards (catalog_id, status, source) VALUES (?, 'owned', 'trade_in')",
+          `INSERT INTO cards
+             (catalog_id, status, source, acquired_event_id)
+           VALUES (
+             ?, 'owned', 'trade_in',
+             (SELECT id FROM activity_events WHERE source_key = ?)
+           )`,
         )
-        .bind(r.catalogId),
+        .bind(r.catalogId, sourceKey),
     );
   }
   for (let i = 0; i < gives.length; i++) {
@@ -1414,7 +2095,8 @@ export async function createPurchaseReservation(
   }
 
   // D1 executes a batch sequentially as one transaction, so the newest header
-  // remains this batch's header while all of its line statements are inserted.
+  // remains this batch's header while its lines and activity snapshot are added.
+  const sourceKey = activityKey("purchase-ordered");
   const statements: D1PreparedStatement[] = [
     db
       .prepare(
@@ -1423,6 +2105,27 @@ export async function createPurchaseReservation(
          RETURNING id`,
       )
       .bind(input.seller ?? null, input.orderedAt, input.note ?? null),
+    insertActivityEventStatement(db, {
+      sourceKey,
+      kind: "purchase_ordered",
+      occurredAt: input.orderedAt,
+      sourceType: "purchase_reservation",
+      counterparty: input.seller ?? null,
+      amount: resolved.reduce(
+        (total, line) => total + line.qty * line.unitPrice,
+        0,
+      ),
+      note: input.note ?? null,
+    }),
+    db
+      .prepare(
+        `UPDATE activity_events
+         SET source_id = (
+           SELECT id FROM purchase_reservations ORDER BY id DESC LIMIT 1
+         )
+         WHERE source_key = ?`,
+      )
+      .bind(sourceKey),
   ];
   for (const line of resolved) {
     statements.push(
@@ -1438,6 +2141,16 @@ export async function createPurchaseReservation(
         .bind(line.catalogId, line.qty, line.unitPrice),
     );
   }
+  for (const line of resolved) {
+    statements.push(
+      insertActivityLineStatement(db, sourceKey, {
+        catalogId: line.catalogId,
+        action: "ordered",
+        qty: line.qty,
+        unitAmount: line.unitPrice,
+      }),
+    );
+  }
   const results = await db.batch(statements);
   return insertedId(results[0], "failed to create purchase reservation");
 }
@@ -1446,29 +2159,11 @@ export async function completePurchaseReservation(
   db: D1Database,
   id: number,
 ): Promise<void> {
-  // Expanding every line and claiming the header happen in one transaction.
-  // The pending-status guard turns a concurrent second completion into a no-op;
-  // the empty UPDATE result below then reports the conflict. Completed order
-  // metadata and lines remain available for purchase provenance.
+  // Claim the pending header first, then write its event, cards, and lines in
+  // the same atomic batch. The deterministic event key makes a repeated or
+  // concurrent completion fail the batch instead of duplicating activity lines.
+  const sourceKey = `purchase-received:${id}`;
   const results = await db.batch([
-    db
-      .prepare(
-        `WITH RECURSIVE expanded(reservation_id, catalog_id, unit_price, copy, qty) AS (
-           SELECT r.id, l.catalog_id, l.unit_price, 1, l.qty
-           FROM purchase_reservation_lines l
-           JOIN purchase_reservations r ON r.id = l.reservation_id
-           WHERE l.reservation_id = ? AND r.status = 'pending'
-           UNION ALL
-           SELECT reservation_id, catalog_id, unit_price, copy + 1, qty
-           FROM expanded
-           WHERE copy < qty
-         )
-         INSERT INTO cards
-           (catalog_id, status, source, purchase_price, purchase_reservation_id)
-         SELECT catalog_id, 'owned', 'purchase', unit_price, reservation_id
-         FROM expanded`,
-      )
-      .bind(id),
     db
       .prepare(
         `UPDATE purchase_reservations
@@ -1477,8 +2172,54 @@ export async function completePurchaseReservation(
          RETURNING id`,
       )
       .bind(id),
+    db
+      .prepare(
+        `INSERT INTO activity_events
+           (source_key, kind, occurred_at, source_type, source_id,
+            counterparty, amount, note)
+         SELECT ?, 'purchase_received', r.received_at,
+                'purchase_reservation', r.id, r.seller,
+                SUM(l.qty * l.unit_price), r.note
+         FROM purchase_reservations r
+         JOIN purchase_reservation_lines l ON l.reservation_id = r.id
+         WHERE r.id = ? AND r.status = 'received'
+         GROUP BY r.id
+         RETURNING id`,
+      )
+      .bind(sourceKey, id),
+    db
+      .prepare(
+        `INSERT INTO activity_event_lines
+           (event_id, catalog_id, action, qty, delta, unit_amount, after_status)
+         SELECT e.id, l.catalog_id, 'acquired', l.qty, l.qty,
+                l.unit_price, 'owned'
+         FROM purchase_reservation_lines l
+         JOIN activity_events e ON e.source_key = ?
+         WHERE l.reservation_id = ?`,
+      )
+      .bind(sourceKey, id),
+    db
+      .prepare(
+        `WITH RECURSIVE expanded(reservation_id, catalog_id, unit_price, copy, qty) AS (
+           SELECT r.id, l.catalog_id, l.unit_price, 1, l.qty
+           FROM purchase_reservation_lines l
+           JOIN purchase_reservations r ON r.id = l.reservation_id
+           WHERE l.reservation_id = ? AND r.status = 'received'
+           UNION ALL
+           SELECT reservation_id, catalog_id, unit_price, copy + 1, qty
+           FROM expanded
+           WHERE copy < qty
+         )
+         INSERT INTO cards
+           (catalog_id, status, source, purchase_price,
+            purchase_reservation_id, acquired_event_id)
+         SELECT catalog_id, 'owned', 'purchase', unit_price, reservation_id,
+                (SELECT id FROM activity_events WHERE source_key = ?)
+         FROM expanded`,
+      )
+      .bind(id, sourceKey),
   ]);
-  if (results[1].results.length === 0) {
+  if (results[0].results.length === 0) {
     throw new Error(`pending purchase reservation ${id} not found`);
   }
 }
@@ -1487,16 +2228,43 @@ export async function cancelPurchaseReservation(
   db: D1Database,
   id: number,
 ): Promise<void> {
-  const result = await db
-    .prepare(
-      `UPDATE purchase_reservations
-       SET status = 'cancelled', cancelled_at = datetime('now')
-       WHERE id = ? AND status = 'pending'
-       RETURNING id`,
-    )
-    .bind(id)
-    .run();
-  if (result.results.length === 0) {
+  const sourceKey = `purchase-cancelled:${id}`;
+  const results = await db.batch([
+    db
+      .prepare(
+        `UPDATE purchase_reservations
+         SET status = 'cancelled', cancelled_at = datetime('now')
+         WHERE id = ? AND status = 'pending'
+         RETURNING id`,
+      )
+      .bind(id),
+    db
+      .prepare(
+        `INSERT INTO activity_events
+           (source_key, kind, occurred_at, source_type, source_id,
+            counterparty, amount, note)
+         SELECT ?, 'purchase_cancelled', r.cancelled_at,
+                'purchase_reservation', r.id, r.seller,
+                SUM(l.qty * l.unit_price), r.note
+         FROM purchase_reservations r
+         JOIN purchase_reservation_lines l ON l.reservation_id = r.id
+         WHERE r.id = ? AND r.status = 'cancelled'
+         GROUP BY r.id
+         RETURNING id`,
+      )
+      .bind(sourceKey, id),
+    db
+      .prepare(
+        `INSERT INTO activity_event_lines
+           (event_id, catalog_id, action, qty, delta, unit_amount)
+         SELECT e.id, l.catalog_id, 'cancelled', l.qty, 0, l.unit_price
+         FROM purchase_reservation_lines l
+         JOIN activity_events e ON e.source_key = ?
+         WHERE l.reservation_id = ?`,
+      )
+      .bind(sourceKey, id),
+  ]);
+  if (results[0].results.length === 0) {
     throw new Error(`pending purchase reservation ${id} not found`);
   }
 }

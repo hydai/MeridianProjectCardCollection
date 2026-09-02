@@ -36,7 +36,47 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-const TAB_IDS = TABS.map((t) => t.id);
+const SECTIONS = [
+  {
+    id: "collection",
+    zh: "收藏",
+    en: "Collection",
+    tabs: ["char", "series", "rarity"],
+  },
+  {
+    id: "inventory",
+    zh: "盤點",
+    en: "Inventory",
+    tabs: ["glance", "grid", "wishlist"],
+  },
+  {
+    id: "trade",
+    zh: "交易",
+    en: "Trade",
+    tabs: ["trade", "market"],
+  },
+] as const satisfies ReadonlyArray<{
+  id: string;
+  zh: string;
+  en: string;
+  tabs: readonly TabId[];
+}>;
+
+type SectionId = (typeof SECTIONS)[number]["id"];
+
+function sectionFor(tab: TabId) {
+  return (
+    SECTIONS.find((section) =>
+      section.tabs.some((candidate) => candidate === tab),
+    ) ?? SECTIONS[0]
+  );
+}
+
+function tabFor(id: TabId) {
+  const tab = TABS.find((candidate) => candidate.id === id);
+  if (!tab) throw new Error(`Unknown public viewer tab: ${id}`);
+  return tab;
+}
 
 function ActiveView({
   id,
@@ -155,10 +195,17 @@ export default function PublicViewer() {
     }
   };
 
-  const tabProps = useRovingTablist(TAB_IDS, selectTab);
+  const activeSection = sectionFor(tab);
+  const activeTabs = activeSection.tabs.map(tabFor);
+  const activeTabIds = activeTabs.map((item) => item.id);
+  const selectSection = (id: SectionId) => {
+    const section = SECTIONS.find((candidate) => candidate.id === id);
+    if (section) selectTab(section.tabs[0]);
+  };
+  const tabProps = useRovingTablist(activeTabIds, selectTab);
 
   return (
-    <div className="mx-auto max-w-[820px] px-7 pt-20 pb-24 max-sm:px-[18px] max-sm:pt-14 max-sm:pb-[72px]">
+    <main className="mx-auto max-w-[820px] px-7 pt-20 pb-24 max-sm:px-[18px] max-sm:pt-14 max-sm:pb-[72px]">
       <header className="mb-16 text-center animate-[rise_0.7s_ease_0.05s_both]">
         <p className="mb-7 font-accent text-sm italic uppercase tracking-[0.35em] text-primary opacity-85">
           <span className="opacity-60">—</span> A Living Archive · 永久收藏{" "}
@@ -174,15 +221,46 @@ export default function PublicViewer() {
       </header>
 
       <nav
-        role="tablist"
-        className="mt-16 mb-12 flex flex-wrap justify-center border-b border-border animate-[rise_0.7s_ease_0.35s_both]"
+        aria-label="瀏覽分類"
+        className="mt-16 grid grid-cols-3 gap-2 animate-[rise_0.7s_ease_0.35s_both] max-sm:grid-cols-1"
       >
-        {TABS.map((t, i) => (
+        {SECTIONS.map((section) => {
+          const selected = activeSection.id === section.id;
+          return (
+            <button
+              key={section.id}
+              type="button"
+              aria-current={selected ? "page" : undefined}
+              onClick={() => selectSection(section.id)}
+              className={cn(
+                "flex cursor-pointer flex-col items-center gap-0.5 rounded-lg border px-5 py-3 text-muted-foreground transition-colors",
+                selected
+                  ? "border-primary/45 bg-primary/8 text-primary"
+                  : "border-border bg-card/60 hover:border-foreground/20 hover:text-foreground",
+              )}
+            >
+              <span className="text-sm tracking-[0.15em]">{section.zh}</span>
+              <span className="font-accent text-[11px] italic uppercase tracking-[0.18em]">
+                {section.en}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+
+      <nav
+        role="tablist"
+        aria-label={`${activeSection.zh}檢視`}
+        className="mt-4 mb-12 flex flex-wrap justify-center border-b border-border animate-[rise_0.7s_ease_0.4s_both]"
+      >
+        {activeTabs.map((t, i) => (
           <button
             key={t.id}
+            id={`viewer-tab-${t.id}`}
             type="button"
             role="tab"
             aria-selected={tab === t.id}
+            aria-controls={`viewer-panel-${t.id}`}
             {...tabProps(i, tab === t.id)}
             onClick={() => selectTab(t.id)}
             className={cn(
@@ -194,19 +272,18 @@ export default function PublicViewer() {
             )}
           >
             {t.zh}
-            <span
-              className={cn(
-                "font-accent text-[11px] italic uppercase tracking-[0.18em] transition-opacity max-sm:text-[10px]",
-                tab === t.id ? "opacity-90" : "opacity-60",
-              )}
-            >
+            <span className="font-accent text-[11px] italic uppercase tracking-[0.18em] max-sm:text-[10px]">
               {t.en}
             </span>
           </button>
         ))}
       </nav>
 
-      <main>
+      <div
+        id={`viewer-panel-${tab}`}
+        role="tabpanel"
+        aria-labelledby={`viewer-tab-${tab}`}
+      >
         {error ? (
           <p className="py-12 text-center font-accent italic tracking-[0.1em] text-muted-foreground">
             無法載入資料：{error}
@@ -229,7 +306,7 @@ export default function PublicViewer() {
             <Skeleton className="h-24 w-full" />
           </div>
         )}
-      </main>
+      </div>
 
       <footer className="mt-[72px] border-t border-border pt-7 text-center text-xs tracking-[0.12em] text-muted-foreground">
         <span>子午計畫 · Meridian Project</span>
@@ -240,6 +317,6 @@ export default function PublicViewer() {
         <span className="mx-3 opacity-50">·</span>
         <span>Curated by hydai</span>
       </footer>
-    </div>
+    </main>
   );
 }

@@ -3,6 +3,38 @@ export type CardStatus = "owned" | "for_sale" | "for_trade" | "sold" | "traded";
 export type CardSource = "pull" | "purchase" | "trade_in";
 export type TransactionType = "sale" | "trade";
 
+export type ActivityKind =
+  | "opening"
+  | "purchase"
+  | "acquisition"
+  | "card_classified"
+  | "card_updated"
+  | "hold"
+  | "unhold"
+  | "sale"
+  | "trade"
+  | "trade_reserved"
+  | "trade_reservation_cancelled"
+  | "trade_completed"
+  | "purchase_ordered"
+  | "purchase_received"
+  | "purchase_cancelled"
+  | "undo";
+
+export type ActivityLineAction =
+  | "acquired"
+  | "given"
+  | "received"
+  | "ordered"
+  | "classified"
+  | "updated"
+  | "held"
+  | "released"
+  | "reserved_give"
+  | "reserved_receive"
+  | "cancelled"
+  | "undone";
+
 // ---- Read DTOs (shared by worker queries, API routes, and client) ----
 
 export interface CatalogSeries {
@@ -156,6 +188,38 @@ export interface TxnRecord {
   character: string;
   rarity: Rarity;
   note: string | null;
+}
+
+// ---- Unified activity stream ----
+
+export interface ActivityLine {
+  catalogId: number | null;
+  series: string | null;
+  character: string | null;
+  rarity: Rarity | null;
+  action: ActivityLineAction;
+  qty: number;
+  delta: number;
+  beforeStatus: CardStatus | null;
+  afterStatus: CardStatus | null;
+  unitAmount: number | null;
+  note: string | null;
+}
+
+export interface ActivityEvent {
+  id: number;
+  kind: ActivityKind;
+  occurredAt: string;
+  sourceType: string | null;
+  sourceId: number | null;
+  counterparty: string | null;
+  amount: number | null;
+  note: string | null;
+  revertsEventId: number | null;
+  reversedAt: string | null;
+  createdAt: string;
+  canUndo: boolean;
+  lines: ActivityLine[];
 }
 
 // A physical card joined with its catalog identity, plus whether the owner has

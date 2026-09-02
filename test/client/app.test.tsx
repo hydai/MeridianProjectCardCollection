@@ -97,15 +97,20 @@ describe("App", () => {
       "fetch",
       vi.fn(async (url: string) => ({
         ok: true,
-        json: async () =>
-          String(url).includes("/api/market") ? listings : overview,
+        json: async () => {
+          const path = String(url);
+          if (path.includes("/api/market")) return listings;
+          if (path.includes("/api/pending-")) return [];
+          return overview;
+        },
       })),
     );
     render(<App />);
     await waitFor(() =>
       expect(screen.getByText("子午計畫")).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByText("交易看板"));
+    fireEvent.click(screen.getByRole("button", { name: /交易 Trade/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /交易看板/ }));
     await waitFor(() => expect(screen.getByText("500 元")).toBeInTheDocument());
   });
 });

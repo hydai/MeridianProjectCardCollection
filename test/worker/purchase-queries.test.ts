@@ -167,6 +167,16 @@ describe("pending purchase queries", () => {
       attempts.filter((result) => result.status === "fulfilled"),
     ).toHaveLength(1);
     expect(await cardCount()).toBe(before + 2);
+    const activityLines = await env.DB.prepare(
+      `SELECT COUNT(*) AS lineCount, COALESCE(SUM(qty), 0) AS qty
+       FROM activity_event_lines
+       WHERE event_id = (
+         SELECT id FROM activity_events WHERE source_key = ?
+       )`,
+    )
+      .bind(`purchase-received:${id}`)
+      .first<{ lineCount: number; qty: number }>();
+    expect(activityLines).toEqual({ lineCount: 1, qty: 2 });
   });
 
   it("cancels without adding cards and retains the order audit trail", async () => {

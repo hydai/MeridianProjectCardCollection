@@ -28,6 +28,7 @@ import {
   createPurchaseReservation,
   createReservation,
   createSeries,
+  getActivities,
   getAdminPendingPurchases,
   getAdminPendingTrades,
   getCatalog,
@@ -43,6 +44,7 @@ import {
   listCards,
   recordTransaction,
   setCardHeld,
+  undoActivity,
   updateCard,
   updateSeries,
 } from "./db/queries";
@@ -525,6 +527,25 @@ admin.post("/transactions", async (c) => {
 admin.get("/transactions", async (c) =>
   c.json(await getTransactions(c.env.DB)),
 );
+
+admin.get("/activities", async (c) => {
+  const requestedLimit = Number(c.req.query("limit") ?? 100);
+  const limit = Number.isFinite(requestedLimit) ? requestedLimit : 100;
+  return c.json(await getActivities(c.env.DB, limit));
+});
+
+admin.post("/activities/:id/undo", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) {
+    return c.json({ error: "bad id" }, 400);
+  }
+  try {
+    await undoActivity(c.env.DB, id);
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+  return c.json({ ok: true });
+});
 
 admin.get("/pending-trades", async (c) =>
   c.json(await getAdminPendingTrades(c.env.DB)),
