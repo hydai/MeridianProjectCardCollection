@@ -17,18 +17,3 @@ export function isCatalogImageContentType(
 ): value is CatalogImageContentType {
   return CATALOG_IMAGE_CONTENT_TYPES.some((candidate) => candidate === value);
 }
-
-export function catalogImageExtension(
-  contentType: CatalogImageContentType,
-): string {
-  switch (contentType) {
-    case "image/jpeg":
-      return "jpg";
-    case "image/png":
-      return "png";
-    case "image/webp":
-      return "webp";
-    case "image/avif":
-      return "avif";
-  }
-}

@@ -4,17 +4,27 @@ import { useState } from "react";
 
 export function CatalogCardVisual({
   src,
+  thumbnailSrc,
+  sizes,
   alt,
   className,
   emptyLabel = "尚無卡面",
 }: {
   src?: string | null;
+  thumbnailSrc?: string | null;
+  sizes?: string;
   alt: string;
   className?: string;
   emptyLabel?: string | false;
 }) {
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const hasImage = Boolean(src && failedSrc !== src);
+  const sourceKey = `${thumbnailSrc ?? ""}\n${src ?? ""}`;
+  const [failedSourceKey, setFailedSourceKey] = useState<string | null>(null);
+  const fallbackSrc = src ?? thumbnailSrc ?? undefined;
+  const srcSet =
+    src && thumbnailSrc && src !== thumbnailSrc
+      ? `${thumbnailSrc} 320w, ${src} 960w`
+      : undefined;
+  const hasImage = Boolean(fallbackSrc && failedSourceKey !== sourceKey);
 
   return (
     <div
@@ -25,12 +35,14 @@ export function CatalogCardVisual({
     >
       {hasImage ? (
         <img
-          src={src ?? undefined}
+          src={fallbackSrc}
+          srcSet={srcSet}
+          sizes={srcSet ? sizes : undefined}
           alt={alt}
           loading="lazy"
           decoding="async"
           className="size-full object-contain"
-          onError={() => src && setFailedSrc(src)}
+          onError={() => setFailedSourceKey(sourceKey)}
         />
       ) : (
         <div className="flex flex-col items-center gap-2 px-2 text-center text-muted-foreground">

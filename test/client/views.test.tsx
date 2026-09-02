@@ -305,7 +305,10 @@ const progressMatrix = buildMatrix({
       held: 0,
       available: 1,
       wantCount: 2,
-      image: { url: "/api/catalog/1/image?side=front&v=1" },
+      image: {
+        url: "/api/catalog/1/image?side=front&variant=card&v=1",
+        thumbnailUrl: "/api/catalog/1/image?side=front&variant=thumb&v=1",
+      },
       volume: 1,
     },
     {
@@ -409,11 +412,17 @@ describe("Glance collection progress guide", () => {
     fireEvent.click(screen.getByRole("button", { name: /Mizuki/ }));
 
     const illustrated = screen.getByLabelText("NEW YEAR Mizuki R：持有 1 張");
-    expect(
-      within(illustrated).getByRole("img", {
-        name: "NEW YEAR Mizuki R 卡面",
-      }),
-    ).toHaveAttribute("src", "/api/catalog/1/image?side=front&v=1");
+    const cardImage = within(illustrated).getByRole("img", {
+      name: "NEW YEAR Mizuki R 卡面",
+    });
+    expect(cardImage).toHaveAttribute(
+      "src",
+      "/api/catalog/1/image?side=front&variant=card&v=1",
+    );
+    expect(cardImage).toHaveAttribute(
+      "srcset",
+      "/api/catalog/1/image?side=front&variant=thumb&v=1 320w, /api/catalog/1/image?side=front&variant=card&v=1 960w",
+    );
 
     const missing = screen.getByLabelText("NEW YEAR Mizuki SR：尚未收集");
     expect(within(missing).getByText("尚無卡面")).toBeInTheDocument();

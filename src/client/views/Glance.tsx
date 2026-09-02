@@ -208,6 +208,8 @@ function CardDetailContent({ card }: { card: CardDetail }) {
       <div className="flex flex-col gap-6 px-5 pb-8">
         <CatalogCardVisual
           src={card.image?.url}
+          thumbnailSrc={card.image?.thumbnailUrl}
+          sizes="280px"
           alt={`${card.series} ${card.character} ${card.rarity} 卡面`}
           className="mx-auto w-full max-w-[280px] bg-background shadow-md"
         />
@@ -270,6 +272,8 @@ function Slot({ card }: { card: CardDetail }) {
           >
             <CatalogCardVisual
               src={card.image?.url}
+              thumbnailSrc={card.image?.thumbnailUrl}
+              sizes="(max-width: 640px) calc((100vw - 68px) / 2), 150px"
               alt={`${card.series} ${card.character} ${card.rarity} 卡面`}
               className="w-full rounded-none border-x-0 border-t-0 transition-opacity group-hover:opacity-90"
             />

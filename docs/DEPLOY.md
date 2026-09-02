@@ -43,9 +43,10 @@ Create the R2 bucket named by the `CARD_IMAGES` binding in `wrangler.jsonc`:
 npx wrangler r2 bucket create meridian-card-images
 ```
 
-The bucket remains private. The Worker streams catalog images through
-`/api/catalog/:id/image`, while upload, replacement, and deletion stay behind
-the owner-only `/api/admin/*` gate.
+The bucket remains private. The Images binding in `wrangler.jsonc` converts each
+upload into fixed 320px and 960px WebP variants; only those optimized files are
+stored. The Worker streams them through `/api/catalog/:id/image`, while upload,
+replacement, and deletion stay behind the owner-only `/api/admin/*` gate.
 
 ## 4. Attach your custom domain
 

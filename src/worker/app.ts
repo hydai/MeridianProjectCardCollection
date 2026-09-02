@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { MAX_CARD_BATCH_SIZE } from "../shared/card-batch";
 import {
   CATALOG_IMAGE_MAX_BYTES,
-  catalogImageExtension,
   isCatalogImageContentType,
 } from "../shared/catalog-media";
 import {
@@ -29,6 +28,15 @@ import type {
   UpdateSeriesInput,
 } from "../shared/types";
 import { accessGuard } from "./auth";
+import {
+  CATALOG_IMAGE_OUTPUT_CONTENT_TYPE,
+  catalogImageObjectKeyForVariant,
+  catalogImageObjectKeys,
+  catalogImageStoredObjectKeys,
+  catalogImageVariant,
+  optimizeCatalogImage,
+  validateCatalogImage,
+} from "./catalog-images";
 import {
   addCards,
   addPack,
@@ -121,6 +129,26 @@ function claimedUploadSize(request: Request): number | null {
 
 function immutableImageRequest(request: Request, revision: number): boolean {
   return new URL(request.url).searchParams.get("v") === String(revision);
+}
+
+function catalogImageCacheKey(
+  request: Request,
+  catalogId: number,
+  side: CatalogMediaSide,
+  variant: "thumb" | "card",
+): Request | null {
+  const requestedRevision = new URL(request.url).searchParams.get("v");
+  if (!requestedRevision || !/^\d+$/.test(requestedRevision)) return null;
+
+  const url = new URL(request.url);
+  url.search = "";
+  url.searchParams.set("side", side);
+  url.searchParams.set("variant", variant);
+  url.searchParams.set("v", requestedRevision);
+  const headers = new Headers();
+  const ifNoneMatch = request.headers.get("if-none-match");
+  if (ifNoneMatch) headers.set("if-none-match", ifNoneMatch);
+  return new Request(url, { headers });
 }
 
 function etagMatches(request: Request, etag: string): boolean {
@@ -723,6 +751,13 @@ app.get("/api/catalog/:id/image", async (c) => {
   }
   const side = catalogMediaSide(c.req.query("side"));
   if (!side) return c.json({ error: "unsupported image side" }, 400);
+  const variant = catalogImageVariant(c.req.query("variant"));
+  if (!variant) return c.json({ error: "unsupported image variant" }, 400);
+  const cacheKey = catalogImageCacheKey(c.req.raw, catalogId, side, variant);
+  if (cacheKey) {
+    const cached = await caches.default.match(cacheKey);
+    if (cached) return cached;
+  }
 
   const stored = await getStoredCatalogMedia(c.env.DB, catalogId, side);
   if (!stored) {
@@ -730,14 +765,25 @@ app.get("/api/catalog/:id/image", async (c) => {
       "cache-control": "no-store",
     });
   }
-  const object = await c.env.CARD_IMAGES.get(stored.objectKey);
+  const requestedRevision = c.req.query("v");
+  if (
+    requestedRevision !== undefined &&
+    requestedRevision !== String(stored.revision)
+  ) {
+    return c.json({ error: "image revision not found" }, 404, {
+      "cache-control": "no-store",
+    });
+  }
+  const objectKey = catalogImageObjectKeyForVariant(stored.objectKey, variant);
+  const object = await c.env.CARD_IMAGES.get(objectKey);
   if (!object) {
     console.error(
       JSON.stringify({
         message: "catalog media object is missing",
         catalogId,
         side,
-        objectKey: stored.objectKey,
+        variant,
+        objectKey,
       }),
     );
     return c.json({ error: "image not found" }, 404, {
@@ -747,19 +793,31 @@ app.get("/api/catalog/:id/image", async (c) => {
 
   const headers = new Headers();
   object.writeHttpMetadata(headers);
-  headers.set("content-type", stored.contentType);
+  headers.set(
+    "content-type",
+    objectKey === stored.objectKey
+      ? stored.contentType
+      : CATALOG_IMAGE_OUTPUT_CONTENT_TYPE,
+  );
   headers.set("etag", object.httpEtag);
   headers.set("x-content-type-options", "nosniff");
+  const immutable = immutableImageRequest(c.req.raw, stored.revision);
   headers.set(
     "cache-control",
-    immutableImageRequest(c.req.raw, stored.revision)
+    immutable
       ? "public, max-age=31536000, immutable"
       : "public, max-age=0, must-revalidate",
   );
   if (etagMatches(c.req.raw, object.httpEtag)) {
     return new Response(null, { status: 304, headers });
   }
-  return new Response(object.body, { headers });
+  const response = new Response(object.body, { headers });
+  if (cacheKey && immutable) {
+    c.executionCtx.waitUntil(
+      caches.default.put(new Request(cacheKey.url), response.clone()),
+    );
+  }
+  return response;
 });
 app.get("/api/overview", async (c) => c.json(await getOverview(c.env.DB)));
 app.get("/api/missing", async (c) => c.json(await getMissing(c.env.DB)));
@@ -839,34 +897,97 @@ admin.put("/catalog/:id/image", async (c) => {
 
   const side: CatalogMediaSide = "front";
   const oldMedia = await getStoredCatalogMedia(c.env.DB, catalogId, side);
-  const objectKey = `catalog/${catalogId}/${side}/${crypto.randomUUID()}.${catalogImageExtension(contentType)}`;
-  let uploaded: R2Object;
+  const objectKeys = catalogImageObjectKeys(
+    catalogId,
+    side,
+    crypto.randomUUID(),
+  );
+  let optimized: Record<"thumb" | "card", ArrayBuffer>;
   try {
-    uploaded = await c.env.CARD_IMAGES.put(objectKey, imageBytes, {
-      httpMetadata: {
-        contentType,
-        contentDisposition: "inline",
-        cacheControl: "public, max-age=31536000, immutable",
-      },
-      customMetadata: { catalogId: String(catalogId), side },
-    });
+    await validateCatalogImage(c.env.IMAGES, imageBytes);
+    const [thumb, card] = await Promise.all([
+      optimizeCatalogImage(c.env.IMAGES, imageBytes, "thumb"),
+      optimizeCatalogImage(c.env.IMAGES, imageBytes, "card"),
+    ]);
+    optimized = { thumb, card };
   } catch (error) {
     console.error(
       JSON.stringify({
-        message: "catalog media upload failed",
+        message: "catalog media optimization failed",
         catalogId,
         side,
         error: String(error),
       }),
     );
+    return c.json({ error: "image could not be decoded or optimized" }, 422);
+  }
+
+  const imageMetadata = {
+    httpMetadata: {
+      contentType: CATALOG_IMAGE_OUTPUT_CONTENT_TYPE,
+      contentDisposition: "inline" as const,
+      cacheControl: "public, max-age=31536000, immutable",
+    },
+  };
+  const [thumbUpload, cardUpload] = await Promise.allSettled([
+    c.env.CARD_IMAGES.put(objectKeys.thumb, optimized.thumb, {
+      ...imageMetadata,
+      customMetadata: {
+        catalogId: String(catalogId),
+        side,
+        variant: "thumb",
+      },
+    }),
+    c.env.CARD_IMAGES.put(objectKeys.card, optimized.card, {
+      ...imageMetadata,
+      customMetadata: {
+        catalogId: String(catalogId),
+        side,
+        variant: "card",
+      },
+    }),
+  ]);
+  if (thumbUpload.status === "rejected" || cardUpload.status === "rejected") {
+    try {
+      await c.env.CARD_IMAGES.delete(Object.values(objectKeys));
+    } catch (cleanupError) {
+      console.error(
+        JSON.stringify({
+          message: "failed to clean up partially uploaded catalog media",
+          catalogId,
+          side,
+          objectKeys,
+          error: String(cleanupError),
+        }),
+      );
+    }
+    console.error(
+      JSON.stringify({
+        message: "catalog media upload failed",
+        catalogId,
+        side,
+        objectKeys,
+        error: String(
+          thumbUpload.status === "rejected"
+            ? thumbUpload.reason
+            : cardUpload.status === "rejected"
+              ? cardUpload.reason
+              : "unknown upload failure",
+        ),
+      }),
+    );
     return c.json({ error: "image storage is unavailable" }, 503);
   }
 
-  if (uploaded.size < 1 || uploaded.size > CATALOG_IMAGE_MAX_BYTES) {
-    await c.env.CARD_IMAGES.delete(objectKey);
-    return uploaded.size < 1
+  const uploaded = { thumb: thumbUpload.value, card: cardUpload.value };
+  const invalidOutput = Object.values(uploaded).find(
+    (object) => object.size < 1 || object.size > CATALOG_IMAGE_MAX_BYTES,
+  );
+  if (invalidOutput) {
+    await c.env.CARD_IMAGES.delete(Object.values(objectKeys));
+    return invalidOutput.size < 1
       ? c.json({ error: "image body required" }, 400)
-      : c.json({ error: "image exceeds the 15 MB limit" }, 413);
+      : c.json({ error: "optimized image exceeds the 15 MB limit" }, 413);
   }
 
   let revision: number;
@@ -874,22 +995,22 @@ admin.put("/catalog/:id/image", async (c) => {
     revision = await saveCatalogMedia(c.env.DB, {
       catalogId,
       side,
-      objectKey,
-      contentType,
-      byteSize: uploaded.size,
-      etag: uploaded.etag,
+      objectKey: objectKeys.card,
+      contentType: CATALOG_IMAGE_OUTPUT_CONTENT_TYPE,
+      byteSize: uploaded.card.size,
+      etag: uploaded.card.etag,
       originalFilename: uploadFilename.filename,
     });
   } catch (error) {
     try {
-      await c.env.CARD_IMAGES.delete(objectKey);
+      await c.env.CARD_IMAGES.delete(Object.values(objectKeys));
     } catch (cleanupError) {
       console.error(
         JSON.stringify({
           message: "failed to clean up an unreferenced catalog media object",
           catalogId,
           side,
-          objectKey,
+          objectKeys,
           error: String(cleanupError),
         }),
       );
@@ -905,9 +1026,11 @@ admin.put("/catalog/:id/image", async (c) => {
     return c.json({ error: "image metadata could not be saved" }, 500);
   }
 
-  if (oldMedia && oldMedia.objectKey !== objectKey) {
+  if (oldMedia && oldMedia.objectKey !== objectKeys.card) {
     try {
-      await c.env.CARD_IMAGES.delete(oldMedia.objectKey);
+      await c.env.CARD_IMAGES.delete(
+        catalogImageStoredObjectKeys(oldMedia.objectKey),
+      );
     } catch (error) {
       console.error(
         JSON.stringify({
@@ -933,7 +1056,9 @@ admin.delete("/catalog/:id/image", async (c) => {
   if (!stored) return c.json({ error: "image not found" }, 404);
 
   try {
-    await c.env.CARD_IMAGES.delete(stored.objectKey);
+    await c.env.CARD_IMAGES.delete(
+      catalogImageStoredObjectKeys(stored.objectKey),
+    );
     if (!(await deleteCatalogMediaMetadata(c.env.DB, catalogId, side))) {
       return c.json({ error: "image not found" }, 404);
     }

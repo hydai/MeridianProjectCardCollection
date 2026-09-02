@@ -4,12 +4,33 @@ import type {
   CatalogMediaEntry,
   OverviewResponse,
 } from "../../src/shared/types";
+import {
+  catalogImageObjectKeyForVariant,
+  catalogImageStoredObjectKeys,
+} from "../../src/worker/catalog-images";
+
+const VALID_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
+function validPng(): Uint8Array {
+  return Uint8Array.from(atob(VALID_PNG_BASE64), (value) =>
+    value.charCodeAt(0),
+  );
+}
 
 async function firstCatalogId(): Promise<number> {
   const row = await env.DB.prepare(
     "SELECT id FROM card_catalog ORDER BY id LIMIT 1",
   ).first<{ id: number }>();
   if (!row) throw new Error("seeded catalog is empty");
+  return row.id;
+}
+
+async function secondCatalogId(): Promise<number> {
+  const row = await env.DB.prepare(
+    "SELECT id FROM card_catalog ORDER BY id LIMIT 1 OFFSET 1",
+  ).first<{ id: number }>();
+  if (!row) throw new Error("seeded catalog has fewer than two entries");
   return row.id;
 }
 
@@ -24,8 +45,8 @@ async function listMedia(): Promise<CatalogMediaEntry[]> {
 async function upload(
   catalogId: number,
   bytes: Uint8Array,
-  contentType = "image/jpeg",
-  filename = "正面卡圖.jpg",
+  contentType = "image/png",
+  filename = "正面卡圖.png",
 ): Promise<Response> {
   return SELF.fetch(
     `https://example.com/api/admin/catalog/${catalogId}/image`,
@@ -54,7 +75,7 @@ describe("catalog media", () => {
       initialOverview.cells.find((cell) => cell.catalogId === catalogId)?.image,
     ).toBeNull();
 
-    const firstBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+    const firstBytes = validPng();
     const firstUpload = await upload(catalogId, firstBytes);
     expect(firstUpload.status).toBe(200);
     await expect(firstUpload.json()).resolves.toEqual({
@@ -66,14 +87,24 @@ describe("catalog media", () => {
     const saved = afterFirst.find((entry) => entry.catalogId === catalogId);
     expect(saved?.front).toMatchObject({
       side: "front",
-      contentType: "image/jpeg",
-      byteSize: firstBytes.byteLength,
-      originalFilename: "正面卡圖.jpg",
+      contentType: "image/webp",
+      originalFilename: "正面卡圖.png",
       revision: 1,
     });
+    expect(saved?.front?.byteSize).toBeGreaterThan(0);
     expect(saved?.front?.url).toBe(
-      `/api/catalog/${catalogId}/image?side=front&v=1`,
+      `/api/catalog/${catalogId}/image?side=front&variant=card&v=1`,
     );
+    expect(saved?.front?.thumbnailUrl).toBe(
+      `/api/catalog/${catalogId}/image?side=front&variant=thumb&v=1`,
+    );
+    expect(
+      (
+        await SELF.fetch(
+          `https://example.com/api/catalog/${catalogId}/image?side=front&variant=card&v=999`,
+        )
+      ).status,
+    ).toBe(404);
 
     const publicOverview = await SELF.fetch(
       "https://example.com/api/overview",
@@ -82,20 +113,32 @@ describe("catalog media", () => {
       (cell) => cell.catalogId === catalogId,
     );
     expect(publicCell?.image).toEqual({
-      url: `/api/catalog/${catalogId}/image?side=front&v=1`,
+      url: `/api/catalog/${catalogId}/image?side=front&variant=card&v=1`,
+      thumbnailUrl: `/api/catalog/${catalogId}/image?side=front&variant=thumb&v=1`,
     });
-    expect(Object.keys(publicCell?.image ?? {})).toEqual(["url"]);
+    expect(Object.keys(publicCell?.image ?? {})).toEqual([
+      "url",
+      "thumbnailUrl",
+    ]);
 
     const publicImage = await SELF.fetch(
       `https://example.com${saved?.front?.url}`,
     );
     expect(publicImage.status).toBe(200);
-    expect(publicImage.headers.get("content-type")).toBe("image/jpeg");
+    expect(publicImage.headers.get("content-type")).toBe("image/webp");
     expect(publicImage.headers.get("cache-control")).toContain("immutable");
     expect(publicImage.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(new Uint8Array(await publicImage.arrayBuffer())).toEqual(firstBytes);
+    expect((await publicImage.arrayBuffer()).byteLength).toBeGreaterThan(0);
     const etag = publicImage.headers.get("etag");
     expect(etag).toBeTruthy();
+
+    const thumbnail = await SELF.fetch(
+      `https://example.com${saved?.front?.thumbnailUrl}`,
+    );
+    expect(thumbnail.status).toBe(200);
+    expect(thumbnail.headers.get("content-type")).toBe("image/webp");
+    expect(thumbnail.headers.get("cache-control")).toContain("immutable");
+    expect((await thumbnail.arrayBuffer()).byteLength).toBeGreaterThan(0);
 
     const notModified = await SELF.fetch(
       `https://example.com${saved?.front?.url}`,
@@ -109,8 +152,27 @@ describe("catalog media", () => {
       .bind(catalogId)
       .first<{ objectKey: string }>();
     expect(oldMetadata).not.toBeNull();
+    expect(oldMetadata?.objectKey).toMatch(/\/card\.webp$/);
+    const oldObjectKeys = catalogImageStoredObjectKeys(
+      oldMetadata?.objectKey ?? "missing",
+    );
+    expect(oldObjectKeys).toHaveLength(2);
+    const storedObjects = await env.CARD_IMAGES.list({
+      prefix: `catalog/${catalogId}/front/`,
+    });
+    expect(storedObjects.objects.map((object) => object.key).sort()).toEqual(
+      [...oldObjectKeys].sort(),
+    );
+    expect(
+      await env.CARD_IMAGES.get(
+        catalogImageObjectKeyForVariant(
+          oldMetadata?.objectKey ?? "missing",
+          "thumb",
+        ),
+      ),
+    ).not.toBeNull();
 
-    const secondBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const secondBytes = validPng();
     const replacement = await upload(
       catalogId,
       secondBytes,
@@ -123,15 +185,15 @@ describe("catalog media", () => {
       revision: 2,
     });
     expect(
-      await env.CARD_IMAGES.get(oldMetadata?.objectKey ?? "missing"),
-    ).toBeNull();
+      await Promise.all(oldObjectKeys.map((key) => env.CARD_IMAGES.get(key))),
+    ).toEqual([null, null]);
 
     const afterReplacement = await listMedia();
     const replaced = afterReplacement.find(
       (entry) => entry.catalogId === catalogId,
     );
     expect(replaced?.front).toMatchObject({
-      contentType: "image/png",
+      contentType: "image/webp",
       originalFilename: "replacement.png",
       revision: 2,
     });
@@ -147,9 +209,14 @@ describe("catalog media", () => {
     );
     expect(deleted.status).toBe(200);
     await expect(deleted.json()).resolves.toEqual({ ok: true });
+    const currentObjectKeys = catalogImageStoredObjectKeys(
+      currentMetadata?.objectKey ?? "missing",
+    );
     expect(
-      await env.CARD_IMAGES.get(currentMetadata?.objectKey ?? "missing"),
-    ).toBeNull();
+      await Promise.all(
+        currentObjectKeys.map((key) => env.CARD_IMAGES.get(key)),
+      ),
+    ).toEqual([null, null]);
     expect(
       await env.DB.prepare(
         "SELECT 1 FROM catalog_media WHERE catalog_id = ? AND side = 'front'",
@@ -172,13 +239,25 @@ describe("catalog media", () => {
     ).toBeNull();
   });
 
-  it("rejects unsupported, empty, oversized, and unknown-slot uploads", async () => {
+  it("rejects unsupported, invalid, oversized, and unknown-slot uploads", async () => {
     const catalogId = await firstCatalogId();
 
     expect(
       (await upload(catalogId, new Uint8Array([1]), "image/svg+xml")).status,
     ).toBe(415);
     expect((await upload(catalogId, new Uint8Array())).status).toBe(400);
+    expect(
+      (await upload(catalogId, new Uint8Array([0xff, 0xd8, 0xff, 0xd9])))
+        .status,
+    ).toBe(422);
+
+    expect(
+      (
+        await SELF.fetch(
+          `https://example.com/api/catalog/${catalogId}/image?variant=original`,
+        )
+      ).status,
+    ).toBe(400);
 
     const oversized = await SELF.fetch(
       `https://example.com/api/admin/catalog/${catalogId}/image`,
@@ -209,6 +288,35 @@ describe("catalog media", () => {
     expect((await upload(999_999, new Uint8Array([1]))).status).toBe(404);
   });
 
+  it("caches immutable optimized variants before reading R2 again", async () => {
+    const catalogId = await secondCatalogId();
+    expect((await upload(catalogId, validPng())).status).toBe(200);
+    const media = (await listMedia()).find(
+      (entry) => entry.catalogId === catalogId,
+    );
+    expect(media?.front).not.toBeNull();
+
+    const first = await SELF.fetch(`https://example.com${media?.front?.url}`);
+    expect(first.status).toBe(200);
+    const etag = first.headers.get("etag");
+    expect(etag).toBeTruthy();
+
+    const stored = await env.DB.prepare(
+      "SELECT object_key AS objectKey FROM catalog_media WHERE catalog_id = ? AND side = 'front'",
+    )
+      .bind(catalogId)
+      .first<{ objectKey: string }>();
+    expect(stored).not.toBeNull();
+    await env.CARD_IMAGES.delete(
+      catalogImageStoredObjectKeys(stored?.objectKey ?? "missing"),
+    );
+
+    const cached = await SELF.fetch(`https://example.com${media?.front?.url}`, {
+      headers: { "if-none-match": etag ?? "" },
+    });
+    expect(cached.status).toBe(304);
+  });
+
   it("prevents a series edit from orphaning an uploaded image", async () => {
     const created = await SELF.fetch("https://example.com/api/admin/series", {
       method: "POST",
@@ -228,9 +336,7 @@ describe("catalog media", () => {
       .bind("MEDIA SERIES", "Alice", "R")
       .first<{ id: number }>();
     expect(alice).not.toBeNull();
-    expect(
-      (await upload(alice?.id ?? 0, new Uint8Array([0xff, 0xd8]))).status,
-    ).toBe(200);
+    expect((await upload(alice?.id ?? 0, validPng())).status).toBe(200);
 
     const removeAlice = await SELF.fetch(
       "https://example.com/api/admin/series/MEDIA%20SERIES",

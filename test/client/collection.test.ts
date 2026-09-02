@@ -137,14 +137,19 @@ describe("buildMatrix", () => {
         entry.catalogId === 1
           ? {
               ...entry,
-              image: { url: "/api/catalog/1/image?side=front&v=3" },
+              image: {
+                url: "/api/catalog/1/image?side=front&variant=card&v=3",
+                thumbnailUrl:
+                  "/api/catalog/1/image?side=front&variant=thumb&v=3",
+              },
             }
           : entry,
       ),
     });
 
     expect(getImage(withImage, 0, 0, 0)).toEqual({
-      url: "/api/catalog/1/image?side=front&v=3",
+      url: "/api/catalog/1/image?side=front&variant=card&v=3",
+      thumbnailUrl: "/api/catalog/1/image?side=front&variant=thumb&v=3",
     });
     expect(getImage(withImage, 0, 0, 1)).toBeNull();
   });

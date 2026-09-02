@@ -66,6 +66,7 @@ export type CatalogMediaSide = "front" | "back";
 export interface CatalogMediaAsset {
   side: CatalogMediaSide;
   url: string;
+  thumbnailUrl: string;
   contentType: string;
   byteSize: number;
   originalFilename: string | null;
@@ -86,6 +87,7 @@ export interface CatalogMediaEntry {
 // admin-only; the versioned URL is all public collection views need.
 export interface CatalogImageRef {
   url: string;
+  thumbnailUrl?: string;
 }
 
 export interface CreateSeriesInput {

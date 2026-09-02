@@ -23,6 +23,9 @@
       "bucket_name": "meridian-card-images"
     }
   ],
+  "images": {
+    "binding": "IMAGES"
+  },
   "vars": {
     "OWNER_EMAIL": "z54981220@gmail.com",
     "ACCESS_TEAM_DOMAIN": "hydai.cloudflareaccess.com",

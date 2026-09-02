@@ -20,8 +20,9 @@ const ready: CatalogMediaEntry = {
   rarity: "SSR",
   front: {
     side: "front",
-    url: "/api/catalog/2/image?side=front&v=1",
-    contentType: "image/jpeg",
+    url: "/api/catalog/2/image?side=front&variant=card&v=1",
+    thumbnailUrl: "/api/catalog/2/image?side=front&variant=thumb&v=1",
+    contentType: "image/webp",
     byteSize: 2048,
     originalFilename: "rei.jpg",
     revision: 1,
@@ -60,15 +61,16 @@ describe("CatalogMedia", () => {
     expect(screen.getByText(/rei\.jpg/)).toBeInTheDocument();
   });
 
-  it("uploads an accepted file as a raw catalog image and refreshes the queue", async () => {
+  it("uploads an accepted source image and refreshes the optimized queue", async () => {
     let getCount = 0;
     const uploaded: CatalogMediaEntry = {
       ...missing,
       front: {
         side: "front",
-        url: "/api/catalog/1/image?side=front&v=1",
-        contentType: "image/jpeg",
-        byteSize: 4,
+        url: "/api/catalog/1/image?side=front&variant=card&v=1",
+        thumbnailUrl: "/api/catalog/1/image?side=front&variant=thumb&v=1",
+        contentType: "image/webp",
+        byteSize: 512,
         originalFilename: "mizuki card.jpg",
         revision: 1,
         updatedAt: "2026-09-02 04:00:00",

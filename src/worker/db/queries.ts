@@ -217,8 +217,13 @@ function catalogMediaUrl(
   catalogId: number,
   side: CatalogMediaSide,
   revision: number,
+  variant: "thumb" | "card" = "card",
 ): string {
-  const params = new URLSearchParams({ side, v: String(revision) });
+  const params = new URLSearchParams({
+    side,
+    variant,
+    v: String(revision),
+  });
   return `/api/catalog/${catalogId}/image?${params}`;
 }
 
@@ -260,6 +265,12 @@ export async function listCatalogMedia(
         ? {
             side: row.side,
             url: catalogMediaUrl(row.catalogId, row.side, row.revision),
+            thumbnailUrl: catalogMediaUrl(
+              row.catalogId,
+              row.side,
+              row.revision,
+              "thumb",
+            ),
             contentType: row.contentType,
             byteSize: row.byteSize,
             originalFilename: row.originalFilename,
@@ -568,7 +579,15 @@ export async function getOverview(db: D1Database): Promise<OverviewResponse> {
     image:
       imageRevision === null
         ? null
-        : { url: catalogMediaUrl(cell.catalogId, "front", imageRevision) },
+        : {
+            url: catalogMediaUrl(cell.catalogId, "front", imageRevision),
+            thumbnailUrl: catalogMediaUrl(
+              cell.catalogId,
+              "front",
+              imageRevision,
+              "thumb",
+            ),
+          },
   }));
 
   const progress = (

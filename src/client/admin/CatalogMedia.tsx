@@ -115,6 +115,8 @@ function CatalogMediaRow({
     <li className="grid grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-4 py-3 last:border-b-0 max-[680px]:grid-cols-[54px_minmax(0,1fr)] max-[680px]:gap-3">
       <CatalogCardVisual
         src={entry.front?.url}
+        thumbnailSrc={entry.front?.thumbnailUrl}
+        sizes="64px"
         alt={`${identity} 卡面`}
         emptyLabel={false}
         className="w-16 max-[680px]:w-[54px]"
@@ -134,7 +136,7 @@ function CatalogMediaRow({
         </div>
         {entry.front ? (
           <p className="mt-1 truncate text-xs text-muted-foreground">
-            {entry.front.originalFilename ?? "未記錄檔名"} ·{" "}
+            {entry.front.originalFilename ?? "未記錄檔名"} · 展示圖{" "}
             {formatBytes(entry.front.byteSize)} ·{" "}
             {formatUpdatedAt(entry.front.updatedAt)}
           </p>
@@ -330,10 +332,11 @@ export function CatalogMedia() {
 
       <Alert>
         <CameraIcon />
-        <AlertTitle>現在不用先把卡片全部拍完</AlertTitle>
+        <AlertTitle>原始照片不會存入雲端</AlertTitle>
         <AlertDescription>
-          待補圖就是拍攝清單。之後可逐張上傳或更換；請先使用 JPEG、PNG、WebP 或
-          AVIF，每張最多 15 MB。
+          上傳後只保留 320px 縮圖與 960px 展示用
+          WebP，服務端不會保留上傳原檔。待補圖就是拍攝清單；可使用
+          JPEG、PNG、WebP 或 AVIF，每張最多 15 MB。
         </AlertDescription>
       </Alert>
 
