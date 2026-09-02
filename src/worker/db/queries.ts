@@ -8,6 +8,7 @@ import type {
   AdminPendingPurchase,
   AdminPendingTrade,
   AdminPurchaseReservationLine,
+  AdminTradePost,
   CardRow,
   CardStatus,
   CatalogSeries,
@@ -15,6 +16,7 @@ import type {
   CreatePurchaseReservationInput,
   CreateReservationInput,
   CreateSeriesInput,
+  CreateTradePostReservationInput,
   MarketListing,
   MissingEntry,
   OpeningCreated,
@@ -58,6 +60,7 @@ interface ActivityEventInput {
   amount?: number | null;
   note?: string | null;
   revertsEventId?: number;
+  tradePostId?: number | null;
 }
 
 interface ActivityLineInput {
@@ -85,8 +88,8 @@ function insertActivityEventStatement(
     .prepare(
       `INSERT INTO activity_events
          (source_key, kind, occurred_at, source_type, source_id,
-          counterparty, amount, note, reverts_event_id)
-       VALUES (?, ?, COALESCE(?, datetime('now')), ?, ?, ?, ?, ?, ?)
+          counterparty, amount, note, reverts_event_id, trade_post_id)
+       VALUES (?, ?, COALESCE(?, datetime('now')), ?, ?, ?, ?, ?, ?, ?)
        RETURNING id`,
     )
     .bind(
@@ -99,6 +102,7 @@ function insertActivityEventStatement(
       input.amount ?? null,
       input.note ?? null,
       input.revertsEventId ?? null,
+      input.tradePostId ?? null,
     );
 }
 
@@ -692,7 +696,9 @@ export async function getPublicTradePost(
   return (await hydrateTradePosts(db, [header]))[0] ?? null;
 }
 
-export async function getAdminTradePosts(db: D1Database): Promise<TradePost[]> {
+export async function getAdminTradePosts(
+  db: D1Database,
+): Promise<AdminTradePost[]> {
   const headers = (
     await db
       .prepare(
@@ -702,7 +708,43 @@ export async function getAdminTradePosts(db: D1Database): Promise<TradePost[]> {
       )
       .all<TradePostHeaderRow>()
   ).results;
-  return hydrateTradePosts(db, headers);
+  const posts = await hydrateTradePosts(db, headers);
+  if (posts.length === 0) return [];
+  const counts = (
+    await db
+      .prepare(
+        `WITH totals AS (
+           SELECT trade_post_id AS postId, COUNT(*) AS reservationCount
+           FROM activity_events
+           WHERE kind = 'trade_reserved' AND trade_post_id IS NOT NULL
+           GROUP BY trade_post_id
+         ), active AS (
+           SELECT trade_post_id AS postId, COUNT(*) AS activeReservationCount
+           FROM trade_reservations
+           WHERE trade_post_id IS NOT NULL
+           GROUP BY trade_post_id
+         )
+         SELECT p.id AS postId,
+                COALESCE(t.reservationCount, 0) AS reservationCount,
+                COALESCE(a.activeReservationCount, 0) AS activeReservationCount
+         FROM trade_posts p
+         LEFT JOIN totals t ON t.postId = p.id
+         LEFT JOIN active a ON a.postId = p.id
+         WHERE p.id IN (${posts.map(() => "?").join(", ")})`,
+      )
+      .bind(...posts.map((post) => post.id))
+      .all<{
+        postId: number;
+        reservationCount: number;
+        activeReservationCount: number;
+      }>()
+  ).results;
+  const byId = new Map(counts.map((count) => [count.postId, count]));
+  return posts.map((post) => ({
+    ...post,
+    reservationCount: byId.get(post.id)?.reservationCount ?? 0,
+    activeReservationCount: byId.get(post.id)?.activeReservationCount ?? 0,
+  }));
 }
 
 async function getAdminTradePost(
@@ -933,6 +975,7 @@ async function insertTradePostActivity(
       kind,
       sourceType: "trade_post",
       sourceId: post.id,
+      tradePostId: post.id,
       note: post.note,
     }),
   ];
@@ -1730,6 +1773,8 @@ interface ActivityEventRow {
   revertsEventId: number | null;
   reversedAt: string | null;
   createdAt: string;
+  tradePostId: number | null;
+  tradePostPublicId: string | null;
   canUndo: number;
 }
 
@@ -1759,6 +1804,8 @@ export async function getActivities(
                 e.counterparty, e.amount, e.note,
                 e.reverts_event_id AS revertsEventId,
                 e.reversed_at AS reversedAt, e.created_at AS createdAt,
+                e.trade_post_id AS tradePostId,
+                p.public_id AS tradePostPublicId,
                 CASE
                   WHEN e.kind IN ('opening', 'purchase', 'acquisition')
                    AND e.reversed_at IS NULL
@@ -1811,6 +1858,7 @@ export async function getActivities(
                   THEN 1 ELSE 0
                 END AS canUndo
          FROM activity_events e
+         LEFT JOIN trade_posts p ON p.id = e.trade_post_id
          ${eventFilter}
          ORDER BY e.occurred_at DESC, e.id DESC
          LIMIT ?`,
@@ -2157,41 +2205,64 @@ export async function getAdminPendingTrades(
   const headers = (
     await db
       .prepare(
-        `SELECT id, reserved_at AS reservedAt, counterparty, note
-         FROM trade_reservations ORDER BY reserved_at DESC, id DESC`,
+        `SELECT r.id, r.reserved_at AS reservedAt, r.counterparty, r.note,
+                r.trade_post_id AS tradePostId,
+                p.public_id AS tradePostPublicId
+         FROM trade_reservations r
+         LEFT JOIN trade_posts p ON p.id = r.trade_post_id
+         ORDER BY r.reserved_at DESC, r.id DESC`,
       )
       .all<{
         id: number;
         reservedAt: string;
         counterparty: string | null;
         note: string | null;
+        tradePostId: number | null;
+        tradePostPublicId: string | null;
       }>()
   ).results.map((h) => ({ ...h, give: [], receive: [] }) as AdminPendingTrade);
   return attachLines(headers, await reservationLines(db));
 }
 
-export async function createReservation(
-  db: D1Database,
-  input: CreateReservationInput,
-): Promise<number> {
-  interface PendingLine {
-    direction: TradeDirection;
-    catalogId: number;
-    qty: number;
-    cardId: number | null;
-  }
+interface ResolvedReservationLineInput {
+  catalogId: number;
+  qty: number;
+}
 
+interface ResolvedReservationInput {
+  counterparty?: string;
+  reservedAt: string;
+  note?: string;
+  give: ResolvedReservationLineInput[];
+  receive: ResolvedReservationLineInput[];
+}
+
+interface PendingLine {
+  direction: TradeDirection;
+  catalogId: number;
+  qty: number;
+  cardId: number | null;
+}
+
+async function createResolvedReservation(
+  db: D1Database,
+  input: ResolvedReservationInput,
+  tradePostId: number | null = null,
+): Promise<number> {
   // Resolve and allocate everything before writing. The partial unique index on
   // card_id is the final concurrency guard if two requests race this read phase.
-  const giveRequests: { catalogId: number; qty: number }[] = [];
-  for (const g of input.give) {
-    if (!Number.isInteger(g.qty) || g.qty < 1) {
-      throw new Error("qty must be a positive integer");
+  const giveRequests = input.give;
+  for (const line of [...giveRequests, ...input.receive]) {
+    if (
+      !Number.isInteger(line.catalogId) ||
+      line.catalogId < 1 ||
+      !Number.isInteger(line.qty) ||
+      line.qty < 1
+    ) {
+      throw new Error(
+        "reservation lines need valid catalog ids and quantities",
+      );
     }
-    giveRequests.push({
-      catalogId: await catalogId(db, g.series, g.character, g.rarity),
-      qty: g.qty,
-    });
   }
   const lines: PendingLine[] = [];
   const demandByCatalog = new Map<number, number>();
@@ -2202,14 +2273,19 @@ export async function createReservation(
     );
   }
   const allocatedByCatalog = new Map<number, number[]>();
+  const legacyReserved = await legacyReservedCardIds(db);
   for (const [catalog, demand] of demandByCatalog) {
+    const statusFilter =
+      tradePostId === null
+        ? "k.status IN ('owned','for_sale','for_trade')"
+        : "k.status = 'for_trade'";
     const candidates = (
       await db
         .prepare(
           `SELECT k.id
            FROM cards k
            WHERE k.catalog_id = ?
-             AND k.status IN ('owned','for_sale','for_trade')
+             AND ${statusFilter}
              AND k.held = 0
              AND NOT EXISTS (
                SELECT 1 FROM trade_reservation_lines l
@@ -2226,18 +2302,7 @@ export async function createReservation(
         .bind(catalog)
         .all<{ id: number }>()
     ).results;
-    const legacyReserved =
-      (
-        await db
-          .prepare(
-            `SELECT COALESCE(SUM(qty), 0) AS qty
-             FROM trade_reservation_lines
-             WHERE direction = 'give' AND catalog_id = ? AND card_id IS NULL`,
-          )
-          .bind(catalog)
-          .first<{ qty: number }>()
-      )?.qty ?? 0;
-    const available = candidates.slice(legacyReserved);
+    const available = candidates.filter((card) => !legacyReserved.has(card.id));
     if (available.length < demand) {
       throw new Error(`not enough unreserved holdings for catalog ${catalog}`);
     }
@@ -2261,13 +2326,10 @@ export async function createReservation(
       });
     }
   }
-  for (const r of input.receive ?? []) {
-    if (!Number.isInteger(r.qty) || r.qty < 1) {
-      throw new Error("qty must be a positive integer");
-    }
+  for (const r of input.receive) {
     lines.push({
       direction: "receive",
-      catalogId: await catalogId(db, r.series, r.character, r.rarity),
+      catalogId: r.catalogId,
       qty: r.qty,
       cardId: null,
     });
@@ -2277,7 +2339,10 @@ export async function createReservation(
     (
       await db
         .prepare(
-          "SELECT COALESCE(MAX(id), 0) + 1 AS id FROM trade_reservations",
+          `SELECT COALESCE(
+             (SELECT seq FROM sqlite_sequence WHERE name = 'trade_reservations'),
+             0
+           ) + 1 AS id`,
         )
         .first<{ id: number }>()
     )?.id ?? 1;
@@ -2291,18 +2356,20 @@ export async function createReservation(
       sourceId: id,
       counterparty: input.counterparty ?? null,
       note: input.note ?? null,
+      tradePostId,
     }),
     db
       .prepare(
         `INSERT INTO trade_reservations
-           (id, counterparty, reserved_at, note)
-         VALUES (?, ?, ?, ?)`,
+           (id, counterparty, reserved_at, note, trade_post_id)
+         VALUES (?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
         input.counterparty ?? null,
         input.reservedAt,
         input.note ?? null,
+        tradePostId,
       ),
   ];
   for (const line of lines) {
@@ -2328,6 +2395,105 @@ export async function createReservation(
   }
   await db.batch(statements);
   return id;
+}
+
+export async function createReservation(
+  db: D1Database,
+  input: CreateReservationInput,
+): Promise<number> {
+  const give: ResolvedReservationLineInput[] = [];
+  for (const line of input.give) {
+    give.push({
+      catalogId: await catalogId(db, line.series, line.character, line.rarity),
+      qty: line.qty,
+    });
+  }
+  const receive: ResolvedReservationLineInput[] = [];
+  for (const line of input.receive ?? []) {
+    receive.push({
+      catalogId: await catalogId(db, line.series, line.character, line.rarity),
+      qty: line.qty,
+    });
+  }
+  return createResolvedReservation(db, { ...input, give, receive });
+}
+
+export async function createTradePostReservation(
+  db: D1Database,
+  tradePostId: number,
+  input: CreateTradePostReservationInput,
+): Promise<number> {
+  if (input.give.length === 0) {
+    throw new Error("at least one give line required");
+  }
+  const post = await db
+    .prepare("SELECT status FROM trade_posts WHERE id = ?")
+    .bind(tradePostId)
+    .first<{ status: TradePostStatus }>();
+  if (!post || post.status !== "published") {
+    throw new Error(`published announcement ${tradePostId} not found`);
+  }
+
+  const snapshot = (
+    await db
+      .prepare(
+        `SELECT direction, catalog_id AS catalogId, qty
+         FROM trade_post_lines WHERE post_id = ?`,
+      )
+      .bind(tradePostId)
+      .all<{
+        direction: TradePostDirection;
+        catalogId: number | null;
+        qty: number;
+      }>()
+  ).results;
+  const snapshotByKey = new Map(
+    snapshot.flatMap((line) =>
+      line.catalogId === null
+        ? []
+        : [
+            [
+              tradePostAvailabilityKey(line.direction, line.catalogId),
+              line.qty,
+            ] as const,
+          ],
+    ),
+  );
+  const availability = await tradePostAvailability(db);
+  const requested = [
+    ...input.give.map((line) => ({ ...line, direction: "give" as const })),
+    ...input.receive.map((line) => ({ ...line, direction: "want" as const })),
+  ];
+  const seen = new Set<string>();
+  for (const line of requested) {
+    const key = tradePostAvailabilityKey(line.direction, line.catalogId);
+    if (seen.has(key)) {
+      throw new Error("a card type can only appear once per reservation side");
+    }
+    seen.add(key);
+    const snapshotQty = snapshotByKey.get(key) ?? 0;
+    const availableQty = availability.get(key) ?? 0;
+    if (snapshotQty === 0) {
+      throw new Error(
+        "reservation contains a card not advertised by this post",
+      );
+    }
+    if (line.qty > Math.min(snapshotQty, availableQty)) {
+      throw new Error("announcement quantity is no longer available");
+    }
+  }
+
+  return createResolvedReservation(
+    db,
+    {
+      counterparty: input.counterparty,
+      reservedAt: input.reservedAt,
+      note: input.note,
+      give: input.give,
+      receive: input.receive,
+    },
+    tradePostId,
+  );
 }
 
 async function tradeReservationActivityId(
@@ -2356,9 +2522,16 @@ export async function cancelReservation(
   id: number,
 ): Promise<void> {
   const header = await db
-    .prepare("SELECT counterparty, note FROM trade_reservations WHERE id = ?")
+    .prepare(
+      `SELECT counterparty, note, trade_post_id AS tradePostId
+       FROM trade_reservations WHERE id = ?`,
+    )
     .bind(id)
-    .first<{ counterparty: string | null; note: string | null }>();
+    .first<{
+      counterparty: string | null;
+      note: string | null;
+      tradePostId: number | null;
+    }>();
   if (!header) throw new Error(`reservation ${id} not found`);
   const lifecycleId = await tradeReservationActivityId(db, id);
   const lines = (
@@ -2384,6 +2557,7 @@ export async function cancelReservation(
       sourceId: id,
       counterparty: header.counterparty,
       note: header.note,
+      tradePostId: header.tradePostId,
     }),
   ];
   for (const line of lines) {
@@ -2420,9 +2594,16 @@ export async function completeReservation(
 ): Promise<void> {
   // ---- READ PHASE (no writes) ----
   const header = await db
-    .prepare("SELECT counterparty, note FROM trade_reservations WHERE id = ?")
+    .prepare(
+      `SELECT counterparty, note, trade_post_id AS tradePostId
+       FROM trade_reservations WHERE id = ?`,
+    )
     .bind(id)
-    .first<{ counterparty: string | null; note: string | null }>();
+    .first<{
+      counterparty: string | null;
+      note: string | null;
+      tradePostId: number | null;
+    }>();
   if (!header) throw new Error(`reservation ${id} not found`);
   const lifecycleId = await tradeReservationActivityId(db, id);
 
@@ -2529,6 +2710,7 @@ export async function completeReservation(
       sourceId: id,
       counterparty: header.counterparty,
       note: header.note,
+      tradePostId: header.tradePostId,
     }),
   ];
   for (const line of raw) {

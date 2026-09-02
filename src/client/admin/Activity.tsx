@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
+import { ExternalLinkIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type {
   ActivityEvent,
@@ -19,6 +20,7 @@ import type {
   CardStatus,
 } from "../../shared/types";
 import { fetchActivities, undoActivity } from "../api";
+import { tradePostUrl } from "../views/TradePosts";
 
 type ActivityFilter = "all" | "collection" | "trade" | "adjustment";
 
@@ -232,11 +234,25 @@ function EventCard({
       </CardContent>
 
       <CardFooter className="mt-3 min-h-12 justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
-          {event.kind === "undo" && event.revertsEventId
-            ? `復原痕跡 #${event.revertsEventId}`
-            : `${event.lines.length} 種明細 · ${totalQty} 張`}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs text-muted-foreground">
+            {event.kind === "undo" && event.revertsEventId
+              ? `復原痕跡 #${event.revertsEventId}`
+              : `${event.lines.length} 種明細 · ${totalQty} 張`}
+          </p>
+          {event.tradePostId && event.tradePostPublicId ? (
+            <Button asChild variant="link" size="sm" className="h-auto p-0">
+              <a
+                href={tradePostUrl(event.tradePostPublicId)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                來源公告 #{event.tradePostId}
+                <ExternalLinkIcon data-icon="inline-end" />
+              </a>
+            </Button>
+          ) : null}
+        </div>
         {event.canUndo && !confirming ? (
           <Button type="button" variant="ghost" size="sm" onClick={onAskUndo}>
             復原這筆入藏

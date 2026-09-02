@@ -68,7 +68,13 @@ function sectionFor(tab: TabId): Section {
   );
 }
 
-function ActivePanel({ tab }: { tab: TabId }) {
+function ActivePanel({
+  tab,
+  onSelectTab,
+}: {
+  tab: TabId;
+  onSelectTab: (tab: TabId) => void;
+}) {
   switch (tab) {
     case "pack":
       return <QuickPackOpening />;
@@ -79,7 +85,7 @@ function ActivePanel({ tab }: { tab: TabId }) {
     case "series":
       return <SeriesManager />;
     case "posts":
-      return <TradePosts />;
+      return <TradePosts onOpenReservations={() => onSelectTab("reserve")} />;
     case "reserve":
       return <PendingTrades />;
     case "purchase":
@@ -195,7 +201,7 @@ export default function Admin() {
         role="tabpanel"
         aria-labelledby={`admin-tab-${tab}`}
       >
-        <ActivePanel tab={tab} />
+        <ActivePanel tab={tab} onSelectTab={selectTab} />
       </div>
     </main>
   );

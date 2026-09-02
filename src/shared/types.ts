@@ -142,6 +142,13 @@ export interface TradePost {
   want: TradePostLine[];
 }
 
+export interface AdminTradePost extends TradePost {
+  // Total remains after reservations complete/cancel; active counts only rows
+  // still occupying inventory in the pending-trade workflow.
+  reservationCount: number;
+  activeReservationCount: number;
+}
+
 export interface TradePostCandidate {
   catalogId: number;
   series: string;
@@ -164,6 +171,14 @@ export interface SaveTradePostInput {
   note?: string;
   give: TradePostLineInput[];
   want: TradePostLineInput[];
+}
+
+export interface CreateTradePostReservationInput {
+  counterparty?: string;
+  reservedAt: string;
+  note?: string;
+  give: TradePostLineInput[];
+  receive: TradePostLineInput[];
 }
 
 export interface RarityCount {
@@ -293,6 +308,8 @@ export interface ActivityEvent {
   revertsEventId: number | null;
   reversedAt: string | null;
   createdAt: string;
+  tradePostId?: number | null;
+  tradePostPublicId?: string | null;
   canUndo: boolean;
   lines: ActivityLine[];
 }
@@ -343,6 +360,8 @@ export interface PublicPendingTrade {
 export interface AdminPendingTrade extends PublicPendingTrade {
   counterparty: string | null;
   note: string | null;
+  tradePostId?: number | null;
+  tradePostPublicId?: string | null;
 }
 
 export interface ReservationLineInput {

@@ -41,12 +41,14 @@ with a live site you edit directly.
   (hold)** locks a duplicate so it stays owned but never shows up in the
   auto-computed trade list.
 - **Pending trades** — track reserved / in-progress trades, with
-  reservation-aware duplicate flags.
+  reservation-aware duplicate flags. A published exchange announcement can
+  prefill an adjustable private reservation without closing the announcement;
+  the pending row and its lifecycle activity keep a link to the source post.
 - **Pending purchases** — record ordered cards without counting them as owned;
   confirm receipt to add them to inventory, or cancel if the seller never ships.
 - **Exchange announcement drafts** — compose, edit, and delete private drafts,
   publish a fixed public snapshot, copy its share URL, and close it without
-  erasing its history.
+  erasing its history. Published posts show total and active reservation counts.
 - **Unified activity stream** — every acquisition, card adjustment, hold,
   reservation, purchase, sale, and trade appears in one append-only audit trail;
   untouched direct acquisitions and openings can be safely undone without

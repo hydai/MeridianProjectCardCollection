@@ -658,6 +658,8 @@ function stubFetchFor(pending: unknown[]) {
 const sampleReservation = {
   id: 9,
   reservedAt: "2026-06-27",
+  tradePostId: 7,
+  tradePostPublicId: "public-7",
   counterparty: "阿明",
   note: "面交",
   give: [
@@ -698,6 +700,9 @@ describe("PendingTrades", () => {
     ).toBeInTheDocument();
     expect(within(table).getByText("阿明")).toBeInTheDocument();
     expect(within(table).getByText("面交")).toBeInTheDocument();
+    expect(
+      within(table).getByRole("link", { name: "公告 #7" }),
+    ).toHaveAttribute("href", "/exchange/public-7");
     expect(screen.getByRole("button", { name: "完成" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
   });

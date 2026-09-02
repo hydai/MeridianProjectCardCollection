@@ -3,11 +3,13 @@ import type {
   AddCardInput,
   AdminPendingPurchase,
   AdminPendingTrade,
+  AdminTradePost,
   CardRow,
   CatalogSeries,
   CreatePurchaseReservationInput,
   CreateReservationInput,
   CreateSeriesInput,
+  CreateTradePostReservationInput,
   MarketListing,
   MissingEntry,
   OpeningInput,
@@ -127,7 +129,7 @@ export const undoActivity = (id: number) =>
 
 // ---- Exchange announcements ----
 export const fetchAdminTradePosts = () =>
-  get<TradePost[]>("/api/admin/trade-posts");
+  get<AdminTradePost[]>("/api/admin/trade-posts");
 export const fetchTradePostCandidates = () =>
   get<TradePostCandidates>("/api/admin/trade-posts/candidates");
 export const postTradePost = (input: SaveTradePostInput) =>
@@ -140,6 +142,15 @@ export const closeTradePost = (id: number) =>
   send<TradePost>("POST", `/api/admin/trade-posts/${id}/close`, {});
 export const deleteTradePost = (id: number) =>
   send<{ ok: true }>("DELETE", `/api/admin/trade-posts/${id}`, {});
+export const postTradePostReservation = (
+  id: number,
+  input: CreateTradePostReservationInput,
+) =>
+  send<{ id: number }>(
+    "POST",
+    `/api/admin/trade-posts/${id}/reservations`,
+    input,
+  );
 
 // ---- Pending trades ----
 export const fetchPendingTrades = () =>

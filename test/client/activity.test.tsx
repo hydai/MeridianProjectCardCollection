@@ -45,6 +45,8 @@ const sale: ActivityEvent = {
   revertsEventId: null,
   reversedAt: null,
   createdAt: "2026-09-01 12:00:00",
+  tradePostId: 7,
+  tradePostPublicId: "public-7",
   canUndo: false,
   lines: [
     {
@@ -84,6 +86,10 @@ describe("Activity", () => {
     expect(screen.getByText("售出卡片")).toBeInTheDocument();
     expect(screen.getByText("SUMMER BEACH & YOU · Mizuki")).toBeInTheDocument();
     expect(screen.getByText(/Alice/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "來源公告 #7" })).toHaveAttribute(
+      "href",
+      "/exchange/public-7",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "交易" }));
     expect(screen.queryByText("開卡入藏")).toBeNull();

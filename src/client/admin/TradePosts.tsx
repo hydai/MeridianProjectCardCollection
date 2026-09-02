@@ -41,9 +41,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArchiveIcon,
+  ArrowRightIcon,
   CopyIcon,
   ExternalLinkIcon,
   FilePenLineIcon,
+  HandshakeIcon,
   MegaphoneIcon,
   PlusIcon,
   SearchIcon,
@@ -53,6 +55,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
+  AdminTradePost,
   SaveTradePostInput,
   TradePost,
   TradePostCandidate,
@@ -73,6 +76,7 @@ import {
   tradePostStatusLabel,
   tradePostUrl,
 } from "../views/TradePosts";
+import { TradePostReservationForm } from "./TradePostReservationForm";
 
 type Quantities = Record<string, number>;
 
@@ -295,13 +299,30 @@ function PostSummary({ post }: { post: TradePost }) {
   );
 }
 
-export function TradePosts() {
-  const [posts, setPosts] = useState<TradePost[] | null>(null);
+function hasReservableGive(post: TradePost): boolean {
+  return post.give.some(
+    (line) =>
+      line.catalogId !== null && Math.min(line.qty, line.availableQty) > 0,
+  );
+}
+
+export function TradePosts({
+  onOpenReservations,
+}: {
+  onOpenReservations?: () => void;
+}) {
+  const [posts, setPosts] = useState<AdminTradePost[] | null>(null);
   const [candidates, setCandidates] = useState<{
     give: TradePostCandidate[];
     want: TradePostCandidate[];
   } | null>(null);
   const [editor, setEditor] = useState<EditorDraft | null>(null);
+  const [reservationPost, setReservationPost] = useState<AdminTradePost | null>(
+    null,
+  );
+  const [createdReservationId, setCreatedReservationId] = useState<
+    number | null
+  >(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -487,10 +508,14 @@ export function TradePosts() {
           type="button"
           onClick={() => {
             setEditor(emptyEditor());
+            setReservationPost(null);
+            setCreatedReservationId(null);
             setError(null);
             setMessage(null);
           }}
-          disabled={!candidates || busy || editor !== null}
+          disabled={
+            !candidates || busy || editor !== null || reservationPost !== null
+          }
         >
           <PlusIcon data-icon="inline-start" />
           新增公告
@@ -508,6 +533,19 @@ export function TradePosts() {
         <Alert>
           <MegaphoneIcon />
           <AlertTitle>{message}</AlertTitle>
+          {createdReservationId !== null && onOpenReservations ? (
+            <AlertDescription>
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto p-0"
+                onClick={onOpenReservations}
+              >
+                查看交換預約
+                <ArrowRightIcon data-icon="inline-end" />
+              </Button>
+            </AlertDescription>
+          ) : null}
         </Alert>
       ) : null}
 
@@ -620,6 +658,25 @@ export function TradePosts() {
         </Card>
       ) : null}
 
+      {reservationPost ? (
+        <TradePostReservationForm
+          key={reservationPost.id}
+          post={reservationPost}
+          onCancel={() => setReservationPost(null)}
+          onCreated={async (id) => {
+            setReservationPost(null);
+            setCreatedReservationId(id);
+            setMessage(`已從公告建立交換預約 #${id}。`);
+            setError(null);
+            try {
+              await refresh();
+            } catch {
+              setError("預約已建立，但公告列表未能重新載入；請重新整理頁面。");
+            }
+          }}
+        />
+      ) : null}
+
       {posts === null ? (
         <output className="flex flex-col gap-3" aria-label="載入交換公告草稿">
           <Skeleton className="h-36 w-full rounded-xl" />
@@ -650,7 +707,9 @@ export function TradePosts() {
                 </CardDescription>
                 <CardAction className="flex gap-1.5">
                   {post.stale && post.status !== "closed" ? (
-                    <Badge variant="destructive">內容有變動</Badge>
+                    <Badge variant="destructive" className="text-foreground">
+                      內容有變動
+                    </Badge>
                   ) : null}
                   <Badge
                     variant={post.status === "closed" ? "outline" : "secondary"}
@@ -661,6 +720,12 @@ export function TradePosts() {
               </CardHeader>
               <CardContent>
                 <PostSummary post={post} />
+                {post.reservationCount > 0 ? (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    已建立 {post.reservationCount} 筆預約 ·{" "}
+                    {post.activeReservationCount} 筆進行中
+                  </p>
+                ) : null}
                 {post.note ? (
                   <p className="mt-3 line-clamp-2 whitespace-pre-wrap text-sm text-muted-foreground">
                     {post.note}
@@ -676,10 +741,14 @@ export function TradePosts() {
                       size="sm"
                       onClick={() => {
                         setEditor(editorFromPost(post));
+                        setReservationPost(null);
+                        setCreatedReservationId(null);
                         setError(null);
                         setMessage(null);
                       }}
-                      disabled={busy || editor !== null}
+                      disabled={
+                        busy || editor !== null || reservationPost !== null
+                      }
                     >
                       <FilePenLineIcon data-icon="inline-start" />
                       編輯
@@ -690,7 +759,8 @@ export function TradePosts() {
                           type="button"
                           variant="destructive"
                           size="sm"
-                          disabled={busy}
+                          className="text-foreground"
+                          disabled={busy || reservationPost !== null}
                         >
                           <Trash2Icon data-icon="inline-start" />
                           刪除草稿
@@ -709,6 +779,7 @@ export function TradePosts() {
                           <AlertDialogCancel>取消</AlertDialogCancel>
                           <AlertDialogAction
                             variant="destructive"
+                            className="text-foreground"
                             onClick={() => runDelete(post)}
                           >
                             確認刪除
@@ -719,6 +790,33 @@ export function TradePosts() {
                   </>
                 ) : (
                   <>
+                    {post.status === "published" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setReservationPost(post);
+                          setCreatedReservationId(null);
+                          setError(null);
+                          setMessage(null);
+                        }}
+                        disabled={
+                          busy ||
+                          editor !== null ||
+                          reservationPost !== null ||
+                          !hasReservableGive(post)
+                        }
+                        title={
+                          hasReservableGive(post)
+                            ? undefined
+                            : "目前沒有可預約的換出卡"
+                        }
+                      >
+                        <HandshakeIcon data-icon="inline-start" />
+                        由公告建立預約
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       variant="outline"
@@ -745,7 +843,12 @@ export function TradePosts() {
                             type="button"
                             variant="destructive"
                             size="sm"
-                            disabled={busy || editor !== null}
+                            className="text-foreground"
+                            disabled={
+                              busy ||
+                              editor !== null ||
+                              reservationPost !== null
+                            }
                           >
                             <ArchiveIcon data-icon="inline-start" />
                             關閉公告
@@ -764,6 +867,7 @@ export function TradePosts() {
                             <AlertDialogCancel>取消</AlertDialogCancel>
                             <AlertDialogAction
                               variant="destructive"
+                              className="text-foreground"
                               onClick={() => runClose(post)}
                             >
                               確認關閉

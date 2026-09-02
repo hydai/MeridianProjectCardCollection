@@ -26,6 +26,7 @@ import {
   pendingReceiveByCoord,
   receivableCards,
 } from "../collection";
+import { tradePostUrl } from "../views/TradePosts";
 import {
   ACTION_FORM,
   BTN_GHOST_SM,
@@ -331,6 +332,21 @@ function PendingRowItem({
   return (
     <tr>
       <td className={TD}>{p.reservedAt}</td>
+      <td className={TD}>
+        {p.tradePostId && p.tradePostPublicId ? (
+          <Button asChild variant="link" size="sm" className="h-auto p-0">
+            <a
+              href={tradePostUrl(p.tradePostPublicId)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              公告 #{p.tradePostId}
+            </a>
+          </Button>
+        ) : (
+          "手動建立"
+        )}
+      </td>
       {showPrivateDetails ? (
         <>
           <td className={TD}>{p.counterparty ?? "—"}</td>
@@ -475,12 +491,13 @@ export function PendingTrades() {
           ) : (
             <div className="mt-4 overflow-x-auto">
               <table
-                className={cn(TABLE, "min-w-[760px]")}
+                className={cn(TABLE, "min-w-[840px]")}
                 aria-label="交換預約清單"
               >
                 <thead>
                   <tr>
                     <th className={TH}>日期</th>
+                    <th className={TH}>來源</th>
                     {showPrivateDetails ? (
                       <>
                         <th className={TH}>對象</th>

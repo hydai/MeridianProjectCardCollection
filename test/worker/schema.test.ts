@@ -189,4 +189,33 @@ describe("schema", () => {
       ]),
     );
   });
+
+  it("links exchange announcements to reservations and their activity", async () => {
+    const columns = async (table: string) =>
+      (
+        await env.DB.prepare(`PRAGMA table_info(${table})`).all<{
+          name: string;
+        }>()
+      ).results.map((column) => column.name);
+
+    expect(await columns("trade_reservations")).toContain("trade_post_id");
+    expect(await columns("activity_events")).toContain("trade_post_id");
+
+    const indexes = (
+      await env.DB.prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'index'
+           AND name IN (
+             'idx_trade_reservations_trade_post',
+             'idx_activity_events_trade_post'
+           )`,
+      ).all<{ name: string }>()
+    ).results.map((row) => row.name);
+    expect(indexes).toEqual(
+      expect.arrayContaining([
+        "idx_trade_reservations_trade_post",
+        "idx_activity_events_trade_post",
+      ]),
+    );
+  });
 });

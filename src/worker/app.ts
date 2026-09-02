@@ -11,6 +11,7 @@ import type {
   CreatePurchaseReservationInput,
   CreateReservationInput,
   CreateSeriesInput,
+  CreateTradePostReservationInput,
   OpeningInput,
   Rarity,
   RecordTxnInput,
@@ -33,6 +34,7 @@ import {
   createReservation,
   createSeries,
   createTradePost,
+  createTradePostReservation,
   deleteTradePost,
   getActivities,
   getAdminPendingPurchases,
@@ -403,6 +405,91 @@ function normalizeTradePostInput(body: unknown): {
   };
 }
 
+function normalizeTradePostReservationInput(body: unknown): {
+  value?: CreateTradePostReservationInput;
+  error?: string;
+} {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { error: "invalid exchange reservation" };
+  }
+  const input = body as Record<string, unknown>;
+  if (!validIsoDate(input.reservedAt)) {
+    return { error: "reservedAt must be a valid YYYY-MM-DD date" };
+  }
+  if (
+    input.counterparty !== undefined &&
+    typeof input.counterparty !== "string"
+  ) {
+    return { error: "counterparty must be a string" };
+  }
+  if (input.note !== undefined && typeof input.note !== "string") {
+    return { error: "note must be a string" };
+  }
+  if (
+    typeof input.counterparty === "string" &&
+    input.counterparty.trim().length > 200
+  ) {
+    return { error: "counterparty must be at most 200 characters" };
+  }
+  if (typeof input.note === "string" && input.note.trim().length > 1000) {
+    return { error: "note must be at most 1000 characters" };
+  }
+  if (!Array.isArray(input.give) || input.give.length === 0) {
+    return { error: "at least one give line required" };
+  }
+  if (!Array.isArray(input.receive)) {
+    return { error: "receive lines must be an array" };
+  }
+  if (input.give.length + input.receive.length > 100) {
+    return { error: "at most 100 reservation lines are allowed" };
+  }
+
+  const normalizeLines = (candidates: unknown[]) => {
+    const lines: CreateTradePostReservationInput["give"] = [];
+    for (const candidate of candidates) {
+      if (
+        !candidate ||
+        typeof candidate !== "object" ||
+        Array.isArray(candidate)
+      ) {
+        return null;
+      }
+      const line = candidate as Record<string, unknown>;
+      if (
+        !Number.isInteger(line.catalogId) ||
+        (line.catalogId as number) < 1 ||
+        !Number.isInteger(line.qty) ||
+        (line.qty as number) < 1 ||
+        (line.qty as number) > 99
+      ) {
+        return null;
+      }
+      lines.push({
+        catalogId: line.catalogId as number,
+        qty: line.qty as number,
+      });
+    }
+    return lines;
+  };
+
+  const give = normalizeLines(input.give);
+  const receive = normalizeLines(input.receive);
+  if (!give || !receive) {
+    return { error: "reservation lines need valid catalog ids and quantities" };
+  }
+  const counterparty = (input.counterparty as string | undefined)?.trim();
+  const note = (input.note as string | undefined)?.trim();
+  return {
+    value: {
+      reservedAt: input.reservedAt,
+      give,
+      receive,
+      ...(counterparty ? { counterparty } : {}),
+      ...(note ? { note } : {}),
+    },
+  };
+}
+
 // ---- Public read API (no auth) ----
 app.get("/api/catalog", async (c) => c.json(await getCatalog(c.env.DB)));
 app.get("/api/overview", async (c) => c.json(await getOverview(c.env.DB)));
@@ -744,6 +831,36 @@ admin.post("/trade-posts/:id/close", async (c) => {
   }
   try {
     return c.json(await closeTradePost(c.env.DB, id));
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+});
+
+admin.post("/trade-posts/:id/reservations", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) {
+    return c.json({ error: "bad announcement id" }, 400);
+  }
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const normalized = normalizeTradePostReservationInput(body);
+  if (!normalized.value) {
+    return c.json(
+      { error: normalized.error ?? "invalid exchange reservation" },
+      400,
+    );
+  }
+  try {
+    const reservationId = await createTradePostReservation(
+      c.env.DB,
+      id,
+      normalized.value,
+    );
+    return c.json({ id: reservationId }, 201);
   } catch (error) {
     return c.json({ error: String(error) }, 409);
   }
