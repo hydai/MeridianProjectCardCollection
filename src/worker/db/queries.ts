@@ -34,6 +34,7 @@ import type {
   TradeDirection,
   TxnRecord,
   UpdateCardInput,
+  UpdateCatalogWantInput,
   UpdateSeriesInput,
 } from "../../shared/types";
 
@@ -59,6 +60,8 @@ interface ActivityLineInput {
   delta?: number;
   beforeStatus?: CardStatus | null;
   afterStatus?: CardStatus | null;
+  beforeWant?: number | null;
+  afterWant?: number | null;
   unitAmount?: number | null;
   note?: string | null;
 }
@@ -101,8 +104,9 @@ function insertActivityLineStatement(
     .prepare(
       `INSERT INTO activity_event_lines
          (event_id, catalog_id, action, qty, delta,
-          before_status, after_status, unit_amount, note)
-       SELECT id, ?, ?, ?, ?, ?, ?, ?, ?
+          before_status, after_status, before_want, after_want,
+          unit_amount, note)
+       SELECT id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
        FROM activity_events WHERE source_key = ?`,
     )
     .bind(
@@ -112,6 +116,8 @@ function insertActivityLineStatement(
       input.delta ?? 0,
       input.beforeStatus ?? null,
       input.afterStatus ?? null,
+      input.beforeWant ?? null,
+      input.afterWant ?? null,
       input.unitAmount ?? null,
       input.note ?? null,
       sourceKey,
@@ -335,16 +341,34 @@ export async function getOverview(db: D1Database): Promise<OverviewResponse> {
                 c.character, c.rarity,
                 COUNT(k.id) AS owned,
                 COALESCE(SUM(k.held), 0) AS held,
-                COALESCE(g.reserved, 0) AS reserved
+                COALESCE(g.reserved, 0) AS reserved,
+                COALESCE(w.desired_count, 0) AS wantCount,
+                COALESCE(r.incoming, 0) AS incomingTrade,
+                COALESCE(p.incoming, 0) AS incomingPurchase
          FROM card_catalog c
          JOIN series s ON s.name = c.series
          LEFT JOIN cards k ON k.catalog_id = c.id AND k.status IN ${ACTIVE}
+         LEFT JOIN catalog_wants w ON w.catalog_id = c.id
          LEFT JOIN (
            SELECT catalog_id, SUM(qty) AS reserved
            FROM trade_reservation_lines
            WHERE direction = 'give'
            GROUP BY catalog_id
          ) g ON g.catalog_id = c.id
+         LEFT JOIN (
+           SELECT catalog_id, SUM(qty) AS incoming
+           FROM trade_reservation_lines
+           WHERE direction = 'receive'
+           GROUP BY catalog_id
+         ) r ON r.catalog_id = c.id
+         LEFT JOIN (
+           SELECT l.catalog_id, SUM(l.qty) AS incoming
+           FROM purchase_reservation_lines l
+           JOIN purchase_reservations reservation
+             ON reservation.id = l.reservation_id
+           WHERE reservation.status = 'pending'
+           GROUP BY l.catalog_id
+         ) p ON p.catalog_id = c.id
          GROUP BY c.id
          ORDER BY c.sort_order`,
       )
@@ -376,6 +400,57 @@ export async function getOverview(db: D1Database): Promise<OverviewResponse> {
   ).results;
 
   return { cells, progress };
+}
+
+export async function setCatalogWant(
+  db: D1Database,
+  catalogId: number,
+  input: UpdateCatalogWantInput,
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT c.id, COALESCE(w.desired_count, 0) AS wantCount
+       FROM card_catalog c
+       LEFT JOIN catalog_wants w ON w.catalog_id = c.id
+       WHERE c.id = ?`,
+    )
+    .bind(catalogId)
+    .first<{ id: number; wantCount: number }>();
+  if (!row) throw new Error(`catalog ${catalogId} not found`);
+  if (row.wantCount === input.wantCount) return row.wantCount;
+
+  const sourceKey = activityKey("want-update");
+  const wantStatement =
+    input.wantCount === 0
+      ? db
+          .prepare("DELETE FROM catalog_wants WHERE catalog_id = ?")
+          .bind(catalogId)
+      : db
+          .prepare(
+            `INSERT INTO catalog_wants (catalog_id, desired_count, updated_at)
+             VALUES (?, ?, datetime('now'))
+             ON CONFLICT(catalog_id) DO UPDATE SET
+               desired_count = excluded.desired_count,
+               updated_at = excluded.updated_at`,
+          )
+          .bind(catalogId, input.wantCount);
+
+  await db.batch([
+    insertActivityEventStatement(db, {
+      sourceKey,
+      kind: "want_updated",
+      sourceType: "catalog",
+      sourceId: catalogId,
+    }),
+    wantStatement,
+    insertActivityLineStatement(db, sourceKey, {
+      catalogId,
+      action: "wanted",
+      beforeWant: row.wantCount,
+      afterWant: input.wantCount,
+    }),
+  ]);
+  return input.wantCount;
 }
 
 export async function getMissing(db: D1Database): Promise<MissingEntry[]> {
@@ -1138,8 +1213,16 @@ interface ActivityLineRow extends Omit<ActivityLine, "action"> {
 export async function getActivities(
   db: D1Database,
   limit = 100,
+  catalogId?: number,
 ): Promise<ActivityEvent[]> {
   const safeLimit = Math.max(1, Math.min(250, Math.trunc(limit) || 100));
+  const eventFilter =
+    catalogId === undefined
+      ? ""
+      : `WHERE EXISTS (
+           SELECT 1 FROM activity_event_lines selected
+           WHERE selected.event_id = e.id AND selected.catalog_id = ?
+         )`;
   const rows = (
     await db
       .prepare(
@@ -1200,10 +1283,11 @@ export async function getActivities(
                   THEN 1 ELSE 0
                 END AS canUndo
          FROM activity_events e
+         ${eventFilter}
          ORDER BY e.occurred_at DESC, e.id DESC
          LIMIT ?`,
       )
-      .bind(safeLimit)
+      .bind(...(catalogId === undefined ? [safeLimit] : [catalogId, safeLimit]))
       .all<ActivityEventRow>()
   ).results;
   if (rows.length === 0) return [];
@@ -1212,7 +1296,8 @@ export async function getActivities(
     await db
       .prepare(
         `WITH recent AS (
-           SELECT id FROM activity_events
+           SELECT e.id FROM activity_events e
+           ${eventFilter}
            ORDER BY occurred_at DESC, id DESC
            LIMIT ?
          )
@@ -1221,15 +1306,23 @@ export async function getActivities(
                 SUM(l.qty) AS qty, SUM(l.delta) AS delta,
                 l.before_status AS beforeStatus,
                 l.after_status AS afterStatus,
+                l.before_want AS beforeWant,
+                l.after_want AS afterWant,
                 l.unit_amount AS unitAmount, l.note
          FROM activity_event_lines l
          JOIN recent r ON r.id = l.event_id
          LEFT JOIN card_catalog c ON c.id = l.catalog_id
+         ${catalogId === undefined ? "" : "WHERE l.catalog_id = ?"}
          GROUP BY l.event_id, l.catalog_id, l.action,
-                  l.before_status, l.after_status, l.unit_amount, l.note
+                  l.before_status, l.after_status, l.before_want,
+                  l.after_want, l.unit_amount, l.note
          ORDER BY l.event_id DESC, c.sort_order, MIN(l.id)`,
       )
-      .bind(safeLimit)
+      .bind(
+        ...(catalogId === undefined
+          ? [safeLimit]
+          : [catalogId, safeLimit, catalogId]),
+      )
       .all<ActivityLineRow>()
   ).results;
 

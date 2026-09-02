@@ -9,6 +9,7 @@ export type ActivityKind =
   | "acquisition"
   | "card_classified"
   | "card_updated"
+  | "want_updated"
   | "hold"
   | "unhold"
   | "sale"
@@ -28,6 +29,7 @@ export type ActivityLineAction =
   | "ordered"
   | "classified"
   | "updated"
+  | "wanted"
   | "held"
   | "released"
   | "reserved_give"
@@ -65,6 +67,13 @@ export interface OverviewCell {
   // Owner-held copies (保留): still owned, but kept out of the tradeable pool.
   held: number;
   available: number;
+  // Explicit collection target. This is deliberately independent from
+  // "missing": zero means the owner has not marked this catalog slot as Want.
+  wantCount?: number;
+  // Pending inbound quantities satisfy an active Want without entering the
+  // physical collection until their reservation is completed.
+  incomingTrade?: number;
+  incomingPurchase?: number;
 }
 
 export interface SeriesProgress {
@@ -154,6 +163,10 @@ export interface UpdateCardInput {
   note?: string | null;
 }
 
+export interface UpdateCatalogWantInput {
+  wantCount: number;
+}
+
 export interface RecordTxnInput {
   type: TransactionType;
   counterparty?: string;
@@ -202,6 +215,8 @@ export interface ActivityLine {
   delta: number;
   beforeStatus: CardStatus | null;
   afterStatus: CardStatus | null;
+  beforeWant?: number | null;
+  afterWant?: number | null;
   unitAmount: number | null;
   note: string | null;
 }

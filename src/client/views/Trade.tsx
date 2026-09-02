@@ -277,11 +277,11 @@ function TradeGrid({
   shownRi: number[];
   language: TradeListLanguage;
 }) {
-  // 值查表：surplus→spare、needs→1；僅收錄 shownRi。
+  // 值查表：surplus 與 needs 都以 spare 表示目前張數；僅收錄 shownRi。
   const val = new Map<string, number>();
   for (const it of items) {
     if (!shownRi.includes(it.ri)) continue;
-    val.set(`${it.si}|${it.ci}|${it.ri}`, kind === "surplus" ? it.spare : 1);
+    val.set(`${it.si}|${it.ci}|${it.ri}`, it.spare);
   }
 
   // 逐系列只展開「真的有資料」的稀有度子欄，避免聯集（或全部）時出現整欄皆空
@@ -303,7 +303,9 @@ function TradeGrid({
   if (cols.length === 0 || shownCi.length === 0) {
     return (
       <div className={EMPTY_MSG}>
-        {kind === "surplus" ? "目前沒有多餘的卡可換出。" : "已全部收集 ✓"}
+        {kind === "surplus"
+          ? "目前沒有多餘的卡可換出。"
+          : "目前沒有尚未滿足的 Want。"}
       </div>
     );
   }
@@ -415,6 +417,7 @@ export function Trade({
     pendingPurchases ?? [],
   );
   const totalSpare = surplus.reduce((s, x) => s + x.spare, 0);
+  const totalWanted = needs.reduce((sum, item) => sum + item.spare, 0);
   const issuedRarityIndexes = RARITIES.map((_rarity, ri) => ri).filter((ri) =>
     m.series.some((_series, si) =>
       m.characters.some((_character, ci) => existsR(m, si, ci, ri)),
@@ -449,13 +452,15 @@ export function Trade({
       key: "all",
       label: "全部",
       cls: "text-muted-foreground",
-      need: needs.length,
+      need: totalWanted,
       spare: totalSpare,
       shortfall: false,
     },
     ...issuedRarityIndexes.map((ri) => {
       const rarity = RARITIES[ri];
-      const need = needs.filter((x) => x.ri === ri).length;
+      const need = needs
+        .filter((x) => x.ri === ri)
+        .reduce((sum, item) => sum + item.spare, 0);
       const spare = surplus
         .filter((x) => x.ri === ri)
         .reduce((s, x) => s + x.spare, 0);
@@ -477,7 +482,7 @@ export function Trade({
       const headCount =
         kind === "surplus"
           ? `${ritems.reduce((s, x) => s + x.spare, 0)} 張`
-          : `缺 ${ritems.length}`;
+          : `想找 ${ritems.reduce((sum, item) => sum + item.spare, 0)} 張`;
       return (
         <div className="mb-[18px] last:mb-0" key={RARITIES[ri]}>
           <div
@@ -513,7 +518,7 @@ export function Trade({
                         language,
                         "character",
                       )}
-                      {kind === "surplus" ? (
+                      {kind === "surplus" || x.spare > 1 ? (
                         <span className="ml-0.5 font-mono text-[10px] text-primary">
                           ×{x.spare}
                         </span>
@@ -537,7 +542,7 @@ export function Trade({
         <div className={EMPTY_MSG}>
           {kind === "surplus"
             ? `目前沒有多餘的 ${rname}卡可換出。`
-            : `${rname}已全部收集 ✓`}
+            : `${rname}目前沒有尚未滿足的 Want。`}
         </div>
       );
     }
@@ -545,7 +550,8 @@ export function Trade({
   };
 
   const surplusSub = `多餘 ${fSurplus.reduce((s, x) => s + x.spare, 0)} 張`;
-  const needsSub = `缺 ${fNeeds.length} 種`;
+  const filteredWantCount = fNeeds.reduce((sum, item) => sum + item.spare, 0);
+  const needsSub = `想找 ${fNeeds.length} 種 · ${filteredWantCount} 張`;
 
   const highestRarityIndex = issuedRarityIndexes.at(-1);
   const highestRarity =
@@ -553,7 +559,9 @@ export function Trade({
   const highestNeed =
     highestRarityIndex === undefined
       ? 0
-      : needs.filter((x) => x.ri === highestRarityIndex).length;
+      : needs
+          .filter((x) => x.ri === highestRarityIndex)
+          .reduce((sum, item) => sum + item.spare, 0);
   const highestSpare =
     highestRarityIndex === undefined
       ? 0
@@ -625,7 +633,7 @@ export function Trade({
                   ? setRarities(new Set())
                   : toggleRarity(c.key as RarityKey)
               }
-              aria-label={`${c.label} 缺 ${c.need} 餘 ${c.spare}`}
+              aria-label={`${c.label} 找 ${c.need} 餘 ${c.spare}`}
               className={sumItemClass(active, c.shortfall)}
             >
               <div
@@ -637,7 +645,7 @@ export function Trade({
                 {c.label}
               </div>
               <div className="flex items-center justify-center gap-1.5 font-mono text-xs max-sm:flex-col max-sm:gap-1 max-sm:text-[11px]">
-                <span className="text-muted-foreground">缺 {c.need}</span>
+                <span className="text-muted-foreground">找 {c.need}</span>
                 <span className="text-[11px] text-[var(--text-quaternary)] max-sm:hidden">
                   ↔
                 </span>
@@ -661,7 +669,7 @@ export function Trade({
             {highestRarity} 沒有任何多餘可換出
           </AlertTitle>
           <AlertDescription className="text-[13px] leading-[1.6] text-muted-foreground">
-            還缺 {highestNeed} 張。同階互換補不齊 {highestRarity}
+            Want 尚差 {highestNeed} 張。同階互換補不齊 {highestRarity}
             ，可能需用多張其他級別交換 1 張，或直接購入。
           </AlertDescription>
         </Alert>

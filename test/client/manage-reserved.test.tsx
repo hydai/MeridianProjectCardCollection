@@ -341,6 +341,8 @@ describe("ManageCards acquisition and reservation state", () => {
     );
     table = screen.getByRole("table", { name: "卡片群組" });
     expect(within(table).getByText("Alice")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Initial load fetches the catalog, physical cards, and overview once;
+    // changing filters stays entirely client-side.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

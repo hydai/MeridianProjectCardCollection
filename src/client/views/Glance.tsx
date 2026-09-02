@@ -152,7 +152,7 @@ export function Glance({ m }: { m: Matrix }) {
           className={MODE_TOGGLE}
         >
           <ToggleGroupItem value="wishlist" className={MODE_BTN}>
-            願望清單
+            缺卡清單
           </ToggleGroupItem>
           <ToggleGroupItem value="collection" className={MODE_BTN}>
             收集清單

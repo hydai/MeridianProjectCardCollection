@@ -108,6 +108,14 @@ export const fetchActivities = (limit = 100) =>
   get<ActivityEvent[]>(
     `/api/admin/activities?${new URLSearchParams({ limit: String(limit) })}`,
   );
+export const fetchCatalogActivities = (catalogId: number, limit = 50) =>
+  get<ActivityEvent[]>(
+    `/api/admin/catalog/${catalogId}/activities?${new URLSearchParams({ limit: String(limit) })}`,
+  );
+export const putCatalogWant = (catalogId: number, wantCount: number) =>
+  send<{ wantCount: number }>("PUT", `/api/admin/catalog/${catalogId}/want`, {
+    wantCount,
+  });
 export const undoActivity = (id: number) =>
   send<{ ok: true }>("POST", `/api/admin/activities/${id}/undo`, {});
 

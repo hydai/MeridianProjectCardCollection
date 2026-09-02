@@ -119,4 +119,31 @@ describe("schema", () => {
       ]),
     );
   });
+
+  it("adds explicit catalog Wants and their activity snapshots", async () => {
+    const tables = (
+      await env.DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'catalog_wants'",
+      ).all<{ name: string }>()
+    ).results.map((row) => row.name);
+    expect(tables).toContain("catalog_wants");
+
+    const wantColumns = (
+      await env.DB.prepare("PRAGMA table_info(catalog_wants)").all<{
+        name: string;
+      }>()
+    ).results.map((column) => column.name);
+    expect(wantColumns).toEqual(
+      expect.arrayContaining(["catalog_id", "desired_count", "updated_at"]),
+    );
+
+    const activityColumns = (
+      await env.DB.prepare("PRAGMA table_info(activity_event_lines)").all<{
+        name: string;
+      }>()
+    ).results.map((column) => column.name);
+    expect(activityColumns).toEqual(
+      expect.arrayContaining(["before_want", "after_want"]),
+    );
+  });
 });

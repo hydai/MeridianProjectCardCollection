@@ -13,6 +13,7 @@ import {
   getHeldN,
   getN,
   getReservedN,
+  getWantN,
   grandTotalByRarity,
   pendingReceiveByCoord,
   receivableCards,
@@ -38,6 +39,7 @@ const cell = (
   reserved: 0,
   held: 0,
   available: owned,
+  wantCount: 0,
   volume: series === "MP 4TH" ? 2 : 1,
 });
 
@@ -95,7 +97,7 @@ describe("buildMatrix", () => {
     expect(exists(m, 1, 1)).toBe(true);
   });
 
-  it("distinguishes an unissued rarity from a missing issued card", () => {
+  it("distinguishes an unissued rarity, a missing card, and an explicit Want", () => {
     const limited: OverviewResponse = {
       cells: [
         cell("LIMITED", "Rei", "SR", 0, 101),
@@ -106,7 +108,18 @@ describe("buildMatrix", () => {
     const m = buildMatrix(limited);
     expect(existsR(m, 0, 0, 0)).toBe(false);
     expect(existsR(m, 0, 0, 1)).toBe(true);
-    expect(computeTrade(m).needs).toEqual([{ si: 0, ci: 0, ri: 1, spare: 0 }]);
+    expect(computeTrade(m).needs).toEqual([]);
+
+    const wanted = buildMatrix({
+      ...limited,
+      cells: limited.cells.map((entry) =>
+        entry.catalogId === 101 ? { ...entry, wantCount: 2 } : entry,
+      ),
+    });
+    expect(getWantN(wanted, 0, 0, 1)).toBe(2);
+    expect(computeTrade(wanted).needs).toEqual([
+      { si: 0, ci: 0, ri: 1, spare: 2 },
+    ]);
   });
 
   it("places owned counts per rarity", () => {
@@ -149,18 +162,40 @@ describe("buildMatrix", () => {
 });
 
 describe("computeTrade", () => {
-  it("classifies duplicates as surplus and zeros as needs", () => {
+  it("classifies duplicates as surplus without inferring Wants from missing cards", () => {
     const { surplus, needs } = computeTrade(buildMatrix(overview));
     expect(surplus).toHaveLength(2);
     expect(
       surplus.find((x) => x.si === 0 && x.ci === 0 && x.ri === 0)?.spare,
     ).toBe(2);
-    expect(needs).toHaveLength(8);
+    expect(needs).toHaveLength(0);
+  });
+
+  it("uses the remaining quantity of explicit Want targets", () => {
+    const wanted = buildMatrix({
+      ...overview,
+      cells: overview.cells.map((entry) => {
+        if (entry.catalogId === 2) return { ...entry, wantCount: 3 };
+        if (entry.catalogId === 3) return { ...entry, wantCount: 2 };
+        return entry;
+      }),
+    });
+
+    expect(computeTrade(wanted).needs).toEqual([
+      { si: 0, ci: 0, ri: 1, spare: 2 },
+      { si: 0, ci: 0, ri: 2, spare: 2 },
+    ]);
   });
 });
 
 describe("computeTradeWithPending", () => {
-  const m = buildMatrix(overview); // NEW YEAR/Mizuki R=3(spare2), MP 4TH/Mizuki R=2(spare1)
+  const wantedOverview: OverviewResponse = {
+    ...overview,
+    cells: overview.cells.map((entry) =>
+      entry.catalogId === 3 ? { ...entry, wantCount: 2 } : entry,
+    ),
+  };
+  const m = buildMatrix(wantedOverview); // NEW YEAR/Mizuki SSR Want 2
 
   it("equals computeTrade when there are no pending trades", () => {
     const base = computeTrade(m);
@@ -201,9 +236,9 @@ describe("computeTradeWithPending", () => {
     expect(getN(reservedMatrix, 1, 0, 0)).toBe(2);
   });
 
-  it("a receive line removes the matching need", () => {
+  it("a receive line reduces the matching Want by its quantity", () => {
     const base = computeTrade(m);
-    const target = base.needs[0]; // some missing (si,ci,ri)
+    const target = base.needs[0];
     const pending: PublicPendingTrade[] = [
       {
         id: 2,
@@ -223,11 +258,11 @@ describe("computeTradeWithPending", () => {
     ];
     const adj = computeTradeWithPending(m, pending);
     expect(
-      adj.needs.some(
+      adj.needs.find(
         (n) => n.si === target.si && n.ci === target.ci && n.ri === target.ri,
-      ),
-    ).toBe(false);
-    expect(adj.needs).toHaveLength(base.needs.length - 1);
+      )?.spare,
+    ).toBe(1);
+    expect(adj.needs).toHaveLength(base.needs.length);
   });
 });
 
@@ -354,6 +389,7 @@ describe("formatTradeList", () => {
     cards: [],
     reserved: [],
     held: [],
+    wants: [],
     slots: [],
   };
 
@@ -368,13 +404,13 @@ describe("formatTradeList", () => {
     );
   });
 
-  it("uses quantity 1 for every needs line regardless of spare", () => {
+  it("uses the remaining Want quantity for needs lines", () => {
     const items: TradeItem[] = [
-      { ri: 3, si: 0, ci: 0, spare: 0 }, // UR Kirali MP 4TH
-      { ri: 0, si: 1, ci: 1, spare: 0 }, // R  Mococo MP 5TH
+      { ri: 3, si: 0, ci: 0, spare: 2 }, // UR Kirali MP 4TH
+      { ri: 0, si: 1, ci: 1, spare: 1 }, // R  Mococo MP 5TH
     ];
     expect(formatTradeList(items, m, "needs")).toBe(
-      "UR\nKirali, MP 4TH, 1\n\nR\nMococo, MP 5TH, 1",
+      "UR\nKirali, MP 4TH, 2\n\nR\nMococo, MP 5TH, 1",
     );
   });
 
@@ -401,6 +437,7 @@ describe("formatTradeList", () => {
       cards: [],
       reserved: [],
       held: [],
+      wants: [],
       slots: [],
     };
     const items: TradeItem[] = [

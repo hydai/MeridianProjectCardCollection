@@ -40,6 +40,7 @@ const full: OverviewResponse = {
     reserved: 0,
     held: 0,
     available: i % 4,
+    wantCount: i % 4 === 0 ? 1 : 0,
     volume: c.series === "MP 4TH" ? 2 : 1,
   })),
   progress: [],
@@ -70,6 +71,7 @@ const volumeOrderedMatrix = buildMatrix({
     reserved: 0,
     held: 0,
     available: 0,
+    wantCount: 1,
     volume,
   })),
   progress: [],
@@ -307,7 +309,7 @@ describe("Glance mode toggle", () => {
     expect(
       screen.getByRole("radiogroup", { name: "顯示模式" }),
     ).toBeInTheDocument();
-    const wish = screen.getByRole("radio", { name: "願望清單" });
+    const wish = screen.getByRole("radio", { name: "缺卡清單" });
     const coll = screen.getByRole("radio", { name: "收集清單" });
     expect(wish).toHaveAttribute("aria-checked", "true");
     // collection mode shows the "已收集 … 種 · 共 … 張" progress line
@@ -666,6 +668,7 @@ describe("Trade copy buttons", () => {
     reserved: 0,
     held: 0,
     available: owned,
+    wantCount: owned === 0 ? 1 : 0,
     volume: 2,
   });
 
@@ -785,6 +788,7 @@ describe("Trade rarity filter (multi-select union)", () => {
     reserved: 0,
     held: 0,
     available: owned,
+    wantCount: owned === 0 ? 1 : 0,
     volume: 2,
   });
 
@@ -878,6 +882,7 @@ describe("Trade view mode toggle", () => {
     reserved: 0,
     held: 0,
     available: owned,
+    wantCount: owned === 0 ? 1 : 0,
     volume: 2,
   });
 
@@ -965,8 +970,8 @@ describe("Trade view mode toggle", () => {
     );
   });
 
-  it("shows the needs empty state when nothing is missing", () => {
-    // 全持有 + UR 一張重複 → 有可換出、無想換入。
+  it("shows the needs empty state when there is no active Want", () => {
+    // 全持有 + UR 一張重複 → 有可換出、無尚未滿足的 Want。
     const noNeeds: OverviewResponse = {
       cells: [
         card("Kirali", "R", 1, 1),
@@ -979,7 +984,7 @@ describe("Trade view mode toggle", () => {
     const { container } = render(<Trade m={buildMatrix(noNeeds)} />);
     toGrid();
     expect(container.querySelectorAll(".trade-grid-table")).toHaveLength(1); // 只有可換出
-    expect(screen.getByText("已全部收集 ✓")).toBeInTheDocument();
+    expect(screen.getByText("目前沒有尚未滿足的 Want。")).toBeInTheDocument();
   });
 });
 

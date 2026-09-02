@@ -15,6 +15,7 @@ import type {
   Rarity,
   RecordTxnInput,
   UpdateCardInput,
+  UpdateCatalogWantInput,
   UpdateSeriesInput,
 } from "../shared/types";
 import { accessGuard } from "./auth";
@@ -45,6 +46,7 @@ import {
   listCards,
   recordTransaction,
   setCardHeld,
+  setCatalogWant,
   undoActivity,
   updateCard,
   updateSeries,
@@ -344,6 +346,49 @@ admin.get("/cards", async (c) =>
     }),
   ),
 );
+
+admin.get("/catalog/:id/activities", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) {
+    return c.json({ error: "bad catalog id" }, 400);
+  }
+  const requestedLimit = Number(c.req.query("limit") ?? 50);
+  const limit = Number.isFinite(requestedLimit) ? requestedLimit : 50;
+  return c.json(await getActivities(c.env.DB, limit, id));
+});
+
+admin.put("/catalog/:id/want", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) {
+    return c.json({ error: "bad catalog id" }, 400);
+  }
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return c.json({ error: "invalid Want request" }, 400);
+  }
+  const wantCount = (body as Record<string, unknown>).wantCount;
+  if (
+    !Number.isInteger(wantCount) ||
+    (wantCount as number) < 0 ||
+    (wantCount as number) > 99
+  ) {
+    return c.json(
+      { error: "wantCount must be an integer between 0 and 99" },
+      400,
+    );
+  }
+  try {
+    const input: UpdateCatalogWantInput = { wantCount: wantCount as number };
+    return c.json({ wantCount: await setCatalogWant(c.env.DB, id, input) });
+  } catch (error) {
+    return c.json({ error: String(error) }, 404);
+  }
+});
 
 admin.post("/series", async (c) => {
   let body: unknown;

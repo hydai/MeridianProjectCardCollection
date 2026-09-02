@@ -35,6 +35,7 @@ const EVENT_LABEL: Record<ActivityKind, string> = {
   acquisition: "新增入藏",
   card_classified: "卡片分類變更",
   card_updated: "卡片資料更新",
+  want_updated: "Want 目標變更",
   hold: "設為保留",
   unhold: "取消保留",
   sale: "售出卡片",
@@ -111,6 +112,9 @@ function lineAction(line: ActivityLine): string {
   if (line.action === "held") return "設為保留";
   if (line.action === "released") return "取消保留";
   if (line.action === "updated") return "更新資料";
+  if (line.action === "wanted") {
+    return `Want ${line.beforeWant ?? 0} → ${line.afterWant ?? 0}`;
+  }
   if (line.action === "ordered") return `預訂 ×${line.qty}`;
   if (line.action === "reserved_give") return `預約換出 ×${line.qty}`;
   if (line.action === "reserved_receive") return `預約換入 ×${line.qty}`;

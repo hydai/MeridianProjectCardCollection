@@ -16,9 +16,9 @@ with a live site you edit directly.
 
 - **Collection overview** — a series × character × rarity grid showing owned
   counts, per-series completion %, and missing cards highlighted.
-- **Trade board** — a "want" list (auto-computed missing cards) and a
-  "for trade / for sale" list with asking prices or desired cards; cards already
-  ordered or reserved as incoming are marked separately until they arrive.
+- **Trade board** — an explicit "want" list that tracks target quantities after
+  pending purchases and incoming trades, plus a "for trade / for sale" list with
+  asking prices or desired cards.
 - **Public stats** — rarity distribution, per-character counts, and pull rates.
 
 ### Admin (Cloudflare Access, owner only)
@@ -31,9 +31,11 @@ with a live site you edit directly.
   as one pack opening, received purchase, or other acquisition. Packs are
   numbered per volume; purchase totals are allocated to the physical cards.
 - **Card management** — search/filter by series, character, rarity, and status;
-  change status; set an asking price or a desired trade; mark cards sold/traded
-  (writes history and removes them from active inventory). **保留 (hold)** locks a
-  duplicate so it stays owned but never shows up in the auto-computed trade list.
+  open a card-slot workspace to set explicit Want targets, inspect incoming and
+  owned quantities, review scoped history, or operate physical copies; mark cards
+  sold/traded (writes history and removes them from active inventory). **保留
+  (hold)** locks a duplicate so it stays owned but never shows up in the
+  auto-computed trade list.
 - **Pending trades** — track reserved / in-progress trades, with
   reservation-aware duplicate flags.
 - **Pending purchases** — record ordered cards without counting them as owned;

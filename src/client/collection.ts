@@ -24,6 +24,9 @@ export interface Matrix {
   // Owner-held copies (保留) per cell — kept out of the tradeable pool like
   // reserved, but never surfaced publicly.
   held: (Counts | null)[][];
+  // Explicit target count per card type. Zero means it is merely missing, not
+  // actively wanted.
+  wants: (Counts | null)[][];
   slots: (Slots | null)[][];
 }
 
@@ -42,6 +45,7 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
   const map = new Map<string, Counts>();
   const reservedMap = new Map<string, Counts>();
   const heldMap = new Map<string, Counts>();
+  const wantMap = new Map<string, Counts>();
   const slotMap = new Map<string, Slots>();
 
   // Cells arrive ordered by catalog sort_order (series-major, then character,
@@ -75,6 +79,13 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
     }
     held[RARITY_INDEX[cell.rarity]] = cell.held ?? 0;
 
+    let wants = wantMap.get(key);
+    if (!wants) {
+      wants = [0, 0, 0, 0, 0];
+      wantMap.set(key, wants);
+    }
+    wants[RARITY_INDEX[cell.rarity]] = cell.wantCount ?? 0;
+
     let slots = slotMap.get(key);
     if (!slots) {
       slots = [false, false, false, false, false];
@@ -100,6 +111,9 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
   const held = orderedSeries.map((s) =>
     characters.map((c) => heldMap.get(`${s}|${c}`) ?? null),
   );
+  const wants = orderedSeries.map((s) =>
+    characters.map((c) => wantMap.get(`${s}|${c}`) ?? null),
+  );
   const slots = orderedSeries.map((s) =>
     characters.map((c) => slotMap.get(`${s}|${c}`) ?? null),
   );
@@ -110,6 +124,7 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
     cards,
     reserved,
     held,
+    wants,
     slots,
   };
 }
@@ -177,6 +192,15 @@ export const getHeldN = (
   r: number,
 ): number => {
   const x = m.held[s]?.[c];
+  return x === null || x === undefined ? 0 : x[r];
+};
+export const getWantN = (
+  m: Matrix,
+  s: number,
+  c: number,
+  r: number,
+): number => {
+  const x = m.wants[s]?.[c];
   return x === null || x === undefined ? 0 : x[r];
 };
 // Tradeable copies exclude both pending-trade reservations and owner holds
@@ -253,7 +277,9 @@ export function formatTradeLabel(
   );
 }
 
-// Surplus = duplicates that could be traded away (count - 1); needs = missing.
+// Surplus = duplicates that could be traded away (count - 1). Needs are only
+// explicit Want targets still above the physical holding count; ordinary
+// missing catalog slots stay in the separate missing-card views.
 export function computeTrade(m: Matrix): {
   surplus: TradeItem[];
   needs: TradeItem[];
@@ -268,8 +294,10 @@ export function computeTrade(m: Matrix): {
         const available = getAvailableN(m, si, ci, ri);
         if (available >= 2) {
           surplus.push({ ri, si, ci, spare: available - 1 });
-        } else if (owned === 0) {
-          needs.push({ ri, si, ci, spare: 0 });
+        }
+        const wantRemaining = Math.max(0, getWantN(m, si, ci, ri) - owned);
+        if (wantRemaining > 0) {
+          needs.push({ ri, si, ci, spare: wantRemaining });
         }
       });
     }),
@@ -293,21 +321,30 @@ export function computeTradeWithPending(
     return si < 0 || ci < 0 || ri < 0 ? null : { si, ci, ri };
   };
 
-  const receiveKeys = new Set<string>();
+  const receiveByKey = new Map<string, number>();
   for (const p of pending) {
     for (const r of p.receive) {
       const k = coord(r.series, r.character, r.rarity);
-      if (k) receiveKeys.add(key(k.si, k.ci, k.ri));
+      if (k) {
+        const coordKey = key(k.si, k.ci, k.ri);
+        receiveByKey.set(coordKey, (receiveByKey.get(coordKey) ?? 0) + r.qty);
+      }
     }
   }
 
   const purchaseKeys = pendingPurchaseByCoord(m, pendingPurchases);
 
-  const adjustedNeeds = needs.filter(
-    (n) =>
-      !receiveKeys.has(key(n.si, n.ci, n.ri)) &&
-      !purchaseKeys.has(key(n.si, n.ci, n.ri)),
-  );
+  const adjustedNeeds = needs
+    .map((item) => ({
+      ...item,
+      spare: Math.max(
+        0,
+        item.spare -
+          (receiveByKey.get(key(item.si, item.ci, item.ri)) ?? 0) -
+          (purchaseKeys.get(key(item.si, item.ci, item.ri)) ?? 0),
+      ),
+    }))
+    .filter((item) => item.spare > 0);
   return { surplus, needs: adjustedNeeds };
 }
 
@@ -373,7 +410,8 @@ export function pendingPurchaseByCoord(
 
 // Serialize a trade list to `角色, 系列, 數量` lines, grouped by rarity
 // (UR→R) with a blank line between groups. surplus uses spare as the quantity;
-// needs is always 1. Ordering mirrors the on-screen groupedList in Trade.
+// Both surplus and needs use spare as the copy count. Ordering mirrors the
+// on-screen groupedList in Trade.
 export function formatTradeList(
   items: TradeItem[],
   m: Matrix,
@@ -396,7 +434,7 @@ export function formatTradeList(
       curRi = it.ri;
       lines.push(RARITIES[it.ri]);
     }
-    const qty = kind === "surplus" ? it.spare : 1;
+    const qty = it.spare;
     const character = formatTradeLabel(
       m.characters[it.ci],
       language,

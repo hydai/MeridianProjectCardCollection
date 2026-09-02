@@ -26,6 +26,7 @@ const overview: OverviewResponse = {
       reserved: 0,
       held: 0,
       available: 0,
+      wantCount: 2,
     },
     {
       catalogId: 2,
@@ -48,6 +49,7 @@ const overview: OverviewResponse = {
       reserved: 0,
       held: 0,
       available: 0,
+      wantCount: 1,
     },
   ],
   progress: [],
@@ -77,7 +79,7 @@ afterEach(() => {
 });
 
 describe("public pending purchases", () => {
-  it("maps quantities and excludes ordered cards from trade needs", () => {
+  it("maps quantities and subtracts ordered cards from active Wants", () => {
     expect(pendingPurchaseByCoord(matrix, pendingPurchases)).toEqual(
       new Map([["0|0|0", 2]]),
     );
@@ -101,7 +103,7 @@ describe("public pending purchases", () => {
     ];
 
     const withTradesOnly = computeTradeWithPending(matrix, pendingTrades);
-    expect(withTradesOnly.needs).toEqual([{ si: 0, ci: 0, ri: 0, spare: 0 }]);
+    expect(withTradesOnly.needs).toEqual([{ si: 0, ci: 0, ri: 0, spare: 2 }]);
     expect(
       computeTradeWithPending(matrix, pendingTrades, pendingPurchases).needs,
     ).toEqual([]);
@@ -134,7 +136,7 @@ describe("public pending purchases", () => {
     render(<Trade m={matrix} pending={[]} pendingPurchases={payload} />);
 
     expect(
-      screen.getByRole("button", { name: "全部 缺 1 餘 0" }),
+      screen.getByRole("button", { name: "全部 找 1 餘 0" }),
     ).toBeInTheDocument();
     const needsPanel = screen.getByText("想換入").closest('[data-slot="card"]');
     expect(needsPanel).not.toBeNull();
