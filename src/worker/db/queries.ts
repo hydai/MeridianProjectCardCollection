@@ -29,9 +29,16 @@ import type {
   RarityCount,
   RecordTxnInput,
   ReservationLine,
+  SaveTradePostInput,
   SeriesProgress,
   StatsResponse,
   TradeDirection,
+  TradePost,
+  TradePostCandidate,
+  TradePostCandidates,
+  TradePostDirection,
+  TradePostLine,
+  TradePostStatus,
   TxnRecord,
   UpdateCardInput,
   UpdateCatalogWantInput,
@@ -490,6 +497,527 @@ export async function getMarket(db: D1Database): Promise<MarketListing[]> {
     ...listing,
     reserved: Boolean(listing.reserved) || legacyReserved.has(listing.cardId),
   }));
+}
+
+// ---- Shareable exchange announcements ----
+
+interface TradePostHeaderRow {
+  id: number;
+  publicId: string;
+  status: TradePostStatus;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  closedAt: string | null;
+}
+
+interface TradePostLineRow {
+  postId: number;
+  direction: TradePostDirection;
+  catalogId: number | null;
+  series: string;
+  character: string;
+  rarity: Rarity;
+  qty: number;
+}
+
+interface TradePostSnapshotLine {
+  direction: TradePostDirection;
+  catalogId: number;
+  series: string;
+  character: string;
+  rarity: Rarity;
+  qty: number;
+}
+
+const tradePostAvailabilityKey = (
+  direction: TradePostDirection,
+  catalogId: number,
+) => `${direction}:${catalogId}`;
+
+async function tradePostAvailability(
+  db: D1Database,
+): Promise<Map<string, number>> {
+  const availability = new Map<string, number>();
+  const giveRows = (
+    await db
+      .prepare(
+        `SELECT k.catalog_id AS catalogId, COUNT(*) AS qty
+         FROM cards k
+         WHERE k.status = 'for_trade'
+           AND k.held = 0
+           AND NOT EXISTS (
+             SELECT 1 FROM trade_reservation_lines l
+             WHERE l.direction = 'give' AND l.card_id = k.id
+           )
+         GROUP BY k.catalog_id`,
+      )
+      .all<{ catalogId: number; qty: number }>()
+  ).results;
+  const legacyReserved = await legacyReservedCardIds(db);
+  if (legacyReserved.size > 0) {
+    const legacyRows = (
+      await db
+        .prepare(
+          `SELECT id, catalog_id AS catalogId
+           FROM cards
+           WHERE status = 'for_trade' AND held = 0`,
+        )
+        .all<{ id: number; catalogId: number }>()
+    ).results;
+    const legacyByCatalog = new Map<number, number>();
+    for (const card of legacyRows) {
+      if (!legacyReserved.has(card.id)) continue;
+      legacyByCatalog.set(
+        card.catalogId,
+        (legacyByCatalog.get(card.catalogId) ?? 0) + 1,
+      );
+    }
+    for (const row of giveRows) {
+      row.qty = Math.max(
+        0,
+        row.qty - (legacyByCatalog.get(row.catalogId) ?? 0),
+      );
+    }
+  }
+  for (const row of giveRows) {
+    availability.set(tradePostAvailabilityKey("give", row.catalogId), row.qty);
+  }
+
+  const overview = await getOverview(db);
+  for (const cell of overview.cells) {
+    const remaining = Math.max(
+      0,
+      (cell.wantCount ?? 0) -
+        cell.owned -
+        (cell.incomingTrade ?? 0) -
+        (cell.incomingPurchase ?? 0),
+    );
+    availability.set(
+      tradePostAvailabilityKey("want", cell.catalogId),
+      remaining,
+    );
+  }
+  return availability;
+}
+
+async function hydrateTradePosts(
+  db: D1Database,
+  headers: TradePostHeaderRow[],
+): Promise<TradePost[]> {
+  if (headers.length === 0) return [];
+  const placeholders = headers.map(() => "?").join(", ");
+  const lines = (
+    await db
+      .prepare(
+        `SELECT post_id AS postId, direction, catalog_id AS catalogId,
+                snapshot_series AS series,
+                snapshot_character AS character,
+                snapshot_rarity AS rarity, qty
+         FROM trade_post_lines
+         WHERE post_id IN (${placeholders})
+         ORDER BY post_id DESC, id`,
+      )
+      .bind(...headers.map((post) => post.id))
+      .all<TradePostLineRow>()
+  ).results;
+  const availability = await tradePostAvailability(db);
+  const posts: TradePost[] = headers.map((header) => ({
+    ...header,
+    stale: false,
+    give: [],
+    want: [],
+  }));
+  const byId = new Map(posts.map((post) => [post.id, post]));
+  for (const line of lines) {
+    const availableQty =
+      line.catalogId === null
+        ? 0
+        : (availability.get(
+            tradePostAvailabilityKey(line.direction, line.catalogId),
+          ) ?? 0);
+    const hydrated: TradePostLine = {
+      direction: line.direction,
+      catalogId: line.catalogId,
+      series: line.series,
+      character: line.character,
+      rarity: line.rarity,
+      qty: line.qty,
+      availableQty,
+      stale: availableQty < line.qty,
+    };
+    const post = byId.get(line.postId);
+    if (!post) continue;
+    (line.direction === "give" ? post.give : post.want).push(hydrated);
+    if (hydrated.stale) post.stale = true;
+  }
+  return posts;
+}
+
+const TRADE_POST_HEADER_SELECT = `
+  SELECT id, public_id AS publicId, status, note,
+         created_at AS createdAt, updated_at AS updatedAt,
+         published_at AS publishedAt, closed_at AS closedAt
+  FROM trade_posts`;
+
+export async function getPublicTradePosts(
+  db: D1Database,
+): Promise<TradePost[]> {
+  const headers = (
+    await db
+      .prepare(
+        `${TRADE_POST_HEADER_SELECT}
+         WHERE status = 'published'
+         ORDER BY published_at DESC, id DESC
+         LIMIT 50`,
+      )
+      .all<TradePostHeaderRow>()
+  ).results;
+  return hydrateTradePosts(db, headers);
+}
+
+export async function getPublicTradePost(
+  db: D1Database,
+  publicId: string,
+): Promise<TradePost | null> {
+  const header = await db
+    .prepare(
+      `${TRADE_POST_HEADER_SELECT}
+       WHERE public_id = ? AND status IN ('published', 'closed')`,
+    )
+    .bind(publicId)
+    .first<TradePostHeaderRow>();
+  if (!header) return null;
+  return (await hydrateTradePosts(db, [header]))[0] ?? null;
+}
+
+export async function getAdminTradePosts(db: D1Database): Promise<TradePost[]> {
+  const headers = (
+    await db
+      .prepare(
+        `${TRADE_POST_HEADER_SELECT}
+         ORDER BY created_at DESC, id DESC
+         LIMIT 100`,
+      )
+      .all<TradePostHeaderRow>()
+  ).results;
+  return hydrateTradePosts(db, headers);
+}
+
+async function getAdminTradePost(
+  db: D1Database,
+  id: number,
+): Promise<TradePost | null> {
+  const header = await db
+    .prepare(`${TRADE_POST_HEADER_SELECT} WHERE id = ?`)
+    .bind(id)
+    .first<TradePostHeaderRow>();
+  if (!header) return null;
+  return (await hydrateTradePosts(db, [header]))[0] ?? null;
+}
+
+export async function getTradePostCandidates(
+  db: D1Database,
+): Promise<TradePostCandidates> {
+  const availability = await tradePostAvailability(db);
+  const catalog = (
+    await db
+      .prepare(
+        `SELECT id AS catalogId, series, character, rarity
+         FROM card_catalog ORDER BY sort_order, id`,
+      )
+      .all<Omit<TradePostCandidate, "availableQty">>()
+  ).results;
+  const candidates: TradePostCandidates = { give: [], want: [] };
+  for (const card of catalog) {
+    for (const direction of ["give", "want"] as const) {
+      const availableQty =
+        availability.get(tradePostAvailabilityKey(direction, card.catalogId)) ??
+        0;
+      if (availableQty > 0) {
+        candidates[direction].push({ ...card, availableQty });
+      }
+    }
+  }
+  return candidates;
+}
+
+function normalizedTradePostNote(note: string | undefined): string | null {
+  if (note === undefined) return null;
+  const value = note.trim();
+  if (value.length > 1000) {
+    throw new Error("announcement note must be at most 1000 characters");
+  }
+  return value || null;
+}
+
+async function snapshotTradePostLines(
+  db: D1Database,
+  input: SaveTradePostInput,
+): Promise<TradePostSnapshotLine[]> {
+  if (input.give.length === 0) {
+    throw new Error("at least one give line required");
+  }
+  const requested = [
+    ...input.give.map((line) => ({ ...line, direction: "give" as const })),
+    ...input.want.map((line) => ({ ...line, direction: "want" as const })),
+  ];
+  if (requested.length > 100) {
+    throw new Error("at most 100 announcement lines are allowed");
+  }
+  const catalogIds = new Set<number>();
+  for (const line of requested) {
+    if (
+      !Number.isInteger(line.catalogId) ||
+      line.catalogId < 1 ||
+      !Number.isInteger(line.qty) ||
+      line.qty < 1 ||
+      line.qty > 99
+    ) {
+      throw new Error(
+        "announcement lines need valid catalog ids and quantities",
+      );
+    }
+    if (catalogIds.has(line.catalogId)) {
+      throw new Error("a card type can only appear once in an announcement");
+    }
+    catalogIds.add(line.catalogId);
+  }
+
+  const ids = [...catalogIds];
+  const placeholders = ids.map(() => "?").join(", ");
+  const rows = (
+    await db
+      .prepare(
+        `SELECT id, series, character, rarity
+         FROM card_catalog WHERE id IN (${placeholders})`,
+      )
+      .bind(...ids)
+      .all<{
+        id: number;
+        series: string;
+        character: string;
+        rarity: Rarity;
+      }>()
+  ).results;
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  if (byId.size !== ids.length) {
+    throw new Error("announcement contains an unknown card type");
+  }
+  return requested.map((line) => {
+    const card = byId.get(line.catalogId);
+    if (!card) throw new Error(`catalog ${line.catalogId} not found`);
+    return {
+      direction: line.direction,
+      catalogId: line.catalogId,
+      series: card.series,
+      character: card.character,
+      rarity: card.rarity,
+      qty: line.qty,
+    };
+  });
+}
+
+function insertTradePostLineStatement(
+  db: D1Database,
+  postSelector: { publicId?: string; id?: number },
+  line: TradePostSnapshotLine,
+): D1PreparedStatement {
+  const byPublicId = postSelector.publicId !== undefined;
+  return db
+    .prepare(
+      `INSERT INTO trade_post_lines
+         (post_id, direction, catalog_id, snapshot_series,
+          snapshot_character, snapshot_rarity, qty)
+       SELECT id, ?, ?, ?, ?, ?, ?
+       FROM trade_posts
+       WHERE ${byPublicId ? "public_id = ?" : "id = ? AND status = 'draft'"}`,
+    )
+    .bind(
+      line.direction,
+      line.catalogId,
+      line.series,
+      line.character,
+      line.rarity,
+      line.qty,
+      byPublicId ? postSelector.publicId : postSelector.id,
+    );
+}
+
+export async function createTradePost(
+  db: D1Database,
+  input: SaveTradePostInput,
+): Promise<TradePost> {
+  const note = normalizedTradePostNote(input.note);
+  const lines = await snapshotTradePostLines(db, input);
+  const publicId = crypto.randomUUID();
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare("INSERT INTO trade_posts (public_id, note) VALUES (?, ?)")
+      .bind(publicId, note),
+    ...lines.map((line) =>
+      insertTradePostLineStatement(db, { publicId }, line),
+    ),
+  ];
+  await db.batch(statements);
+  const created = await db
+    .prepare("SELECT id FROM trade_posts WHERE public_id = ?")
+    .bind(publicId)
+    .first<{ id: number }>();
+  if (!created) throw new Error("failed to create announcement draft");
+  const post = await getAdminTradePost(db, created.id);
+  if (!post) throw new Error("failed to load announcement draft");
+  return post;
+}
+
+export async function updateTradePost(
+  db: D1Database,
+  id: number,
+  input: SaveTradePostInput,
+): Promise<TradePost> {
+  const note = normalizedTradePostNote(input.note);
+  const lines = await snapshotTradePostLines(db, input);
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare(
+        `UPDATE trade_posts
+         SET note = ?, updated_at = datetime('now')
+         WHERE id = ? AND status = 'draft'
+         RETURNING id`,
+      )
+      .bind(note, id),
+    db
+      .prepare(
+        `DELETE FROM trade_post_lines
+         WHERE post_id = ?
+           AND EXISTS (
+             SELECT 1 FROM trade_posts
+             WHERE id = ? AND status = 'draft'
+           )`,
+      )
+      .bind(id, id),
+    ...lines.map((line) => insertTradePostLineStatement(db, { id }, line)),
+  ];
+  const results = await db.batch(statements);
+  if (results[0].results.length === 0) {
+    throw new Error(`editable announcement draft ${id} not found`);
+  }
+  const post = await getAdminTradePost(db, id);
+  if (!post) throw new Error("failed to load announcement draft");
+  return post;
+}
+
+export async function deleteTradePost(
+  db: D1Database,
+  id: number,
+): Promise<void> {
+  const result = await db
+    .prepare(
+      "DELETE FROM trade_posts WHERE id = ? AND status = 'draft' RETURNING id",
+    )
+    .bind(id)
+    .first<{ id: number }>();
+  if (!result) throw new Error(`deletable announcement draft ${id} not found`);
+}
+
+async function insertTradePostActivity(
+  db: D1Database,
+  post: TradePost,
+  kind: "trade_post_published" | "trade_post_closed",
+): Promise<D1PreparedStatement[]> {
+  const sourceKey = `${kind}:${post.id}`;
+  const statements: D1PreparedStatement[] = [
+    insertActivityEventStatement(db, {
+      sourceKey,
+      kind,
+      sourceType: "trade_post",
+      sourceId: post.id,
+      note: post.note,
+    }),
+  ];
+  for (const line of [...post.give, ...post.want]) {
+    statements.push(
+      insertActivityLineStatement(db, sourceKey, {
+        catalogId: line.catalogId,
+        action:
+          line.direction === "give" ? "advertised_give" : "advertised_want",
+        qty: line.qty,
+      }),
+    );
+  }
+  return statements;
+}
+
+export async function publishTradePost(
+  db: D1Database,
+  id: number,
+): Promise<TradePost> {
+  const draft = await getAdminTradePost(db, id);
+  if (!draft || draft.status !== "draft") {
+    throw new Error(`publishable announcement draft ${id} not found`);
+  }
+  if (draft.give.length === 0 || draft.stale) {
+    throw new Error(
+      "announcement availability changed; update the draft before publishing",
+    );
+  }
+  const activity = await insertTradePostActivity(
+    db,
+    draft,
+    "trade_post_published",
+  );
+  const results = await db.batch([
+    db
+      .prepare(
+        `UPDATE trade_posts
+         SET status = 'published', published_at = datetime('now'),
+             updated_at = datetime('now')
+         WHERE id = ? AND status = 'draft'
+         RETURNING id`,
+      )
+      .bind(id),
+    ...activity,
+  ]);
+  if (results[0].results.length === 0) {
+    throw new Error(`publishable announcement draft ${id} not found`);
+  }
+  const published = await getAdminTradePost(db, id);
+  if (!published) throw new Error("failed to load published announcement");
+  return published;
+}
+
+export async function closeTradePost(
+  db: D1Database,
+  id: number,
+): Promise<TradePost> {
+  const published = await getAdminTradePost(db, id);
+  if (!published || published.status !== "published") {
+    throw new Error(`open announcement ${id} not found`);
+  }
+  const activity = await insertTradePostActivity(
+    db,
+    published,
+    "trade_post_closed",
+  );
+  const results = await db.batch([
+    db
+      .prepare(
+        `UPDATE trade_posts
+         SET status = 'closed', closed_at = datetime('now'),
+             updated_at = datetime('now')
+         WHERE id = ? AND status = 'published'
+         RETURNING id`,
+      )
+      .bind(id),
+    ...activity,
+  ]);
+  if (results[0].results.length === 0) {
+    throw new Error(`open announcement ${id} not found`);
+  }
+  const closed = await getAdminTradePost(db, id);
+  if (!closed) throw new Error("failed to load closed announcement");
+  return closed;
 }
 
 export async function getStats(db: D1Database): Promise<StatsResponse> {

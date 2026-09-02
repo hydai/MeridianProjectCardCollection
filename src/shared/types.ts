@@ -17,6 +17,8 @@ export type ActivityKind =
   | "trade_reserved"
   | "trade_reservation_cancelled"
   | "trade_completed"
+  | "trade_post_published"
+  | "trade_post_closed"
   | "purchase_ordered"
   | "purchase_received"
   | "purchase_cancelled"
@@ -34,6 +36,8 @@ export type ActivityLineAction =
   | "released"
   | "reserved_give"
   | "reserved_receive"
+  | "advertised_give"
+  | "advertised_want"
   | "cancelled"
   | "undone";
 
@@ -104,6 +108,62 @@ export interface MarketListing {
   askingPrice: number | null;
   wantInReturn: string | null;
   note: string | null;
+}
+
+// ---- Shareable exchange announcements ----
+
+export type TradePostStatus = "draft" | "published" | "closed";
+export type TradePostDirection = "give" | "want";
+
+export interface TradePostLine {
+  direction: TradePostDirection;
+  // Published snapshots survive catalog edits/removal. A null catalogId means
+  // the live catalog entry no longer exists, so the line is necessarily stale.
+  catalogId: number | null;
+  series: string;
+  character: string;
+  rarity: Rarity;
+  qty: number;
+  availableQty: number;
+  stale: boolean;
+}
+
+export interface TradePost {
+  id: number;
+  publicId: string;
+  status: TradePostStatus;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  closedAt: string | null;
+  stale: boolean;
+  give: TradePostLine[];
+  want: TradePostLine[];
+}
+
+export interface TradePostCandidate {
+  catalogId: number;
+  series: string;
+  character: string;
+  rarity: Rarity;
+  availableQty: number;
+}
+
+export interface TradePostCandidates {
+  give: TradePostCandidate[];
+  want: TradePostCandidate[];
+}
+
+export interface TradePostLineInput {
+  catalogId: number;
+  qty: number;
+}
+
+export interface SaveTradePostInput {
+  note?: string;
+  give: TradePostLineInput[];
+  want: TradePostLineInput[];
 }
 
 export interface RarityCount {

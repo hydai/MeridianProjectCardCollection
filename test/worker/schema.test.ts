@@ -146,4 +146,47 @@ describe("schema", () => {
       expect.arrayContaining(["before_want", "after_want"]),
     );
   });
+
+  it("adds durable exchange-announcement snapshots", async () => {
+    const tables = (
+      await env.DB.prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table'
+           AND name IN ('trade_posts', 'trade_post_lines')`,
+      ).all<{ name: string }>()
+    ).results.map((row) => row.name);
+    expect(tables).toEqual(
+      expect.arrayContaining(["trade_posts", "trade_post_lines"]),
+    );
+
+    const postColumns = (
+      await env.DB.prepare("PRAGMA table_info(trade_posts)").all<{
+        name: string;
+      }>()
+    ).results.map((column) => column.name);
+    expect(postColumns).toEqual(
+      expect.arrayContaining([
+        "public_id",
+        "status",
+        "published_at",
+        "closed_at",
+      ]),
+    );
+
+    const lineColumns = (
+      await env.DB.prepare("PRAGMA table_info(trade_post_lines)").all<{
+        name: string;
+      }>()
+    ).results.map((column) => column.name);
+    expect(lineColumns).toEqual(
+      expect.arrayContaining([
+        "direction",
+        "catalog_id",
+        "snapshot_series",
+        "snapshot_character",
+        "snapshot_rarity",
+        "qty",
+      ]),
+    );
+  });
 });

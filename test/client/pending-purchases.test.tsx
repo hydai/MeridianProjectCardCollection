@@ -65,6 +65,12 @@ afterEach(() => {
 function stubFetch(initialPending: AdminPendingPurchase[] = pending) {
   let current = initialPending;
   return vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/admin/trade-posts" || url === "/api/trade-posts") {
+      return { ok: true, json: async () => [] };
+    }
+    if (url === "/api/admin/trade-posts/candidates") {
+      return { ok: true, json: async () => ({ give: [], want: [] }) };
+    }
     if (url === "/api/catalog") {
       return { ok: true, json: async () => catalog };
     }

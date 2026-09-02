@@ -99,6 +99,7 @@ describe("App", () => {
         ok: true,
         json: async () => {
           const path = String(url);
+          if (path.includes("/api/trade-posts")) return [];
           if (path.includes("/api/market")) return listings;
           if (path.includes("/api/pending-")) return [];
           return overview;

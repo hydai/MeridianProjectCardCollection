@@ -1,14 +1,7 @@
 import { app } from "./app";
 
-export interface Env {
-  ASSETS: Fetcher;
-  DB: D1Database;
-  OWNER_EMAIL: string;
-  ACCESS_TEAM_DOMAIN: string;
-  ACCESS_AUD: string;
-  // "1" only in local dev (.dev.vars) and tests; never set on the deployed worker.
-  ALLOW_INSECURE_ADMIN?: string;
-}
+// Wrangler generates the binding contract in worker-configuration.d.ts.
+export type Env = Cloudflare.Env;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -18,4 +11,4 @@ export default {
     }
     return env.ASSETS.fetch(request);
   },
-};
+} satisfies ExportedHandler<Env>;

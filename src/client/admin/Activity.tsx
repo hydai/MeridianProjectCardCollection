@@ -43,6 +43,8 @@ const EVENT_LABEL: Record<ActivityKind, string> = {
   trade_reserved: "建立交換預約",
   trade_reservation_cancelled: "取消交換預約",
   trade_completed: "完成交換",
+  trade_post_published: "發布交換公告",
+  trade_post_closed: "關閉交換公告",
   purchase_ordered: "建立購入預約",
   purchase_received: "購入到貨",
   purchase_cancelled: "取消購入預約",
@@ -71,6 +73,8 @@ const TRADE_KINDS = new Set<ActivityKind>([
   "trade_reserved",
   "trade_reservation_cancelled",
   "trade_completed",
+  "trade_post_published",
+  "trade_post_closed",
 ]);
 
 function eventFilter(kind: ActivityKind): Exclude<ActivityFilter, "all"> {
@@ -118,6 +122,8 @@ function lineAction(line: ActivityLine): string {
   if (line.action === "ordered") return `預訂 ×${line.qty}`;
   if (line.action === "reserved_give") return `預約換出 ×${line.qty}`;
   if (line.action === "reserved_receive") return `預約換入 ×${line.qty}`;
+  if (line.action === "advertised_give") return `公告換出 ×${line.qty}`;
+  if (line.action === "advertised_want") return `公告想找 ×${line.qty}`;
   if (line.action === "cancelled") return `取消 ×${line.qty}`;
   if (line.action === "undone") return `移除 ×${line.qty}`;
   if (line.delta > 0) return `+${line.qty} 張`;

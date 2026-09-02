@@ -11,6 +11,7 @@ import { PendingPurchases } from "./PendingPurchases";
 import { PendingTrades } from "./PendingTrades";
 import { QuickPackOpening } from "./QuickPackOpening";
 import { SeriesManager } from "./SeriesManager";
+import { TradePosts } from "./TradePosts";
 
 const SECTIONS = [
   {
@@ -29,6 +30,7 @@ const SECTIONS = [
     label: "交易",
     hint: "進行中的約定",
     tabs: [
+      { id: "posts", label: "交換公告" },
       { id: "reserve", label: "交換預約" },
       { id: "purchase", label: "購入預約" },
     ],
@@ -76,6 +78,8 @@ function ActivePanel({ tab }: { tab: TabId }) {
       return <ManageCards />;
     case "series":
       return <SeriesManager />;
+    case "posts":
+      return <TradePosts />;
     case "reserve":
       return <PendingTrades />;
     case "purchase":

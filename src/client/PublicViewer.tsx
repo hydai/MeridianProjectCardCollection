@@ -7,12 +7,14 @@ import type {
   MarketListing,
   PublicPendingPurchase,
   PublicPendingTrade,
+  TradePost,
 } from "../shared/types";
 import {
   fetchMarket,
   fetchOverview,
   fetchPendingPurchases,
   fetchPendingTrades,
+  fetchTradePosts,
 } from "./api";
 import { type Matrix, buildMatrix } from "./collection";
 import { Glance } from "./views/Glance";
@@ -20,6 +22,7 @@ import { Grid } from "./views/Grid";
 import { MarketBoard } from "./views/Market";
 import { StatsBar } from "./views/StatsBar";
 import { Trade } from "./views/Trade";
+import { TradePostsView } from "./views/TradePosts";
 import { Wishlist } from "./views/Wishlist";
 import { ByCharacter, ByRarity, BySeries } from "./views/tables";
 
@@ -30,6 +33,7 @@ const TABS = [
   { id: "wishlist", zh: "缺卡", en: "Wishlist" },
   { id: "glance", zh: "速覽", en: "At a Glance" },
   { id: "grid", zh: "格表", en: "Grid" },
+  { id: "posts", zh: "公告", en: "Posts" },
   { id: "trade", zh: "交換", en: "Trade" },
   { id: "market", zh: "交易看板", en: "Market" },
 ] as const;
@@ -53,7 +57,7 @@ const SECTIONS = [
     id: "trade",
     zh: "交易",
     en: "Trade",
-    tabs: ["trade", "market"],
+    tabs: ["posts", "trade", "market"],
   },
 ] as const satisfies ReadonlyArray<{
   id: string;
@@ -161,6 +165,8 @@ export default function PublicViewer() {
   const [pendingPurchaseError, setPendingPurchaseError] = useState<
     string | null
   >(null);
+  const [tradePosts, setTradePosts] = useState<TradePost[] | null>(null);
+  const [tradePostsError, setTradePostsError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchOverview()
@@ -184,6 +190,12 @@ export default function PublicViewer() {
     fetchPendingPurchases()
       .then(setPendingPurchases)
       .catch((e) => setPendingPurchaseError(String(e)));
+  }, []);
+
+  useEffect(() => {
+    fetchTradePosts()
+      .then(setTradePosts)
+      .catch((e) => setTradePostsError(String(e)));
   }, []);
 
   const selectTab = (id: TabId) => {
@@ -284,7 +296,9 @@ export default function PublicViewer() {
         role="tabpanel"
         aria-labelledby={`viewer-tab-${tab}`}
       >
-        {error ? (
+        {tab === "posts" ? (
+          <TradePostsView posts={tradePosts} error={tradePostsError} />
+        ) : error ? (
           <p className="py-12 text-center font-accent italic tracking-[0.1em] text-muted-foreground">
             無法載入資料：{error}
           </p>

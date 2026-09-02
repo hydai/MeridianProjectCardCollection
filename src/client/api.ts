@@ -16,7 +16,10 @@ import type {
   PublicPendingPurchase,
   PublicPendingTrade,
   RecordTxnInput,
+  SaveTradePostInput,
   StatsResponse,
+  TradePost,
+  TradePostCandidates,
   TxnRecord,
   UpdateCardInput,
   UpdateSeriesInput,
@@ -57,6 +60,9 @@ export const fetchMissing = () => get<MissingEntry[]>("/api/missing");
 export const fetchMarket = () => get<MarketListing[]>("/api/market");
 export const fetchStats = () => get<StatsResponse>("/api/stats");
 export const fetchCatalog = () => get<CatalogSeries[]>("/api/catalog");
+export const fetchTradePosts = () => get<TradePost[]>("/api/trade-posts");
+export const fetchTradePost = (publicId: string) =>
+  get<TradePost>(`/api/trade-posts/${encodeURIComponent(publicId)}`);
 
 // ---- Admin ----
 export const postCards = (cards: AddCardInput[], opening?: OpeningInput) =>
@@ -118,6 +124,22 @@ export const putCatalogWant = (catalogId: number, wantCount: number) =>
   });
 export const undoActivity = (id: number) =>
   send<{ ok: true }>("POST", `/api/admin/activities/${id}/undo`, {});
+
+// ---- Exchange announcements ----
+export const fetchAdminTradePosts = () =>
+  get<TradePost[]>("/api/admin/trade-posts");
+export const fetchTradePostCandidates = () =>
+  get<TradePostCandidates>("/api/admin/trade-posts/candidates");
+export const postTradePost = (input: SaveTradePostInput) =>
+  send<TradePost>("POST", "/api/admin/trade-posts", input);
+export const putTradePost = (id: number, input: SaveTradePostInput) =>
+  send<TradePost>("PUT", `/api/admin/trade-posts/${id}`, input);
+export const publishTradePost = (id: number) =>
+  send<TradePost>("POST", `/api/admin/trade-posts/${id}/publish`, {});
+export const closeTradePost = (id: number) =>
+  send<TradePost>("POST", `/api/admin/trade-posts/${id}/close`, {});
+export const deleteTradePost = (id: number) =>
+  send<{ ok: true }>("DELETE", `/api/admin/trade-posts/${id}`, {});
 
 // ---- Pending trades ----
 export const fetchPendingTrades = () =>

@@ -236,6 +236,8 @@ const ACTIVITY_LABEL: Record<ActivityEvent["kind"], string> = {
   trade_reserved: "建立交換預約",
   trade_reservation_cancelled: "取消交換預約",
   trade_completed: "完成交換",
+  trade_post_published: "發布交換公告",
+  trade_post_closed: "關閉交換公告",
   purchase_ordered: "建立購入預約",
   purchase_received: "購入到貨",
   purchase_cancelled: "取消購入預約",
@@ -892,6 +894,14 @@ function CardWorkspaceSheet({
                             <p className="mt-1 text-xs text-muted-foreground">
                               Want {line.beforeWant ?? 0} →{" "}
                               {line.afterWant ?? 0}
+                            </p>
+                          ) : line?.action === "advertised_give" ? (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              公告換出 ×{line.qty}
+                            </p>
+                          ) : line?.action === "advertised_want" ? (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              公告想找 ×{line.qty}
                             </p>
                           ) : line ? (
                             <p className="mt-1 text-xs text-muted-foreground">

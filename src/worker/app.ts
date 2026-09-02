@@ -14,6 +14,7 @@ import type {
   OpeningInput,
   Rarity,
   RecordTxnInput,
+  SaveTradePostInput,
   UpdateCardInput,
   UpdateCatalogWantInput,
   UpdateSeriesInput,
@@ -24,15 +25,19 @@ import {
   addPack,
   cancelPurchaseReservation,
   cancelReservation,
+  closeTradePost,
   completePurchaseReservation,
   completeReservation,
   createOpening,
   createPurchaseReservation,
   createReservation,
   createSeries,
+  createTradePost,
+  deleteTradePost,
   getActivities,
   getAdminPendingPurchases,
   getAdminPendingTrades,
+  getAdminTradePosts,
   getCatalog,
   getMarket,
   getMissing,
@@ -41,15 +46,20 @@ import {
   getOverview,
   getPublicPendingPurchases,
   getPublicPendingTrades,
+  getPublicTradePost,
+  getPublicTradePosts,
   getStats,
+  getTradePostCandidates,
   getTransactions,
   listCards,
+  publishTradePost,
   recordTransaction,
   setCardHeld,
   setCatalogWant,
   undoActivity,
   updateCard,
   updateSeries,
+  updateTradePost,
 } from "./db/queries";
 import type { Env } from "./index";
 
@@ -321,11 +331,92 @@ function normalizePurchaseReservationInput(body: unknown): {
   };
 }
 
+function normalizeTradePostInput(body: unknown): {
+  value?: SaveTradePostInput;
+  error?: string;
+} {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { error: "invalid announcement" };
+  }
+  const input = body as Record<string, unknown>;
+  if (input.note !== undefined && typeof input.note !== "string") {
+    return { error: "announcement note must be a string" };
+  }
+  if (typeof input.note === "string" && input.note.trim().length > 1000) {
+    return { error: "announcement note must be at most 1000 characters" };
+  }
+  if (!Array.isArray(input.give) || input.give.length === 0) {
+    return { error: "at least one give line required" };
+  }
+  if (!Array.isArray(input.want)) {
+    return { error: "want lines must be an array" };
+  }
+  if (input.give.length + input.want.length > 100) {
+    return { error: "at most 100 announcement lines are allowed" };
+  }
+
+  const normalizeLines = (
+    candidates: unknown[],
+  ): SaveTradePostInput["give"] | null => {
+    const lines: SaveTradePostInput["give"] = [];
+    for (const candidate of candidates) {
+      if (
+        !candidate ||
+        typeof candidate !== "object" ||
+        Array.isArray(candidate)
+      ) {
+        return null;
+      }
+      const line = candidate as Record<string, unknown>;
+      if (
+        !Number.isInteger(line.catalogId) ||
+        (line.catalogId as number) < 1 ||
+        !Number.isInteger(line.qty) ||
+        (line.qty as number) < 1 ||
+        (line.qty as number) > 99
+      ) {
+        return null;
+      }
+      lines.push({
+        catalogId: line.catalogId as number,
+        qty: line.qty as number,
+      });
+    }
+    return lines;
+  };
+
+  const give = normalizeLines(input.give);
+  const want = normalizeLines(input.want);
+  if (!give || !want) {
+    return {
+      error: "announcement lines need valid catalog ids and quantities",
+    };
+  }
+  return {
+    value: {
+      ...(typeof input.note === "string" && input.note.trim()
+        ? { note: input.note.trim() }
+        : {}),
+      give,
+      want,
+    },
+  };
+}
+
 // ---- Public read API (no auth) ----
 app.get("/api/catalog", async (c) => c.json(await getCatalog(c.env.DB)));
 app.get("/api/overview", async (c) => c.json(await getOverview(c.env.DB)));
 app.get("/api/missing", async (c) => c.json(await getMissing(c.env.DB)));
 app.get("/api/market", async (c) => c.json(await getMarket(c.env.DB)));
+app.get("/api/trade-posts", async (c) =>
+  c.json(await getPublicTradePosts(c.env.DB)),
+);
+app.get("/api/trade-posts/:publicId", async (c) => {
+  const publicId = c.req.param("publicId");
+  if (publicId.length > 64) return c.json({ error: "not found" }, 404);
+  const post = await getPublicTradePost(c.env.DB, publicId);
+  return post ? c.json(post) : c.json({ error: "not found" }, 404);
+});
 app.get("/api/pending-trades", async (c) =>
   c.json(await getPublicPendingTrades(c.env.DB)),
 );
@@ -584,6 +675,91 @@ admin.get("/activities", async (c) => {
   const requestedLimit = Number(c.req.query("limit") ?? 100);
   const limit = Number.isFinite(requestedLimit) ? requestedLimit : 100;
   return c.json(await getActivities(c.env.DB, limit));
+});
+
+admin.get("/trade-posts", async (c) =>
+  c.json(await getAdminTradePosts(c.env.DB)),
+);
+
+admin.get("/trade-posts/candidates", async (c) =>
+  c.json(await getTradePostCandidates(c.env.DB)),
+);
+
+admin.post("/trade-posts", async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const normalized = normalizeTradePostInput(body);
+  if (!normalized.value) {
+    return c.json({ error: normalized.error ?? "invalid announcement" }, 400);
+  }
+  try {
+    return c.json(await createTradePost(c.env.DB, normalized.value), 201);
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+});
+
+admin.put("/trade-posts/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) {
+    return c.json({ error: "bad announcement id" }, 400);
+  }
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const normalized = normalizeTradePostInput(body);
+  if (!normalized.value) {
+    return c.json({ error: normalized.error ?? "invalid announcement" }, 400);
+  }
+  try {
+    return c.json(await updateTradePost(c.env.DB, id, normalized.value));
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+});
+
+admin.post("/trade-posts/:id/publish", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) {
+    return c.json({ error: "bad announcement id" }, 400);
+  }
+  try {
+    return c.json(await publishTradePost(c.env.DB, id));
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+});
+
+admin.post("/trade-posts/:id/close", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) {
+    return c.json({ error: "bad announcement id" }, 400);
+  }
+  try {
+    return c.json(await closeTradePost(c.env.DB, id));
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
+});
+
+admin.delete("/trade-posts/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id < 1) {
+    return c.json({ error: "bad announcement id" }, 400);
+  }
+  try {
+    await deleteTradePost(c.env.DB, id);
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json({ error: String(error) }, 409);
+  }
 });
 
 admin.post("/activities/:id/undo", async (c) => {

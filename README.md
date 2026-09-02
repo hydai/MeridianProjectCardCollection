@@ -19,6 +19,10 @@ with a live site you edit directly.
 - **Trade board** — an explicit "want" list that tracks target quantities after
   pending purchases and incoming trades, plus a "for trade / for sale" list with
   asking prices or desired cards.
+- **Shareable exchange announcements** — publish selected outgoing cards and
+  explicit Wants as an immutable snapshot at a stable `/exchange/:publicId`
+  URL. Live availability changes are marked as stale; closed announcements leave
+  the public list but remain readable at their original URL.
 - **Public stats** — rarity distribution, per-character counts, and pull rates.
 
 ### Admin (Cloudflare Access, owner only)
@@ -40,6 +44,9 @@ with a live site you edit directly.
   reservation-aware duplicate flags.
 - **Pending purchases** — record ordered cards without counting them as owned;
   confirm receipt to add them to inventory, or cancel if the seller never ships.
+- **Exchange announcement drafts** — compose, edit, and delete private drafts,
+  publish a fixed public snapshot, copy its share URL, and close it without
+  erasing its history.
 - **Unified activity stream** — every acquisition, card adjustment, hold,
   reservation, purchase, sale, and trade appears in one append-only audit trail;
   untouched direct acquisitions and openings can be safely undone without
@@ -80,7 +87,7 @@ theme switcher.
             │              ▼                                                 │
             │   D1 (SQLite): card_catalog / series / cards /                 │
             │                openings / transactions / reservations /        │
-            │                activity_events + activity_event_lines           │
+            │                trade_posts / activity_events + event lines      │
             └───────────────────────────────────────────────────────────────┘
 ```
 
