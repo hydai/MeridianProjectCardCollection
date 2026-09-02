@@ -23,6 +23,9 @@ with a live site you edit directly.
 
 ### Admin (Cloudflare Access, owner only)
 
+- **Quick pack opening** — use the original click-once-per-card flow to record
+  one physical pack with its volume, automatic pack number, date, and optional
+  cost; a pack may contain cards from different series in the same volume.
 - **Batch collection workbench** — enter quantities in a character × series
   matrix across rarity tabs, review the whole batch, then record it atomically
   as one pack opening, received purchase, or other acquisition. Packs are

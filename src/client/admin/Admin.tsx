@@ -9,6 +9,7 @@ import { ManageCards } from "./ManageCards";
 import { Openings } from "./Openings";
 import { PendingPurchases } from "./PendingPurchases";
 import { PendingTrades } from "./PendingTrades";
+import { QuickPackOpening } from "./QuickPackOpening";
 import { SeriesManager } from "./SeriesManager";
 
 const SECTIONS = [
@@ -17,6 +18,7 @@ const SECTIONS = [
     label: "收藏",
     hint: "入藏與維護",
     tabs: [
+      { id: "pack", label: "單包開卡" },
       { id: "add", label: "批次入藏" },
       { id: "manage", label: "卡片管理" },
       { id: "series", label: "系列設定" },
@@ -53,7 +55,7 @@ const ALL_TAB_IDS = SECTIONS.flatMap((section) =>
 
 function initialTab(): TabId {
   const hash = location.hash.slice(1);
-  return ALL_TAB_IDS.includes(hash as TabId) ? (hash as TabId) : "add";
+  return ALL_TAB_IDS.includes(hash as TabId) ? (hash as TabId) : "pack";
 }
 
 function sectionFor(tab: TabId): Section {
@@ -66,6 +68,8 @@ function sectionFor(tab: TabId): Section {
 
 function ActivePanel({ tab }: { tab: TabId }) {
   switch (tab) {
+    case "pack":
+      return <QuickPackOpening />;
     case "add":
       return <AddCards />;
     case "manage":

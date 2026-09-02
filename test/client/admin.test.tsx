@@ -8,10 +8,12 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildCatalog } from "../../seed/catalog-def";
 import { AddCards } from "../../src/client/admin/AddCards";
+import Admin from "../../src/client/admin/Admin";
 import { History } from "../../src/client/admin/History";
 import { ManageCards } from "../../src/client/admin/ManageCards";
 import { Openings } from "../../src/client/admin/Openings";
 import { PendingTrades } from "../../src/client/admin/PendingTrades";
+import { QuickPackOpening } from "../../src/client/admin/QuickPackOpening";
 
 beforeEach(() => sessionStorage.clear());
 
@@ -65,6 +67,130 @@ function stubAddCardsFetch(
     };
   });
 }
+
+describe("QuickPackOpening", () => {
+  it("keeps single-pack entry separate from the batch workbench", async () => {
+    window.history.replaceState(null, "", "/");
+    vi.stubGlobal("fetch", stubAddCardsFetch());
+    render(<Admin />);
+
+    const quickPackTab = screen.getByRole("tab", { name: "單包開卡" });
+    expect(quickPackTab).toHaveAttribute("aria-selected", "true");
+    expect(
+      await screen.findByRole("heading", { name: "單包開卡" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "批次入藏" }));
+    expect(
+      await screen.findByRole("heading", { name: "批次收藏工作台" }),
+    ).toBeInTheDocument();
+  });
+
+  it("directly records one mixed-series pack with its original metadata", async () => {
+    const fetchMock = stubAddCardsFetch({
+      ids: [101, 102, 103],
+      opening: { id: 4, volume: 1, packNumber: 7 },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<QuickPackOpening />);
+
+    const addMizuki = await screen.findByRole("button", {
+      name: "加入 NEW YEAR Mizuki R 一張",
+    });
+    fireEvent.click(addMizuki);
+    fireEvent.click(addMizuki);
+    expect(screen.getByRole("radio", { name: "第 2 彈" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("radio", { name: "BUNNY GIRL" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "加入 BUNNY GIRL Rei R 一張",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("開卡日期"), {
+      target: { value: "2026-07-10" },
+    });
+    fireEvent.change(screen.getByLabelText("本包花費 (TWD)"), {
+      target: { value: "120" },
+    });
+
+    expect(
+      screen.getByRole("table", { name: "本包卡片明細" }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "記錄第 7 包（3 張）" }),
+    );
+
+    await screen.findByText("第 1 彈第 7 包已記錄（3 張）");
+    const posts = fetchMock.mock.calls.filter(
+      ([url, init]) => url === "/api/admin/cards" && init?.method === "POST",
+    );
+    expect(posts).toHaveLength(1);
+    expect(JSON.parse(posts[0][1]?.body as string)).toEqual({
+      opening: {
+        volume: 1,
+        openedAt: "2026-07-10",
+        cost: 120,
+      },
+      cards: [
+        {
+          series: "NEW YEAR",
+          character: "Mizuki",
+          rarity: "R",
+          source: "pull",
+        },
+        {
+          series: "NEW YEAR",
+          character: "Mizuki",
+          rarity: "R",
+          source: "pull",
+        },
+        {
+          series: "BUNNY GIRL",
+          character: "Rei",
+          rarity: "R",
+          source: "pull",
+        },
+      ],
+    });
+    expect(screen.getByText("第 1 彈 · 第 8 包")).toBeInTheDocument();
+  });
+
+  it("allows a single pack when the next pack number preview is unavailable", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            ids: [301],
+            opening: { id: 9, volume: 1, packNumber: 4 },
+          }),
+        };
+      }
+      if (url.includes("catalog")) {
+        return { ok: true, json: async () => catalogJson };
+      }
+      return { ok: false, status: 503, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<QuickPackOpening />);
+
+    await screen.findByText(/目前無法預覽下一個包號/);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "加入 NEW YEAR Mizuki R 一張",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "記錄本包（1 張）" }));
+
+    await screen.findByText("第 1 彈第 4 包已記錄（1 張）");
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) => url === "/api/admin/cards" && init?.method === "POST",
+      ),
+    ).toBe(true);
+  });
+});
 
 describe("AddCards", () => {
   it("renders a cross-series quantity matrix and disables an empty batch", async () => {
