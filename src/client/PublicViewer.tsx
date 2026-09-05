@@ -1,4 +1,3 @@
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRovingTablist } from "@/lib/tablist";
 import { cn } from "@/lib/utils";
@@ -101,21 +100,6 @@ function ActiveView({
   pendingPurchases: PublicPendingPurchase[] | null;
   pendingPurchaseError: string | null;
 }) {
-  const incomingUnavailable = (error: string | null) =>
-    error ? (
-      <Alert variant="destructive">
-        <AlertTitle>無法載入待收件資料</AlertTitle>
-        <AlertDescription>
-          為避免重複購入或交換，缺卡需求暫不顯示：{error}
-        </AlertDescription>
-      </Alert>
-    ) : (
-      <output className="flex flex-col gap-3 py-12">
-        <Skeleton className="mx-auto h-6 w-40" />
-        <Skeleton className="h-24 w-full" />
-      </output>
-    );
-
   switch (id) {
     case "char":
       return <ByCharacter m={m} />;
@@ -124,20 +108,20 @@ function ActiveView({
     case "rarity":
       return <ByRarity m={m} />;
     case "wishlist":
-      if (pendingPurchases === null) {
-        return incomingUnavailable(pendingPurchaseError);
-      }
-      return <Wishlist m={m} pendingPurchases={pendingPurchases} />;
+      return <Wishlist m={m} />;
     case "glance":
       return <Glance m={m} />;
     case "grid":
       return <Grid m={m} />;
     case "trade":
-      if (pending === null || pendingPurchases === null) {
-        return incomingUnavailable(pendingError ?? pendingPurchaseError);
-      }
       return (
-        <Trade m={m} pending={pending} pendingPurchases={pendingPurchases} />
+        <Trade
+          m={m}
+          pending={pending}
+          pendingError={pendingError}
+          pendingPurchases={pendingPurchases}
+          pendingPurchaseError={pendingPurchaseError}
+        />
       );
     case "market":
       return <MarketBoard listings={listings} error={marketError} />;

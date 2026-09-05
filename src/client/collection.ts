@@ -2,7 +2,6 @@ import { RARITY_ORDER } from "../shared/rarity";
 import type {
   CatalogImageRef,
   OverviewResponse,
-  PublicPendingPurchase,
   PublicPendingTrade,
   Rarity,
 } from "../shared/types";
@@ -12,6 +11,13 @@ export const RARITY_KEYS = ["r", "sr", "ssr", "ur", "ex"] as const;
 export type RarityKey = (typeof RARITY_KEYS)[number];
 
 export type Counts = [number, number, number, number, number];
+export type IncomingCounts = [
+  number | null,
+  number | null,
+  number | null,
+  number | null,
+  number | null,
+];
 export type Slots = [boolean, boolean, boolean, boolean, boolean];
 export type ImageSlots = [
   CatalogImageRef | null,
@@ -32,6 +38,9 @@ export interface Matrix {
   // Owner-held copies (保留) per cell — kept out of the tradeable pool like
   // reserved, but never surfaced publicly.
   held: (Counts | null)[][];
+  available: (Counts | null)[][];
+  incomingTrade: (IncomingCounts | null)[][];
+  incomingPurchase: (IncomingCounts | null)[][];
   // Explicit target count per card type. Zero means it is merely missing, not
   // actively wanted.
   wants: (Counts | null)[][];
@@ -54,6 +63,9 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
   const map = new Map<string, Counts>();
   const reservedMap = new Map<string, Counts>();
   const heldMap = new Map<string, Counts>();
+  const availableMap = new Map<string, Counts>();
+  const incomingTradeMap = new Map<string, IncomingCounts>();
+  const incomingPurchaseMap = new Map<string, IncomingCounts>();
   const wantMap = new Map<string, Counts>();
   const slotMap = new Map<string, Slots>();
   const imageMap = new Map<string, ImageSlots>();
@@ -88,6 +100,27 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
       heldMap.set(key, held);
     }
     held[RARITY_INDEX[cell.rarity]] = cell.held ?? 0;
+
+    let available = availableMap.get(key);
+    if (!available) {
+      available = [0, 0, 0, 0, 0];
+      availableMap.set(key, available);
+    }
+    available[RARITY_INDEX[cell.rarity]] = cell.available;
+
+    let incomingTrade = incomingTradeMap.get(key);
+    if (!incomingTrade) {
+      incomingTrade = [0, 0, 0, 0, 0];
+      incomingTradeMap.set(key, incomingTrade);
+    }
+    incomingTrade[RARITY_INDEX[cell.rarity]] = cell.incomingTrade ?? null;
+
+    let incomingPurchase = incomingPurchaseMap.get(key);
+    if (!incomingPurchase) {
+      incomingPurchase = [0, 0, 0, 0, 0];
+      incomingPurchaseMap.set(key, incomingPurchase);
+    }
+    incomingPurchase[RARITY_INDEX[cell.rarity]] = cell.incomingPurchase ?? null;
 
     let wants = wantMap.get(key);
     if (!wants) {
@@ -128,6 +161,15 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
   const held = orderedSeries.map((s) =>
     characters.map((c) => heldMap.get(`${s}|${c}`) ?? null),
   );
+  const available = orderedSeries.map((s) =>
+    characters.map((c) => availableMap.get(`${s}|${c}`) ?? null),
+  );
+  const incomingTrade = orderedSeries.map((s) =>
+    characters.map((c) => incomingTradeMap.get(`${s}|${c}`) ?? null),
+  );
+  const incomingPurchase = orderedSeries.map((s) =>
+    characters.map((c) => incomingPurchaseMap.get(`${s}|${c}`) ?? null),
+  );
   const wants = orderedSeries.map((s) =>
     characters.map((c) => wantMap.get(`${s}|${c}`) ?? null),
   );
@@ -144,6 +186,9 @@ export function buildMatrix(overview: OverviewResponse): Matrix {
     cards,
     reserved,
     held,
+    available,
+    incomingTrade,
+    incomingPurchase,
     wants,
     slots,
     images,
@@ -230,17 +275,34 @@ export const getImage = (
   c: number,
   r: number,
 ): CatalogImageRef | null => m.images[s]?.[c]?.[r] ?? null;
-// Tradeable copies exclude both pending-trade reservations and owner holds
-// (保留). held and reserved never cover the same card, so subtracting both is safe.
 export const getAvailableN = (
   m: Matrix,
   s: number,
   c: number,
   r: number,
-): number =>
-  Math.max(
-    0,
-    getN(m, s, c, r) - getReservedN(m, s, c, r) - getHeldN(m, s, c, r),
+): number => m.available[s]?.[c]?.[r] ?? 0;
+export const getIncomingTradeN = (
+  m: Matrix,
+  s: number,
+  c: number,
+  r: number,
+): number | null => m.incomingTrade[s]?.[c]?.[r] ?? null;
+export const getIncomingPurchaseN = (
+  m: Matrix,
+  s: number,
+  c: number,
+  r: number,
+): number | null => m.incomingPurchase[s]?.[c]?.[r] ?? null;
+
+export const hasIncomingPurchaseSnapshot = (m: Matrix): boolean =>
+  m.slots.every((row, si) =>
+    row.every(
+      (slots, ci) =>
+        slots?.every(
+          (issued, ri) =>
+            !issued || getIncomingPurchaseN(m, si, ci, ri) !== null,
+        ) ?? true,
+    ),
   );
 export const sumRow = (arr: number[]): number => arr.reduce((a, b) => a + b, 0);
 
@@ -304,75 +366,46 @@ export function formatTradeLabel(
   );
 }
 
-// Surplus = duplicates that could be traded away (count - 1). Needs are only
-// explicit Want targets still above the physical holding count; ordinary
-// missing catalog slots stay in the separate missing-card views.
+export function remainingWantEntries(m: Matrix): TradeItem[] | null {
+  const needs: TradeItem[] = [];
+  for (let si = 0; si < m.series.length; si++) {
+    for (let ci = 0; ci < m.characters.length; ci++) {
+      for (let ri = 0; ri < RARITIES.length; ri++) {
+        if (!existsR(m, si, ci, ri)) continue;
+        const incomingTrade = getIncomingTradeN(m, si, ci, ri);
+        const incomingPurchase = getIncomingPurchaseN(m, si, ci, ri);
+        if (incomingTrade === null || incomingPurchase === null) return null;
+        const spare = Math.max(
+          0,
+          getWantN(m, si, ci, ri) -
+            getN(m, si, ci, ri) -
+            incomingTrade -
+            incomingPurchase,
+        );
+        if (spare > 0) needs.push({ ri, si, ci, spare });
+      }
+    }
+  }
+  return needs;
+}
+
 export function computeTrade(m: Matrix): {
   surplus: TradeItem[];
-  needs: TradeItem[];
+  needs: TradeItem[] | null;
 } {
   const surplus: TradeItem[] = [];
-  const needs: TradeItem[] = [];
   m.series.forEach((_s, si) =>
     m.characters.forEach((_c, ci) => {
       RARITIES.forEach((_r, ri) => {
         if (!existsR(m, si, ci, ri)) return;
-        const owned = getN(m, si, ci, ri);
         const available = getAvailableN(m, si, ci, ri);
         if (available >= 2) {
           surplus.push({ ri, si, ci, spare: available - 1 });
         }
-        const wantRemaining = Math.max(0, getWantN(m, si, ci, ri) - owned);
-        if (wantRemaining > 0) {
-          needs.push({ ri, si, ci, spare: wantRemaining });
-        }
       });
     }),
   );
-  return { surplus, needs };
-}
-
-// Overlay pending receives on the derived trade view. Pending gives are already
-// represented by Matrix.reserved, while owned remains the physical holding count.
-export function computeTradeWithPending(
-  m: Matrix,
-  pending: PublicPendingTrade[],
-  pendingPurchases: PublicPendingPurchase[] = [],
-): { surplus: TradeItem[]; needs: TradeItem[] } {
-  const { surplus, needs } = computeTrade(m);
-  const key = (si: number, ci: number, ri: number) => `${si}|${ci}|${ri}`;
-  const coord = (series: string, character: string, rarity: Rarity) => {
-    const si = m.series.indexOf(series);
-    const ci = m.characters.indexOf(character);
-    const ri = RARITIES.indexOf(rarity);
-    return si < 0 || ci < 0 || ri < 0 ? null : { si, ci, ri };
-  };
-
-  const receiveByKey = new Map<string, number>();
-  for (const p of pending) {
-    for (const r of p.receive) {
-      const k = coord(r.series, r.character, r.rarity);
-      if (k) {
-        const coordKey = key(k.si, k.ci, k.ri);
-        receiveByKey.set(coordKey, (receiveByKey.get(coordKey) ?? 0) + r.qty);
-      }
-    }
-  }
-
-  const purchaseKeys = pendingPurchaseByCoord(m, pendingPurchases);
-
-  const adjustedNeeds = needs
-    .map((item) => ({
-      ...item,
-      spare: Math.max(
-        0,
-        item.spare -
-          (receiveByKey.get(key(item.si, item.ci, item.ri)) ?? 0) -
-          (purchaseKeys.get(key(item.si, item.ci, item.ri)) ?? 0),
-      ),
-    }))
-    .filter((item) => item.spare > 0);
-  return { surplus, needs: adjustedNeeds };
+  return { surplus, needs: remainingWantEntries(m) };
 }
 
 // Every existing catalog card, as receive candidates for the unified 換入 list.
@@ -409,27 +442,6 @@ export function pendingReceiveByCoord(
       if (si < 0 || ci < 0 || ri < 0) continue;
       const k = `${si}|${ci}|${ri}`;
       out.set(k, (out.get(k) ?? 0) + r.qty);
-    }
-  }
-  return out;
-}
-
-// Sum of pending purchase qty per matrix coordinate "si|ci|ri". Pending
-// purchases are intentionally kept outside Matrix.cards: they do not count as
-// physically owned until the owner confirms receipt.
-export function pendingPurchaseByCoord(
-  m: Matrix,
-  pendingPurchases: PublicPendingPurchase[],
-): Map<string, number> {
-  const out = new Map<string, number>();
-  for (const purchase of pendingPurchases) {
-    for (const line of purchase.lines) {
-      const si = m.series.indexOf(line.series);
-      const ci = m.characters.indexOf(line.character);
-      const ri = RARITIES.indexOf(line.rarity);
-      if (si < 0 || ci < 0 || ri < 0) continue;
-      const key = `${si}|${ci}|${ri}`;
-      out.set(key, (out.get(key) ?? 0) + line.qty);
     }
   }
   return out;

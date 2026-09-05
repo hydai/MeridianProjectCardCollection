@@ -1,6 +1,7 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -27,7 +28,7 @@ import {
   type RarityKey,
   type TradeItem,
   type TradeListLanguage,
-  computeTradeWithPending,
+  computeTrade,
   existsR,
   formatTradeLabel,
   formatTradeList,
@@ -35,6 +36,7 @@ import {
 import {
   CARD_FRAME,
   EMPTY_MSG,
+  IncomingUnavailable,
   MODE_BTN,
   MODE_TOGGLE,
   MissChip,
@@ -208,6 +210,23 @@ function PendingPurchaseCard({
         </Table>
       </CardContent>
     </Card>
+  );
+}
+
+function PendingStatus({
+  title,
+  error,
+}: { title: string; error: string | null }) {
+  return error ? (
+    <Alert variant="destructive" className="mt-6">
+      <AlertTitle>無法載入{title}</AlertTitle>
+      <AlertDescription>{error}</AlertDescription>
+    </Alert>
+  ) : (
+    <output aria-label={`載入${title}`} className="mt-6 flex flex-col gap-3">
+      <Skeleton className="h-6 w-40" />
+      <Skeleton className="h-24 w-full" />
+    </output>
   );
 }
 
@@ -401,21 +420,22 @@ function TradeGrid({
 
 export function Trade({
   m,
-  pending,
-  pendingPurchases,
+  pending = [],
+  pendingError = null,
+  pendingPurchases = [],
+  pendingPurchaseError = null,
 }: {
   m: Matrix;
-  pending?: PublicPendingTrade[];
-  pendingPurchases?: PublicPendingPurchase[];
+  pending?: PublicPendingTrade[] | null;
+  pendingError?: string | null;
+  pendingPurchases?: PublicPendingPurchase[] | null;
+  pendingPurchaseError?: string | null;
 }) {
   const [rarities, setRarities] = useState<Set<RarityKey>>(new Set());
   const [mode, setMode] = useState<TradeMode>("list");
   const [language, setLanguage] = useState<TradeListLanguage>("en");
-  const { surplus, needs } = computeTradeWithPending(
-    m,
-    pending ?? [],
-    pendingPurchases ?? [],
-  );
+  const { surplus, needs } = computeTrade(m);
+  if (needs === null) return <IncomingUnavailable />;
   const totalSpare = surplus.reduce((s, x) => s + x.spare, 0);
   const totalWanted = needs.reduce((sum, item) => sum + item.spare, 0);
   const issuedRarityIndexes = RARITIES.map((_rarity, ri) => ri).filter((ri) =>
@@ -745,7 +765,9 @@ export function Trade({
           </Panel>
         </div>
       )}
-      {pending && pending.length > 0 ? (
+      {pending === null ? (
+        <PendingStatus title="暫定交換列表" error={pendingError} />
+      ) : pending.length > 0 ? (
         <section className="mt-6">
           <h3
             className={cn(
@@ -760,7 +782,12 @@ export function Trade({
           ))}
         </section>
       ) : null}
-      {pendingPurchases && pendingPurchases.length > 0 ? (
+      {pendingPurchases === null ? (
+        <PendingStatus
+          title="預定購入（待收件）"
+          error={pendingPurchaseError}
+        />
+      ) : pendingPurchases.length > 0 ? (
         <section className="mt-6">
           <h3
             className={cn(
