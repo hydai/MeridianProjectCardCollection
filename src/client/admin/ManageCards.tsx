@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useAcquisitionSubmission } from "@/lib/acquisition";
 import { todayLocal } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
@@ -55,12 +56,12 @@ import {
   holdCard,
   listCards,
   patchCard,
-  postCards,
   postTransaction,
   putCatalogWant,
   reclassifyCard,
   unholdCard,
 } from "../api";
+import { AcquisitionFeedback } from "./AcquisitionFeedback";
 import {
   ACTION_FORM,
   BTN_GHOST_SM,
@@ -599,7 +600,7 @@ function DirectPurchaseForm({
   onCancel,
 }: {
   cell: OverviewCell;
-  onDone: (quantity: number) => Promise<void>;
+  onDone: (quantity: number) => void;
   onCancel: () => void;
 }) {
   const fieldId = useId();
@@ -608,35 +609,37 @@ function DirectPurchaseForm({
   const [seller, setSeller] = useState("");
   const [occurredAt, setOccurredAt] = useState(todayLocal);
   const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
+  const submission = useAcquisitionSubmission(`catalog-${cell.catalogId}`);
+  const { busy, locked } = submission;
   const [error, setError] = useState<string | null>(null);
 
   const submit = async () => {
     const numericQuantity = Number(quantity);
     const amountText = totalAmount.trim();
     if (
-      !Number.isInteger(numericQuantity) ||
-      numericQuantity < 1 ||
-      numericQuantity > 99
+      !locked &&
+      (!Number.isInteger(numericQuantity) ||
+        numericQuantity < 1 ||
+        numericQuantity > 99)
     ) {
       setError("張數必須是 1 到 99 的整數。");
       return;
     }
     if (
-      !/^\d+(?:\.\d{1,2})?$/.test(amountText) ||
-      !Number.isFinite(Number(amountText))
+      !locked &&
+      (!/^\d+(?:\.\d{1,2})?$/.test(amountText) ||
+        !Number.isFinite(Number(amountText)))
     ) {
       setError("購入總額必須是 0 以上、最多兩位小數的數字。");
       return;
     }
-    if (!occurredAt) {
+    if (!locked && !occurredAt) {
       setError("請選擇入藏日期。");
       return;
     }
 
-    setBusy(true);
     setError(null);
-    try {
+    const saved = await submission.submit(() => {
       const totalCents = Math.round(Number(amountText) * 100);
       const baseCents = Math.floor(totalCents / numericQuantity);
       const remainder = totalCents % numericQuantity;
@@ -647,16 +650,16 @@ function DirectPurchaseForm({
         source: "purchase" as const,
         purchasePrice: (baseCents + (index < remainder ? 1 : 0)) / 100,
       }));
-      await postCards(cards, undefined, {
-        occurredAt,
-        counterparty: seller.trim() || undefined,
-        note: note.trim() || undefined,
-      });
-      await onDone(numericQuantity);
-    } catch (cause) {
-      setError(String(cause));
-      setBusy(false);
-    }
+      return {
+        cards,
+        acquisition: {
+          occurredAt,
+          counterparty: seller.trim() || undefined,
+          note: note.trim() || undefined,
+        },
+      };
+    });
+    if (saved) onDone(saved.request.cards.length);
   };
 
   return (
@@ -667,6 +670,7 @@ function DirectPurchaseForm({
         void submit();
       }}
     >
+      <AcquisitionFeedback submission={submission} onRetry={submit} />
       <FieldGroup className="gap-3 sm:grid sm:grid-cols-2">
         <Field>
           <FieldLabel htmlFor={`${fieldId}-quantity`}>張數</FieldLabel>
@@ -679,6 +683,7 @@ function DirectPurchaseForm({
             inputMode="numeric"
             required
             value={quantity}
+            disabled={locked}
             onChange={(event) => setQuantity(event.target.value)}
           />
         </Field>
@@ -692,6 +697,7 @@ function DirectPurchaseForm({
             inputMode="decimal"
             required
             value={totalAmount}
+            disabled={locked}
             onChange={(event) => setTotalAmount(event.target.value)}
             placeholder="必填"
           />
@@ -703,6 +709,7 @@ function DirectPurchaseForm({
             id={`${fieldId}-seller`}
             maxLength={200}
             value={seller}
+            disabled={locked}
             onChange={(event) => setSeller(event.target.value)}
             placeholder="選填"
           />
@@ -714,6 +721,7 @@ function DirectPurchaseForm({
             type="date"
             required
             value={occurredAt}
+            disabled={locked}
             onChange={(event) => setOccurredAt(event.target.value)}
           />
         </Field>
@@ -723,12 +731,13 @@ function DirectPurchaseForm({
             id={`${fieldId}-note`}
             maxLength={1000}
             value={note}
+            disabled={locked}
             onChange={(event) => setNote(event.target.value)}
             placeholder="選填"
           />
         </Field>
         <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-          <Button type="submit" size="sm" disabled={busy}>
+          <Button type="submit" size="sm" disabled={locked}>
             {busy ? "記錄中…" : "記錄購入"}
           </Button>
           <Button
@@ -1016,7 +1025,13 @@ function CardWorkspaceSheet({
                         setPurchaseMessage(
                           `已新增 ${quantity} 張 ${cell.character} ${cell.rarity}。`,
                         );
-                        await refresh();
+                        try {
+                          await refresh();
+                        } catch (cause) {
+                          setCardError(
+                            `入藏已完成，但資料未能重新載入：${String(cause)}`,
+                          );
+                        }
                       }}
                       onCancel={() => setPurchaseOpen(false)}
                     />

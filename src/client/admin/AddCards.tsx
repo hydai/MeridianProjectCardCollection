@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useAcquisitionSubmission } from "@/lib/acquisition";
 import { todayLocal } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { RARITY_TEXT } from "@/shared/rarity";
@@ -45,7 +46,8 @@ import type {
   OpeningInput,
   Rarity,
 } from "../../shared/types";
-import { fetchCatalog, fetchNextPackNumber, postCards } from "../api";
+import { fetchCatalog, fetchNextPackNumber } from "../api";
+import { AcquisitionFeedback } from "./AcquisitionFeedback";
 
 type AcquisitionMode = "pack" | "purchase" | "other";
 
@@ -112,7 +114,6 @@ export function AddCards() {
   const [catalog, setCatalog] = useState<CatalogSeries[] | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [previewUnavailable, setPreviewUnavailable] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [mode, setMode] = useState<AcquisitionMode>("pack");
   const [selectedVolume, setSelectedVolume] = useState<number | null>(null);
@@ -123,7 +124,8 @@ export function AddCards() {
   const [purchaseTotal, setPurchaseTotal] = useState("");
   const [nextPackNumber, setNextPackNumber] = useState<number | null>(null);
   const [reviewing, setReviewing] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const submission = useAcquisitionSubmission("batch");
+  const { busy, locked } = submission;
   const reviewHeadingRef = useRef<HTMLHeadingElement>(null);
   const restoreReviewFocus = useRef(false);
 
@@ -272,20 +274,18 @@ export function AddCards() {
     detailsValid;
 
   const selectMode = (nextMode: AcquisitionMode) => {
-    if (total > 0 && nextMode !== mode) return;
+    if (locked || (total > 0 && nextMode !== mode)) return;
     setMode(nextMode);
     setReviewing(false);
-    setSubmitError(null);
     setSuccess(null);
   };
 
   const selectVolume = (volume: number) => {
-    if (volume === selectedVolume || total > 0) return;
+    if (locked || volume === selectedVolume || total > 0) return;
     const nextSeries = (catalog ?? []).filter((item) => item.volume === volume);
     setSelectedVolume(volume);
     setActiveRarity(volumeRarities(nextSeries)[0] ?? null);
     setReviewing(false);
-    setSubmitError(null);
     setSuccess(null);
   };
 
@@ -295,6 +295,7 @@ export function AddCards() {
     rarity: Rarity,
     rawValue: string,
   ) => {
+    if (locked) return;
     const requested = rawValue === "" ? 0 : Math.trunc(Number(rawValue));
     if (!Number.isFinite(requested)) return;
     setTally((entries) => {
@@ -326,16 +327,15 @@ export function AddCards() {
       return [...entries, { series, character, rarity, qty: nextQty }];
     });
     setReviewing(false);
-    setSubmitError(null);
     setSuccess(null);
   };
 
   const clearDraft = () => {
+    if (locked) return;
     setTally([]);
     setCost("");
     setPurchaseTotal("");
     setReviewing(false);
-    setSubmitError(null);
     setSuccess(null);
   };
 
@@ -362,51 +362,53 @@ export function AddCards() {
   };
 
   const submit = async () => {
-    if (!canReview || selectedVolume == null) return;
-    setBusy(true);
-    setSubmitError(null);
+    if (busy || (!locked && (!canReview || selectedVolume == null))) return;
     setSuccess(null);
-    try {
+    const saved = await submission.submit(() => {
       const cards = buildCards();
       const opening: OpeningInput | undefined =
         mode === "pack"
           ? {
-              volume: selectedVolume,
+              volume: selectedVolume as number,
               openedAt,
               cost: cost.trim() === "" ? undefined : numericCost,
             }
           : undefined;
-      const result = await postCards(cards, opening);
-      if (mode === "pack") {
-        const packNumber = result.opening?.packNumber ?? nextPackNumber;
-        setSuccess(
-          packNumber == null
-            ? `已記錄 1 包（${result.ids.length} 張）`
-            : `第 ${selectedVolume} 彈第 ${packNumber} 包已記錄（${result.ids.length} 張）`,
-        );
-        if (result.opening) setNextPackNumber(result.opening.packNumber + 1);
-      } else if (mode === "purchase") {
-        setSuccess(
-          `已記錄 ${result.ids.length} 張已收購入（總額 ${formatMoney(numericPurchaseTotal)} TWD）`,
-        );
-      } else {
-        setSuccess(`已記錄 ${result.ids.length} 張其他入藏`);
+      return { cards, opening };
+    });
+    if (!saved) return;
+    const { result, request } = saved;
+    if (request.opening) {
+      const packNumber = result.opening?.packNumber;
+      setSuccess(
+        packNumber == null
+          ? `已記錄 1 包（${result.ids.length} 張）`
+          : `第 ${request.opening.volume} 彈第 ${packNumber} 包已記錄（${result.ids.length} 張）`,
+      );
+      if (result.opening?.volume === selectedVolume) {
+        setNextPackNumber(result.opening.packNumber + 1);
       }
-      setTally([]);
-      setCost("");
-      setPurchaseTotal("");
-      setOpenedAt(todayLocal());
-      setReviewing(false);
-    } catch (error) {
-      setSubmitError(String(error));
-    } finally {
-      setBusy(false);
+    } else if (request.cards[0]?.source === "purchase") {
+      const amount =
+        request.cards.reduce(
+          (sum, card) => sum + Math.round((card.purchasePrice ?? 0) * 100),
+          0,
+        ) / 100;
+      setSuccess(
+        `已記錄 ${result.ids.length} 張已收購入（總額 ${formatMoney(amount)} TWD）`,
+      );
+    } else {
+      setSuccess(`已記錄 ${result.ids.length} 張其他入藏`);
     }
+    setTally([]);
+    setCost("");
+    setPurchaseTotal("");
+    setOpenedAt(todayLocal());
+    setReviewing(false);
   };
 
   const openReview = () => {
-    if (!canReview) return;
-    setSubmitError(null);
+    if (!canReview || locked) return;
     setSuccess(null);
     setReviewing(true);
   };
@@ -440,12 +442,7 @@ export function AddCards() {
           <AlertDescription>{catalogError}</AlertDescription>
         </Alert>
       ) : null}
-      {submitError ? (
-        <Alert variant="destructive">
-          <AlertTitle>這批卡片尚未寫入</AlertTitle>
-          <AlertDescription>{submitError}</AlertDescription>
-        </Alert>
-      ) : null}
+      <AcquisitionFeedback submission={submission} onRetry={submit} />
 
       {reviewing ? (
         <Card>
@@ -555,11 +552,11 @@ export function AddCards() {
                 restoreReviewFocus.current = true;
                 setReviewing(false);
               }}
-              disabled={busy}
+              disabled={locked}
             >
               返回修改
             </Button>
-            <Button type="button" onClick={submit} disabled={busy}>
+            <Button type="button" onClick={submit} disabled={locked}>
               {busy ? "寫入中…" : `確認寫入 ${total} 張`}
             </Button>
           </CardFooter>
@@ -580,7 +577,7 @@ export function AddCards() {
             </CardHeader>
             <CardContent>
               <FieldGroup>
-                <FieldSet>
+                <FieldSet disabled={locked}>
                   <FieldLegend variant="label">取得方式</FieldLegend>
                   <ToggleGroup
                     type="single"
@@ -610,7 +607,7 @@ export function AddCards() {
                   </FieldDescription>
                 </FieldSet>
 
-                <FieldSet>
+                <FieldSet disabled={locked}>
                   <FieldLegend variant="label">彈數</FieldLegend>
                   <ToggleGroup
                     type="single"
@@ -654,7 +651,7 @@ export function AddCards() {
               </CardAction>
             </CardHeader>
             <CardContent className="grid gap-4">
-              <FieldSet>
+              <FieldSet disabled={locked}>
                 <FieldLegend variant="label">稀有度</FieldLegend>
                 <ToggleGroup
                   type="single"
@@ -762,6 +759,7 @@ export function AddCards() {
                                   aria-label={`${item.name} ${character} ${activeRarity} 數量`}
                                   className="mx-auto h-8 w-20 text-center font-mono"
                                   value={quantity === 0 ? "" : quantity}
+                                  disabled={locked}
                                   placeholder="0"
                                   onChange={(event) =>
                                     setQuantity(
@@ -799,7 +797,7 @@ export function AddCards() {
                 type="button"
                 variant="ghost"
                 onClick={clearDraft}
-                disabled={total === 0}
+                disabled={locked || total === 0}
               >
                 清空草稿
               </Button>
@@ -828,6 +826,7 @@ export function AddCards() {
                       id="batch-opened-at"
                       type="date"
                       value={openedAt}
+                      disabled={locked}
                       aria-invalid={!openedAt}
                       onChange={(event) => {
                         setOpenedAt(event.target.value);
@@ -847,6 +846,7 @@ export function AddCards() {
                       step="0.01"
                       inputMode="decimal"
                       value={cost}
+                      disabled={locked}
                       placeholder="選填"
                       aria-invalid={!costValid}
                       onChange={(event) => {
@@ -885,6 +885,7 @@ export function AddCards() {
                     step="0.01"
                     inputMode="decimal"
                     value={purchaseTotal}
+                    disabled={locked}
                     placeholder="必填"
                     aria-invalid={purchaseTotal !== "" && !purchaseTotalValid}
                     onChange={(event) => {
@@ -920,7 +921,7 @@ export function AddCards() {
                 id="batch-review-button"
                 type="button"
                 onClick={openReview}
-                disabled={!canReview}
+                disabled={locked || !canReview}
               >
                 檢查本次入藏（{total} 張）
               </Button>

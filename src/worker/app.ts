@@ -1,5 +1,8 @@
 import { Hono } from "hono";
-import { MAX_CARD_BATCH_SIZE } from "../shared/card-batch";
+import {
+  ACQUISITION_KEY_PATTERN,
+  MAX_CARD_BATCH_SIZE,
+} from "../shared/card-batch";
 import {
   CATALOG_IMAGE_MAX_BYTES,
   isCatalogImageContentType,
@@ -38,6 +41,13 @@ import {
   validateCatalogImage,
 } from "./catalog-images";
 import {
+  AcquisitionConflictError,
+  type AcquisitionRequest,
+  acquisitionRequest,
+  getAcquisitionResult,
+} from "./db/acquisition-requests";
+import {
+  CardInputError,
   addCards,
   addPack,
   cancelPurchaseReservation,
@@ -296,6 +306,9 @@ function validateCards(
   }
   for (const card of cards) {
     if (!card || typeof card !== "object") return "invalid card";
+    if (card.note != null && typeof card.note !== "string") {
+      return "card note must be a string";
+    }
     if (
       typeof card.series !== "string" ||
       !card.series ||
@@ -1232,62 +1245,74 @@ admin.patch("/series/:name", async (c) => {
 });
 
 admin.post("/cards", async (c) => {
+  const rejected = (error: string) =>
+    c.json({ error }, 400, { "x-acquisition-outcome": "rejected" });
   let body: unknown;
   try {
     body = await c.req.json<unknown>();
   } catch {
-    return c.json({ error: "invalid JSON body" }, 400);
+    return rejected("invalid JSON body");
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return c.json({ error: "invalid card request" }, 400);
+    return rejected("invalid card request");
+  }
+  const key = c.req.header("idempotency-key");
+  let request: AcquisitionRequest | undefined;
+  if (key !== undefined) {
+    if (!ACQUISITION_KEY_PATTERN.test(key)) {
+      return rejected("invalid Idempotency-Key");
+    }
+    request = await acquisitionRequest(key, body);
+    try {
+      const replay = await getAcquisitionResult(c.env.DB, request);
+      if (replay) return c.json(replay);
+    } catch (error) {
+      if (!(error instanceof AcquisitionConflictError)) throw error;
+      return c.json({ error: error.message }, 409);
+    }
   }
   const input = body as Record<string, unknown>;
   if (!Array.isArray(input.cards) || input.cards.length === 0) {
-    return c.json({ error: "cards required" }, 400);
+    return rejected("cards required");
   }
   if (input.cards.length > MAX_CARD_BATCH_SIZE) {
-    return c.json(
-      { error: `at most ${MAX_CARD_BATCH_SIZE} cards are allowed per batch` },
-      400,
-    );
+    return rejected(`at most ${MAX_CARD_BATCH_SIZE} cards are allowed per batch`);
   }
   const cards = input.cards as AddCardInput[];
   let opening: OpeningInput | undefined;
   if (input.opening !== undefined) {
     const normalized = await normalizeOpeningInput(c.env.DB, input.opening);
     if (!normalized.value) {
-      return c.json({ error: normalized.error ?? "invalid opening" }, 400);
+      return rejected(normalized.error ?? "invalid opening");
     }
     opening = normalized.value;
   }
   let acquisition: AcquisitionEventInput | undefined;
   if (input.acquisition !== undefined) {
     if (opening) {
-      return c.json(
-        { error: "pack cards cannot include separate acquisition details" },
-        400,
-      );
+      return rejected("pack cards cannot include separate acquisition details");
     }
     const normalized = normalizeAcquisitionEventInput(input.acquisition);
     if (!normalized.value) {
-      return c.json(
-        { error: normalized.error ?? "invalid acquisition details" },
-        400,
-      );
+      return rejected(normalized.error ?? "invalid acquisition details");
     }
     acquisition = normalized.value;
   }
   const validationError = validateCards(cards, opening);
-  if (validationError) return c.json({ error: validationError }, 400);
+  if (validationError) return rejected(validationError);
   try {
     if (opening) {
-      return c.json(await addPack(c.env.DB, cards, opening));
+      return c.json(await addPack(c.env.DB, cards, opening, request));
     }
     return c.json({
-      ids: await addCards(c.env.DB, cards, undefined, acquisition),
+      ids: await addCards(c.env.DB, cards, undefined, acquisition, request),
     });
   } catch (error) {
-    return c.json({ error: String(error) }, 400);
+    if (error instanceof CardInputError) return rejected(error.message);
+    if (error instanceof AcquisitionConflictError) {
+      return c.json({ error: error.message }, 409);
+    }
+    throw error;
   }
 });
 

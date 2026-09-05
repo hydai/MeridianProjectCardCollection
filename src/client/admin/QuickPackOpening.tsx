@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useAcquisitionSubmission } from "@/lib/acquisition";
 import { todayLocal } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { RARITY_TEXT } from "@/shared/rarity";
@@ -44,7 +45,8 @@ import type {
   OpeningInput,
   Rarity,
 } from "../../shared/types";
-import { fetchCatalog, fetchNextPackNumber, postCards } from "../api";
+import { fetchCatalog, fetchNextPackNumber } from "../api";
+import { AcquisitionFeedback } from "./AcquisitionFeedback";
 
 interface PackEntry {
   series: string;
@@ -64,7 +66,6 @@ function entryKey(series: string, character: string, rarity: Rarity) {
 export function QuickPackOpening() {
   const [catalog, setCatalog] = useState<CatalogSeries[] | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [selectedVolume, setSelectedVolume] = useState<number | null>(null);
   const [selectedSeriesName, setSelectedSeriesName] = useState("");
@@ -74,7 +75,8 @@ export function QuickPackOpening() {
   const [cost, setCost] = useState("");
   const [nextPackNumber, setNextPackNumber] = useState<number | null>(null);
   const [previewUnavailable, setPreviewUnavailable] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const submission = useAcquisitionSubmission("quick-pack");
+  const { busy, locked } = submission;
 
   useEffect(() => {
     let current = true;
@@ -144,12 +146,11 @@ export function QuickPackOpening() {
     costValid;
 
   const clearFeedback = () => {
-    setSubmitError(null);
     setSuccess(null);
   };
 
   const selectVolume = (volume: number) => {
-    if (volume === selectedVolume || total > 0) return;
+    if (locked || volume === selectedVolume || total > 0) return;
     const firstSeries = (catalog ?? []).find((item) => item.volume === volume);
     if (!firstSeries) return;
     setSelectedVolume(volume);
@@ -159,6 +160,7 @@ export function QuickPackOpening() {
   };
 
   const selectSeries = (name: string) => {
+    if (locked) return;
     const nextSeries = seriesOptions.find((item) => item.name === name);
     if (!nextSeries) return;
     setSelectedSeriesName(nextSeries.name);
@@ -167,7 +169,7 @@ export function QuickPackOpening() {
   };
 
   const addCard = (character: string) => {
-    if (!selectedSeries || !selectedRarity) return;
+    if (locked || !selectedSeries || !selectedRarity) return;
     setEntries((currentEntries) => {
       const currentTotal = currentEntries.reduce(
         (sum, entry) => sum + entry.qty,
@@ -203,6 +205,7 @@ export function QuickPackOpening() {
   };
 
   const removeOne = (target: PackEntry) => {
+    if (locked) return;
     const targetKey = entryKey(target.series, target.character, target.rarity);
     setEntries((currentEntries) =>
       currentEntries
@@ -217,11 +220,9 @@ export function QuickPackOpening() {
   };
 
   const submit = async () => {
-    if (!canSubmit || selectedVolume == null) return;
-    setBusy(true);
-    setSubmitError(null);
+    if (busy || (!locked && (!canSubmit || selectedVolume == null))) return;
     setSuccess(null);
-    try {
+    const saved = await submission.submit(() => {
       const cards: AddCardInput[] = entries.flatMap((entry) =>
         Array.from({ length: entry.qty }, () => ({
           series: entry.series,
@@ -231,25 +232,25 @@ export function QuickPackOpening() {
         })),
       );
       const opening: OpeningInput = {
-        volume: selectedVolume,
+        volume: selectedVolume as number,
         openedAt,
         cost: cost.trim() === "" ? undefined : numericCost,
       };
-      const result = await postCards(cards, opening);
-      const packNumber = result.opening?.packNumber ?? nextPackNumber;
-      setSuccess(
-        packNumber == null
-          ? `已記錄 1 包（${result.ids.length} 張）`
-          : `第 ${selectedVolume} 彈第 ${packNumber} 包已記錄（${result.ids.length} 張）`,
-      );
-      if (result.opening) setNextPackNumber(result.opening.packNumber + 1);
-      setEntries([]);
-      setCost("");
-    } catch (error) {
-      setSubmitError(String(error));
-    } finally {
-      setBusy(false);
+      return { cards, opening };
+    });
+    if (!saved) return;
+    const { result, request } = saved;
+    const packNumber = result.opening?.packNumber;
+    setSuccess(
+      packNumber == null
+        ? `已記錄 1 包（${result.ids.length} 張）`
+        : `第 ${request.opening?.volume} 彈第 ${packNumber} 包已記錄（${result.ids.length} 張）`,
+    );
+    if (result.opening?.volume === selectedVolume) {
+      setNextPackNumber(result.opening.packNumber + 1);
     }
+    setEntries([]);
+    setCost("");
   };
 
   return (
@@ -283,12 +284,7 @@ export function QuickPackOpening() {
           <AlertDescription>{catalogError}</AlertDescription>
         </Alert>
       ) : null}
-      {submitError ? (
-        <Alert variant="destructive">
-          <AlertTitle>本包尚未寫入</AlertTitle>
-          <AlertDescription>{submitError}</AlertDescription>
-        </Alert>
-      ) : null}
+      <AcquisitionFeedback submission={submission} onRetry={submit} />
       {catalog === null && !catalogError ? (
         <Alert>
           <AlertTitle>正在載入卡片目錄</AlertTitle>
@@ -309,7 +305,7 @@ export function QuickPackOpening() {
             </CardHeader>
             <CardContent>
               <FieldGroup>
-                <FieldSet>
+                <FieldSet disabled={locked}>
                   <FieldLegend variant="label">彈數</FieldLegend>
                   <FieldDescription>
                     一包只能包含同一彈的卡片。
@@ -337,7 +333,7 @@ export function QuickPackOpening() {
                   </ToggleGroup>
                 </FieldSet>
 
-                <FieldSet>
+                <FieldSet disabled={locked}>
                   <FieldLegend variant="label">系列</FieldLegend>
                   <ToggleGroup
                     type="single"
@@ -358,7 +354,7 @@ export function QuickPackOpening() {
                   </ToggleGroup>
                 </FieldSet>
 
-                <FieldSet>
+                <FieldSet disabled={locked}>
                   <FieldLegend variant="label">稀有度</FieldLegend>
                   <ToggleGroup
                     type="single"
@@ -382,7 +378,7 @@ export function QuickPackOpening() {
                   </ToggleGroup>
                 </FieldSet>
 
-                <FieldSet>
+                <FieldSet disabled={locked}>
                   <FieldLegend variant="label">角色</FieldLegend>
                   <FieldDescription>
                     每點一次加入一張；同一卡種最多 {MAX_CARD_CELL_QUANTITY} 張。
@@ -397,6 +393,7 @@ export function QuickPackOpening() {
                             entry.rarity === selectedRarity,
                         )?.qty ?? 0;
                       const disabled =
+                        locked ||
                         total >= MAX_CARD_BATCH_SIZE ||
                         quantity >= MAX_CARD_CELL_QUANTITY;
                       return (
@@ -487,6 +484,7 @@ export function QuickPackOpening() {
                             variant="outline"
                             aria-label={`從本包移除 ${entry.series} ${entry.character} ${entry.rarity} 一張`}
                             onClick={() => removeOne(entry)}
+                            disabled={locked}
                           >
                             −1
                           </Button>
@@ -506,7 +504,7 @@ export function QuickPackOpening() {
                     setEntries([]);
                     clearFeedback();
                   }}
-                  disabled={busy}
+                  disabled={locked}
                 >
                   清空本包
                 </Button>
@@ -533,6 +531,7 @@ export function QuickPackOpening() {
                     id="quick-pack-opened-at"
                     type="date"
                     value={openedAt}
+                    disabled={locked}
                     aria-invalid={!openedAt}
                     onChange={(event) => {
                       setOpenedAt(event.target.value);
@@ -553,6 +552,7 @@ export function QuickPackOpening() {
                     inputMode="decimal"
                     placeholder="選填"
                     value={cost}
+                    disabled={locked}
                     aria-invalid={!costValid}
                     onChange={(event) => {
                       setCost(event.target.value);
@@ -581,7 +581,7 @@ export function QuickPackOpening() {
               <Button
                 type="button"
                 onClick={submit}
-                disabled={!canSubmit || busy}
+                disabled={!canSubmit || locked}
               >
                 {busy
                   ? "記錄中…"

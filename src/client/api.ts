@@ -35,6 +35,16 @@ async function get<T>(path: string): Promise<T> {
   return readJson<T>(path, res);
 }
 
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly acquisitionOutcome?: "rejected",
+  ) {
+    super(message);
+  }
+}
+
 async function readJson<T>(path: string, res: Response): Promise<T> {
   if (!res.ok) {
     let detail: string | null = null;
@@ -44,7 +54,13 @@ async function readJson<T>(path: string, res: Response): Promise<T> {
     } catch {
       // Fall back to the endpoint/status message for non-JSON errors.
     }
-    throw new Error(detail ?? `${path} → ${res.status}`);
+    throw new ApiError(
+      res.status,
+      detail ?? `${path} → ${res.status}`,
+      res.headers?.get("x-acquisition-outcome") === "rejected"
+        ? "rejected"
+        : undefined,
+    );
   }
   return (await res.json()) as T;
 }
@@ -67,10 +83,11 @@ async function send<T>(
   method: string,
   path: string,
   body: unknown,
+  headers?: Record<string, string>,
 ): Promise<T> {
   const res = await fetch(path, {
     method,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
   return readJson<T>(path, res);
@@ -91,11 +108,17 @@ export const postCards = (
   cards: AddCardInput[],
   opening?: OpeningInput,
   acquisition?: AcquisitionEventInput,
+  operationId?: string,
 ) =>
   send<{
     ids: number[];
     opening?: { id: number; volume: number; packNumber: number };
-  }>("POST", "/api/admin/cards", { cards, opening, acquisition });
+  }>(
+    "POST",
+    "/api/admin/cards",
+    { cards, opening, acquisition },
+    operationId === undefined ? undefined : { "Idempotency-Key": operationId },
+  );
 
 export const postSeries = (input: CreateSeriesInput) =>
   send<CatalogSeries>("POST", "/api/admin/series", input);

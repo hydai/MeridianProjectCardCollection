@@ -51,6 +51,10 @@ import type {
   UpdateSeriesInput,
 } from "../../shared/types";
 import {
+  type AcquisitionRequest,
+  runAcquisitionBatch,
+} from "./acquisition-requests";
+import {
   ACQUISITION_IS_UNDOABLE,
   CARD_IS_UNRESERVED,
   CARD_IS_UNTOUCHED,
@@ -1338,6 +1342,8 @@ interface CatalogEntry {
   volume: number;
 }
 
+export class CardInputError extends Error {}
+
 async function catalogEntry(
   db: D1Database,
   series: string,
@@ -1354,7 +1360,9 @@ async function catalogEntry(
     .bind(series, character, rarity)
     .first<CatalogEntry>();
   if (!row)
-    throw new Error(`unknown card type: ${series}/${character}/${rarity}`);
+    throw new CardInputError(
+      `unknown card type: ${series}/${character}/${rarity}`,
+    );
   return row;
 }
 
@@ -1441,17 +1449,19 @@ function validateCardAcquisition(cards: AddCardInput[], hasOpening: boolean) {
         !Number.isFinite(card.purchasePrice) ||
         card.purchasePrice < 0
       ) {
-        throw new Error(
+        throw new CardInputError(
           "a purchase requires a finite nonnegative purchasePrice",
         );
       }
       if (hasOpening)
-        throw new Error("a purchased card cannot belong to a pack");
+        throw new CardInputError("a purchased card cannot belong to a pack");
     } else if (card.purchasePrice !== undefined) {
-      throw new Error("purchasePrice is only valid for purchased cards");
+      throw new CardInputError(
+        "purchasePrice is only valid for purchased cards",
+      );
     }
     if (hasOpening && source !== "pull") {
-      throw new Error("pack cards must use the pull source");
+      throw new CardInputError("pack cards must use the pull source");
     }
   }
 }
@@ -1489,7 +1499,11 @@ export async function addCards(
   cards: AddCardInput[],
   openingId?: number,
   acquisition?: AcquisitionEventInput,
+  request?: AcquisitionRequest,
 ): Promise<number[]> {
+  if (openingId !== undefined && request !== undefined) {
+    throw new Error("retryable acquisitions must create their own event");
+  }
   if (openingId !== undefined && acquisition !== undefined) {
     throw new Error("pack cards cannot include separate acquisition details");
   }
@@ -1518,7 +1532,9 @@ export async function addCards(
       opening.volume == null ||
       resolved.some((card) => card.volume !== opening.volume)
     ) {
-      throw new Error("every pack card must belong to the opening volume");
+      throw new CardInputError(
+        "every pack card must belong to the opening volume",
+      );
     }
     const event = await db
       .prepare(
@@ -1601,8 +1617,9 @@ export async function addCards(
       }),
     );
   }
-  const results = await db.batch(statements);
-  return results
+  const batch = await runAcquisitionBatch(db, statements, sourceKey, request);
+  if ("replay" in batch) return batch.replay.ids;
+  return batch.results
     .slice(cardResultStart, cardResultStart + resolved.length)
     .map((result) => insertedId(result, "failed to add card"));
 }
@@ -1611,11 +1628,14 @@ export async function addPack(
   db: D1Database,
   cards: AddCardInput[],
   opening: OpeningInput,
+  request?: AcquisitionRequest,
 ): Promise<{ ids: number[]; opening: OpeningCreated }> {
   validateCardAcquisition(cards, true);
   const resolved = await resolveCards(db, cards);
   if (resolved.some((card) => card.volume !== opening.volume)) {
-    throw new Error("every pack card must belong to the opening volume");
+    throw new CardInputError(
+      "every pack card must belong to the opening volume",
+    );
   }
   const sourceKey = activityKey("opening");
   const statements: D1PreparedStatement[] = [
@@ -1685,7 +1705,14 @@ export async function addPack(
       }),
     );
   }
-  const results = await db.batch(statements);
+  const batch = await runAcquisitionBatch(db, statements, sourceKey, request);
+  if ("replay" in batch) {
+    if (!batch.replay.opening) {
+      throw new Error("stored acquisition has no opening");
+    }
+    return { ids: batch.replay.ids, opening: batch.replay.opening };
+  }
+  const { results } = batch;
   const created = results[1].results[0] as OpeningCreated | undefined;
   if (!created) throw new Error("failed to create opening");
   const ids = results
