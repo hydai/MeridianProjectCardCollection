@@ -1,5 +1,6 @@
 import type * as React from "react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TableCell } from "@/components/ui/table";
@@ -9,6 +10,17 @@ import { RARITY_TEXT } from "@/shared/rarity";
 // Re-exported so view-layer callers (Trade, Grid) keep importing it from this
 // barrel; the canonical definition now lives in @/shared/rarity.
 export { RARITY_TEXT };
+
+export function IncomingUnavailable() {
+  return (
+    <Alert variant="destructive">
+      <AlertTitle>無法載入待收件資料</AlertTitle>
+      <AlertDescription>
+        為避免重複購入或交換，缺卡需求暫不顯示：收藏快照缺少待收件數量，請稍後重新整理。
+      </AlertDescription>
+    </Alert>
+  );
+}
 
 // rarity pill: rarity text + rarity border + soft rarity tint (legacy --*-soft).
 const RARITY_CHIP = [

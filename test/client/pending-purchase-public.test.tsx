@@ -3,15 +3,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import PublicViewer from "../../src/client/PublicViewer";
 import {
   buildMatrix,
-  computeTradeWithPending,
-  pendingPurchaseByCoord,
+  computeTrade,
+  getIncomingPurchaseN,
+  getN,
 } from "../../src/client/collection";
 import { Trade } from "../../src/client/views/Trade";
 import { Wishlist } from "../../src/client/views/Wishlist";
 import type {
   OverviewResponse,
   PublicPendingPurchase,
-  PublicPendingTrade,
 } from "../../src/shared/types";
 
 const overview: OverviewResponse = {
@@ -27,6 +27,8 @@ const overview: OverviewResponse = {
       held: 0,
       available: 0,
       wantCount: 2,
+      incomingTrade: 0,
+      incomingPurchase: 2,
     },
     {
       catalogId: 2,
@@ -38,6 +40,8 @@ const overview: OverviewResponse = {
       reserved: 0,
       held: 0,
       available: 1,
+      incomingTrade: 0,
+      incomingPurchase: 0,
     },
     {
       catalogId: 3,
@@ -50,6 +54,8 @@ const overview: OverviewResponse = {
       held: 0,
       available: 0,
       wantCount: 1,
+      incomingTrade: 0,
+      incomingPurchase: 0,
     },
   ],
   progress: [],
@@ -79,38 +85,24 @@ afterEach(() => {
 });
 
 describe("public pending purchases", () => {
-  it("maps quantities and subtracts ordered cards from active Wants", () => {
-    expect(pendingPurchaseByCoord(matrix, pendingPurchases)).toEqual(
-      new Map([["0|0|0", 2]]),
-    );
+  it("uses snapshot inbound quantities without counting them as physically owned", () => {
+    expect(getIncomingPurchaseN(matrix, 0, 0, 0)).toBe(2);
+    expect(getN(matrix, 0, 0, 0)).toBe(0);
+    expect(computeTrade(matrix).needs).toEqual([
+      { si: 0, ci: 0, ri: 2, spare: 1 },
+    ]);
 
-    const pendingTrades: PublicPendingTrade[] = [
-      {
-        id: 20,
-        reservedAt: "2026-07-09",
-        give: [],
-        receive: [
-          {
-            direction: "receive",
-            catalogId: 3,
-            series: "NEW YEAR",
-            character: "Rei",
-            rarity: "SSR",
-            qty: 1,
-          },
-        ],
-      },
-    ];
-
-    const withTradesOnly = computeTradeWithPending(matrix, pendingTrades);
-    expect(withTradesOnly.needs).toEqual([{ si: 0, ci: 0, ri: 0, spare: 2 }]);
-    expect(
-      computeTradeWithPending(matrix, pendingTrades, pendingPurchases).needs,
-    ).toEqual([]);
+    const withIncomingTrade = buildMatrix({
+      ...overview,
+      cells: overview.cells.map((cell) =>
+        cell.catalogId === 3 ? { ...cell, incomingTrade: 1 } : cell,
+      ),
+    });
+    expect(computeTrade(withIncomingTrade).needs).toEqual([]);
   });
 
   it("keeps an ordered card missing while clearly marking its pending quantity", () => {
-    render(<Wishlist m={matrix} pendingPurchases={pendingPurchases} />);
+    render(<Wishlist m={matrix} />);
 
     expect(screen.getByText(/33% 完成 · 尚缺 2 張/)).toBeInTheDocument();
     expect(screen.getByTitle("預定購入 2 張（待收件）")).toBeInTheDocument();
@@ -118,7 +110,21 @@ describe("public pending purchases", () => {
     expect(screen.getByText(/預定購入 2 張（待收件）/)).toBeInTheDocument();
   });
 
-  it("shows a privacy-safe pending list and removes its cards from 想換入", () => {
+  it("does not request descriptive pending resources for the wishlist", async () => {
+    history.replaceState(null, "", "/#wishlist");
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => overview,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PublicViewer />);
+
+    expect(await screen.findByText("預定購入 ×2")).toBeInTheDocument();
+    expect(fetchMock.mock.calls).toEqual([["/api/overview"]]);
+  });
+
+  it("shows a privacy-safe pending list alongside snapshot-derived Wants", () => {
     const payload = [
       {
         ...pendingPurchases[0],
@@ -154,7 +160,40 @@ describe("public pending purchases", () => {
     expect(screen.queryByText("999")).toBeNull();
   });
 
-  it("withholds trade needs when pending purchase data cannot be verified", async () => {
+  it.each(["/api/pending-trades", "/api/pending-purchases"])(
+    "keeps snapshot Wants visible when %s fails",
+    async (failedPath) => {
+      history.replaceState(null, "", "/#trade");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          if (url === "/api/overview") {
+            return { ok: true, status: 200, json: async () => overview };
+          }
+          if (url === failedPath) {
+            return { ok: false, status: 503, json: async () => ({}) };
+          }
+          return { ok: true, status: 200, json: async () => [] };
+        }),
+      );
+
+      render(<PublicViewer />);
+
+      expect(
+        await screen.findByRole("button", { name: "全部 找 1 餘 0" }),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByText(
+          failedPath === "/api/pending-trades"
+            ? "無法載入暫定交換列表"
+            : "無法載入預定購入（待收件）",
+        ),
+      ).toBeInTheDocument();
+      expect(fetch).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it("does not wait for descriptive pending lists to show complete snapshot Wants", async () => {
     history.replaceState(null, "", "/#trade");
     vi.stubGlobal(
       "fetch",
@@ -162,16 +201,92 @@ describe("public pending purchases", () => {
         if (url === "/api/overview") {
           return { ok: true, status: 200, json: async () => overview };
         }
-        if (url === "/api/pending-purchases") {
-          return { ok: false, status: 503, json: async () => ({}) };
-        }
-        return { ok: true, status: 200, json: async () => [] };
+        return new Promise(() => {});
       }),
     );
 
     render(<PublicViewer />);
 
-    expect(await screen.findByText("無法載入待收件資料")).toBeInTheDocument();
-    expect(screen.queryByText("想換入")).toBeNull();
+    expect(
+      await screen.findByRole("button", { name: "全部 找 1 餘 0" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("載入暫定交換列表")).toBeInTheDocument();
+    expect(screen.getByLabelText("載入預定購入（待收件）")).toBeInTheDocument();
+  });
+
+  it("does not subtract separately fetched lists that disagree with the snapshot", () => {
+    const line = {
+      catalogId: 3,
+      series: "NEW YEAR",
+      character: "Rei",
+      rarity: "SSR" as const,
+      qty: 5,
+    };
+    render(
+      <Trade
+        m={matrix}
+        pending={[
+          {
+            id: 20,
+            reservedAt: "2026-07-09",
+            give: [],
+            receive: [{ ...line, direction: "receive" }],
+          },
+        ]}
+        pendingPurchases={[{ ...pendingPurchases[0], lines: [line] }]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "全部 找 1 餘 0" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("暫定交換列表")).toBeInTheDocument();
+    expect(screen.getByText("預定購入（待收件）")).toBeInTheDocument();
+  });
+
+  it.each(["incomingTrade", "incomingPurchase"] as const)(
+    "withholds trade needs when the snapshot lacks %s even if pending lists load",
+    async (field) => {
+      history.replaceState(null, "", "/#trade");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => ({
+          ok: true,
+          json: async () =>
+            url === "/api/overview"
+              ? {
+                  ...overview,
+                  cells: overview.cells.map((cell) => ({
+                    ...cell,
+                    [field]: undefined,
+                  })),
+                }
+              : [],
+        })),
+      );
+
+      render(<PublicViewer />);
+
+      expect(await screen.findByText("無法載入待收件資料")).toBeInTheDocument();
+      expect(screen.queryByText("想換入")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "複製想換入清單" }),
+      ).toBeNull();
+    },
+  );
+
+  it("withholds purchase badges when the snapshot lacks purchase aggregates", () => {
+    const incomplete = buildMatrix({
+      ...overview,
+      cells: overview.cells.map((cell) => ({
+        ...cell,
+        incomingPurchase: undefined,
+      })),
+    });
+
+    render(<Wishlist m={incomplete} />);
+
+    expect(screen.getByText("無法載入待收件資料")).toBeInTheDocument();
+    expect(screen.queryByText(/預定購入 ×/)).toBeNull();
   });
 });

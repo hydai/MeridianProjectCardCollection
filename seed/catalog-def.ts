@@ -1,13 +1,10 @@
 import { BASE_RARITY_ORDER } from "../src/shared/rarity";
 import type { Rarity } from "../src/shared/types";
 
-// The collectible-card universe — the single source of truth for which cards
-// exist. Drives admin dropdowns (bundled into the client) and the catalog sync
-// migration (which writes card_catalog in D1). See the manage-card-catalog skill.
-//
-//   - Add a SERIES: add an entry to SERIES_CHARACTERS (append at the end).
-//   - Add a CHARACTER to a series: append it to that series's character list.
-// Then run `npm run catalog:sync` and follow the skill.
+// Historical catalog for the original import and its test fixtures.
+// Live public views and admin controls read D1's series + card_catalog tables.
+// Additions belong in the series manager or an explicit catalog:sync input,
+// not here. See the manage-card-catalog skill.
 
 // The checked-in seed contains only Vol.1–2. EX is introduced by the Vol.3
 // migration and by the dynamic series manager, so legacy seed series keep the
@@ -29,7 +26,7 @@ export const COMMON_CHARACTERS = [
   "Hitomi",
 ];
 
-// series -> ordered character list. Insertion order here = display order.
+// Historical series -> ordered character list.
 export const SERIES_CHARACTERS: Record<string, string[]> = {
   "NEW YEAR": COMMON_CHARACTERS,
   "BUNNY GIRL": COMMON_CHARACTERS,
@@ -39,13 +36,10 @@ export const SERIES_CHARACTERS: Record<string, string[]> = {
 
 export const SERIES = Object.keys(SERIES_CHARACTERS);
 
-// 彈（Vol）→ 系列。純前端顯示用，驅動格表上方的篩選列；不進 D1。
-// 有序：陣列順序＝filter 列由上到下的顯示順序。
-// 新增系列時務必把它加進某一彈（見 manage-card-catalog 技能與一致性測試）。
+// Historical volume assignments. Runtime volumes live in series.volume_number.
 export const VOLUMES: { label: string; series: string[] }[] = [
   { label: "Vol.1", series: ["NEW YEAR", "BUNNY GIRL", "KILLER"] },
   { label: "Vol.2", series: ["MP 4TH"] },
-  // 第三彈 → 在此 append 一個 { label: "Vol.3", series: [...] }
 ];
 
 export function charactersFor(series: string): string[] {

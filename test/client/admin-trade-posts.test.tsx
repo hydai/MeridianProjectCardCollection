@@ -60,6 +60,124 @@ afterEach(() => {
 });
 
 describe("admin exchange announcements", () => {
+  it("keeps a committed publication out of the editor when refresh fails and retries only reads", async () => {
+    let published: TradePost | null = null;
+    let failRefresh = false;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (!init?.method && failRefresh) throw new Error("refresh unavailable");
+      if (url.endsWith("/candidates")) {
+        return { ok: true, json: async () => structuredClone(candidates) };
+      }
+      if (url === "/api/admin/trade-posts" && !init?.method) {
+        return {
+          ok: true,
+          json: async () => (published ? [structuredClone(published)] : []),
+        };
+      }
+      if (url === "/api/admin/trade-posts" && init?.method === "POST") {
+        return { ok: true, json: async () => draftPost() };
+      }
+      if (url === "/api/admin/trade-posts/7/publish") {
+        published = {
+          ...draftPost(),
+          status: "published",
+          publishedAt: "2026-09-02 02:05:00",
+        };
+        failRefresh = true;
+        return { ok: true, json: async () => structuredClone(published) };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<TradePosts />);
+    await screen.findByText("還沒有交換公告");
+    fireEvent.click(screen.getByRole("button", { name: "新增公告" }));
+    fireEvent.change(
+      screen.getByLabelText("SUMMER BEACH & YOU Mizuki UR 換出數量"),
+      { target: { value: "1" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "發布公告" }));
+    await screen.findByText("交換公告已發布。");
+    await screen.findByText("公告列表更新失敗");
+    expect(screen.queryByRole("button", { name: "發布公告" })).toBeNull();
+    expect(screen.queryByLabelText("公開交換說明")).toBeNull();
+    expect(screen.getByText("公開中")).toBeInTheDocument();
+    const writes = fetchMock.mock.calls.filter(([, init]) => init?.method);
+    failRefresh = false;
+    fireEvent.click(screen.getByRole("button", { name: "重新載入公告" }));
+    await waitFor(() =>
+      expect(screen.queryByText("公告列表更新失敗")).toBeNull(),
+    );
+    expect(
+      fetchMock.mock.calls.filter(([, init]) => init?.method),
+    ).toHaveLength(writes.length);
+  });
+
+  it("reuses a saved draft when publishing fails instead of creating it again", async () => {
+    let draft: TradePost | null = null;
+    let failed = false;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/candidates"))
+        return { ok: true, json: async () => structuredClone(candidates) };
+      if (url === "/api/admin/trade-posts" && !init?.method) {
+        return {
+          ok: true,
+          json: async () => (draft ? [structuredClone(draft)] : []),
+        };
+      }
+      if (init?.method === "POST" && url === "/api/admin/trade-posts") {
+        draft = draftPost();
+        return { ok: true, json: async () => structuredClone(draft) };
+      }
+      if (init?.method === "PUT")
+        return { ok: true, json: async () => structuredClone(draft) };
+      if (url.endsWith("/publish")) {
+        if (!failed) {
+          failed = true;
+          return {
+            ok: false,
+            status: 409,
+            json: async () => ({ error: "publish rejected" }),
+          };
+        }
+        draft = {
+          ...draftPost(),
+          status: "published",
+          publishedAt: "2026-09-02 02:05:00",
+        };
+        return { ok: true, json: async () => structuredClone(draft) };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<TradePosts />);
+    await screen.findByText("還沒有交換公告");
+    fireEvent.click(screen.getByRole("button", { name: "新增公告" }));
+    fireEvent.change(
+      screen.getByLabelText("SUMMER BEACH & YOU Mizuki UR 換出數量"),
+      { target: { value: "1" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "發布公告" }));
+    await screen.findByText(/publish rejected/);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "發布公告" })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "發布公告" }));
+    await screen.findByText("交換公告已發布。");
+    expect(
+      fetchMock.mock.calls.filter(
+        ([url, init]) =>
+          url === "/api/admin/trade-posts" && init?.method === "POST",
+      ),
+    ).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          url === "/api/admin/trade-posts/7" && init?.method === "PUT",
+      ),
+    ).toBe(true);
+  });
+
   it("creates and publishes one snapshot from current give and Want candidates", async () => {
     let posts: TradePost[] = [];
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {

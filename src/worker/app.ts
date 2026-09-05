@@ -1,5 +1,8 @@
 import { Hono } from "hono";
-import { MAX_CARD_BATCH_SIZE } from "../shared/card-batch";
+import {
+  ACQUISITION_KEY_PATTERN,
+  MAX_CARD_BATCH_SIZE,
+} from "../shared/card-batch";
 import {
   CATALOG_IMAGE_MAX_BYTES,
   isCatalogImageContentType,
@@ -38,6 +41,14 @@ import {
   validateCatalogImage,
 } from "./catalog-images";
 import {
+  AcquisitionConflictError,
+  type AcquisitionRequest,
+  acquisitionRequest,
+  getAcquisitionResult,
+} from "./db/acquisition-requests";
+import {
+  CardInputError,
+  CatalogMediaConflictError,
   addCards,
   addPack,
   cancelPurchaseReservation,
@@ -127,8 +138,17 @@ function claimedUploadSize(request: Request): number | null {
   return Number.isInteger(size) ? size : Number.NaN;
 }
 
-function immutableImageRequest(request: Request, revision: number): boolean {
-  return new URL(request.url).searchParams.get("v") === String(revision);
+function immutableImageRequest(
+  request: Request,
+  revision: number,
+  generation: string | null,
+): boolean {
+  const params = new URL(request.url).searchParams;
+  return (
+    generation !== null &&
+    params.get("g") === generation &&
+    params.get("v") === String(revision)
+  );
 }
 
 function catalogImageCacheKey(
@@ -138,13 +158,16 @@ function catalogImageCacheKey(
   variant: "thumb" | "card",
 ): Request | null {
   const requestedRevision = new URL(request.url).searchParams.get("v");
+  const generation = new URL(request.url).searchParams.get("g");
   if (!requestedRevision || !/^\d+$/.test(requestedRevision)) return null;
+  if (!generation || !/^[a-f0-9]{32}$/.test(generation)) return null;
 
   const url = new URL(request.url);
   url.search = "";
   url.searchParams.set("side", side);
   url.searchParams.set("variant", variant);
   url.searchParams.set("v", requestedRevision);
+  url.searchParams.set("g", generation);
   const headers = new Headers();
   const ifNoneMatch = request.headers.get("if-none-match");
   if (ifNoneMatch) headers.set("if-none-match", ifNoneMatch);
@@ -296,6 +319,9 @@ function validateCards(
   }
   for (const card of cards) {
     if (!card || typeof card !== "object") return "invalid card";
+    if (card.note != null && typeof card.note !== "string") {
+      return "card note must be a string";
+    }
     if (
       typeof card.series !== "string" ||
       !card.series ||
@@ -463,6 +489,56 @@ function normalizeTransactionInput(body: unknown): {
             receivedCharacter: (input.receivedCharacter as string).trim(),
             receivedRarity: input.receivedRarity as Rarity,
           }
+        : {}),
+    },
+  };
+}
+
+function normalizeUpdateCardInput(body: unknown): {
+  value?: UpdateCardInput;
+  error?: string;
+} {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { error: "invalid card update" };
+  }
+  const input = body as Record<string, unknown>;
+  if (
+    input.status !== undefined &&
+    input.status !== "owned" &&
+    input.status !== "for_sale" &&
+    input.status !== "for_trade"
+  ) {
+    return { error: "status must be owned, for_sale, or for_trade" };
+  }
+  if (
+    input.askingPrice !== undefined &&
+    input.askingPrice !== null &&
+    (typeof input.askingPrice !== "number" ||
+      !Number.isFinite(input.askingPrice) ||
+      input.askingPrice < 0)
+  ) {
+    return { error: "askingPrice must be finite and nonnegative, or null" };
+  }
+  for (const field of ["wantInReturn", "note"] as const) {
+    if (
+      input[field] !== undefined &&
+      input[field] !== null &&
+      typeof input[field] !== "string"
+    ) {
+      return { error: `${field} must be a string or null` };
+    }
+  }
+  return {
+    value: {
+      ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(input.askingPrice !== undefined
+        ? { askingPrice: input.askingPrice as number | null }
+        : {}),
+      ...(input.wantInReturn !== undefined
+        ? { wantInReturn: input.wantInReturn as string | null }
+        : {}),
+      ...(input.note !== undefined
+        ? { note: input.note as string | null }
         : {}),
     },
   };
@@ -766,9 +842,12 @@ app.get("/api/catalog/:id/image", async (c) => {
     });
   }
   const requestedRevision = c.req.query("v");
+  const requestedGeneration = c.req.query("g");
   if (
-    requestedRevision !== undefined &&
-    requestedRevision !== String(stored.revision)
+    (requestedRevision !== undefined &&
+      requestedRevision !== String(stored.revision)) ||
+    (requestedGeneration !== undefined &&
+      requestedGeneration !== stored.generation)
   ) {
     return c.json({ error: "image revision not found" }, 404, {
       "cache-control": "no-store",
@@ -801,7 +880,11 @@ app.get("/api/catalog/:id/image", async (c) => {
   );
   headers.set("etag", object.httpEtag);
   headers.set("x-content-type-options", "nosniff");
-  const immutable = immutableImageRequest(c.req.raw, stored.revision);
+  const immutable = immutableImageRequest(
+    c.req.raw,
+    stored.revision,
+    stored.generation,
+  );
   headers.set(
     "cache-control",
     immutable
@@ -992,15 +1075,19 @@ admin.put("/catalog/:id/image", async (c) => {
 
   let revision: number;
   try {
-    revision = await saveCatalogMedia(c.env.DB, {
-      catalogId,
-      side,
-      objectKey: objectKeys.card,
-      contentType: CATALOG_IMAGE_OUTPUT_CONTENT_TYPE,
-      byteSize: uploaded.card.size,
-      etag: uploaded.card.etag,
-      originalFilename: uploadFilename.filename,
-    });
+    revision = await saveCatalogMedia(
+      c.env.DB,
+      {
+        catalogId,
+        side,
+        objectKey: objectKeys.card,
+        contentType: CATALOG_IMAGE_OUTPUT_CONTENT_TYPE,
+        byteSize: uploaded.card.size,
+        etag: uploaded.card.etag,
+        originalFilename: uploadFilename.filename,
+      },
+      oldMedia?.objectKey ?? null,
+    );
   } catch (error) {
     try {
       await c.env.CARD_IMAGES.delete(Object.values(objectKeys));
@@ -1014,6 +1101,9 @@ admin.put("/catalog/:id/image", async (c) => {
           error: String(cleanupError),
         }),
       );
+    }
+    if (error instanceof CatalogMediaConflictError) {
+      return c.json({ error: error.message }, 409);
     }
     console.error(
       JSON.stringify({
@@ -1056,11 +1146,18 @@ admin.delete("/catalog/:id/image", async (c) => {
   if (!stored) return c.json({ error: "image not found" }, 404);
 
   try {
-    await c.env.CARD_IMAGES.delete(
-      catalogImageStoredObjectKeys(stored.objectKey),
-    );
-    if (!(await deleteCatalogMediaMetadata(c.env.DB, catalogId, side))) {
-      return c.json({ error: "image not found" }, 404);
+    if (
+      !(await deleteCatalogMediaMetadata(
+        c.env.DB,
+        catalogId,
+        side,
+        stored.objectKey,
+      ))
+    ) {
+      return c.json(
+        { error: "catalog image changed; refresh before retrying" },
+        409,
+      );
     }
   } catch (error) {
     console.error(
@@ -1072,6 +1169,21 @@ admin.delete("/catalog/:id/image", async (c) => {
       }),
     );
     return c.json({ error: "image could not be deleted" }, 503);
+  }
+  try {
+    await c.env.CARD_IMAGES.delete(
+      catalogImageStoredObjectKeys(stored.objectKey),
+    );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        message: "failed to clean up removed catalog media objects",
+        catalogId,
+        side,
+        objectKey: stored.objectKey,
+        error: String(error),
+      }),
+    );
   }
   return c.json({ ok: true as const });
 });
@@ -1182,23 +1294,39 @@ admin.patch("/series/:name", async (c) => {
 });
 
 admin.post("/cards", async (c) => {
+  const rejected = (error: string) =>
+    c.json({ error }, 400, { "x-acquisition-outcome": "rejected" });
   let body: unknown;
   try {
     body = await c.req.json<unknown>();
   } catch {
-    return c.json({ error: "invalid JSON body" }, 400);
+    return rejected("invalid JSON body");
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return c.json({ error: "invalid card request" }, 400);
+    return rejected("invalid card request");
+  }
+  const key = c.req.header("idempotency-key");
+  let request: AcquisitionRequest | undefined;
+  if (key !== undefined) {
+    if (!ACQUISITION_KEY_PATTERN.test(key)) {
+      return rejected("invalid Idempotency-Key");
+    }
+    request = await acquisitionRequest(key, body);
+    try {
+      const replay = await getAcquisitionResult(c.env.DB, request);
+      if (replay) return c.json(replay);
+    } catch (error) {
+      if (!(error instanceof AcquisitionConflictError)) throw error;
+      return c.json({ error: error.message }, 409);
+    }
   }
   const input = body as Record<string, unknown>;
   if (!Array.isArray(input.cards) || input.cards.length === 0) {
-    return c.json({ error: "cards required" }, 400);
+    return rejected("cards required");
   }
   if (input.cards.length > MAX_CARD_BATCH_SIZE) {
-    return c.json(
-      { error: `at most ${MAX_CARD_BATCH_SIZE} cards are allowed per batch` },
-      400,
+    return rejected(
+      `at most ${MAX_CARD_BATCH_SIZE} cards are allowed per batch`,
     );
   }
   const cards = input.cards as AddCardInput[];
@@ -1206,47 +1334,54 @@ admin.post("/cards", async (c) => {
   if (input.opening !== undefined) {
     const normalized = await normalizeOpeningInput(c.env.DB, input.opening);
     if (!normalized.value) {
-      return c.json({ error: normalized.error ?? "invalid opening" }, 400);
+      return rejected(normalized.error ?? "invalid opening");
     }
     opening = normalized.value;
   }
   let acquisition: AcquisitionEventInput | undefined;
   if (input.acquisition !== undefined) {
     if (opening) {
-      return c.json(
-        { error: "pack cards cannot include separate acquisition details" },
-        400,
-      );
+      return rejected("pack cards cannot include separate acquisition details");
     }
     const normalized = normalizeAcquisitionEventInput(input.acquisition);
     if (!normalized.value) {
-      return c.json(
-        { error: normalized.error ?? "invalid acquisition details" },
-        400,
-      );
+      return rejected(normalized.error ?? "invalid acquisition details");
     }
     acquisition = normalized.value;
   }
   const validationError = validateCards(cards, opening);
-  if (validationError) return c.json({ error: validationError }, 400);
+  if (validationError) return rejected(validationError);
   try {
     if (opening) {
-      return c.json(await addPack(c.env.DB, cards, opening));
+      return c.json(await addPack(c.env.DB, cards, opening, request));
     }
     return c.json({
-      ids: await addCards(c.env.DB, cards, undefined, acquisition),
+      ids: await addCards(c.env.DB, cards, undefined, acquisition, request),
     });
   } catch (error) {
-    return c.json({ error: String(error) }, 400);
+    if (error instanceof CardInputError) return rejected(error.message);
+    if (error instanceof AcquisitionConflictError) {
+      return c.json({ error: error.message }, 409);
+    }
+    throw error;
   }
 });
 
 admin.patch("/cards/:id", async (c) => {
   const id = Number(c.req.param("id"));
-  if (!Number.isInteger(id)) return c.json({ error: "bad id" }, 400);
-  const body = await c.req.json<UpdateCardInput>();
+  if (!Number.isInteger(id) || id < 1) return c.json({ error: "bad id" }, 400);
+  let body: unknown;
   try {
-    await updateCard(c.env.DB, id, body);
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const normalized = normalizeUpdateCardInput(body);
+  if (!normalized.value) {
+    return c.json({ error: normalized.error ?? "invalid card update" }, 400);
+  }
+  try {
+    await updateCard(c.env.DB, id, normalized.value);
   } catch (error) {
     return c.json({ error: String(error) }, 409);
   }

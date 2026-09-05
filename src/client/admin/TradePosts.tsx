@@ -326,6 +326,7 @@ export function TradePosts({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const [nextPosts, nextCandidates] = await Promise.all([
@@ -335,6 +336,32 @@ export function TradePosts({
     setPosts(nextPosts);
     setCandidates(nextCandidates);
   }, []);
+
+  const revalidate = async () => {
+    setRefreshError(null);
+    try {
+      await refresh();
+    } catch (reason) {
+      setRefreshError(
+        `操作結果已保留，但公告列表未能重新載入：${String(reason)}`,
+      );
+    }
+  };
+
+  const rememberPost = (post: TradePost) => {
+    setPosts((current) => {
+      const existing = current?.find((item) => item.id === post.id);
+      const next = {
+        reservationCount: 0,
+        activeReservationCount: 0,
+        ...existing,
+        ...post,
+      };
+      return existing
+        ? (current ?? []).map((item) => (item.id === post.id ? next : item))
+        : [...(current ?? []), next];
+    });
+  };
 
   useEffect(() => {
     let active = true;
@@ -426,20 +453,19 @@ export function TradePosts({
         ? await putTradePost(editor.id, payload)
         : await postTradePost(payload);
       if (publishNow) {
-        await publishTradePost(saved.id);
+        saved = await publishTradePost(saved.id);
       }
-      await refresh();
+      rememberPost(saved);
       setEditor(null);
       setMessage(publishNow ? "交換公告已發布。" : "交換公告草稿已儲存。");
     } catch (reason) {
-      if (saved && editor.id === null) setEditor(editorFromPost(saved));
-      try {
-        await refresh();
-      } catch {
-        // Preserve the original mutation error; a later refresh remains available.
+      if (saved) {
+        rememberPost(saved);
+        setEditor(editorFromPost(saved));
       }
       setError(String(reason));
     } finally {
+      await revalidate();
       setBusy(false);
     }
   };
@@ -449,12 +475,12 @@ export function TradePosts({
     setError(null);
     setMessage(null);
     try {
-      await closeTradePost(post.id);
-      await refresh();
+      rememberPost(await closeTradePost(post.id));
       setMessage("公告已關閉；原分享網址仍可查閱快照。");
     } catch (reason) {
       setError(String(reason));
     } finally {
+      await revalidate();
       setBusy(false);
     }
   };
@@ -465,12 +491,15 @@ export function TradePosts({
     setMessage(null);
     try {
       await deleteTradePost(post.id);
-      await refresh();
+      setPosts(
+        (current) => current?.filter((item) => item.id !== post.id) ?? [],
+      );
       if (editor?.id === post.id) setEditor(null);
       setMessage("草稿已刪除。");
     } catch (reason) {
       setError(String(reason));
     } finally {
+      await revalidate();
       setBusy(false);
     }
   };
@@ -529,6 +558,26 @@ export function TradePosts({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
+      {refreshError ? (
+        <Alert variant="destructive">
+          <AlertTitle>公告列表更新失敗</AlertTitle>
+          <AlertDescription>
+            <p>{refreshError}</p>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                await revalidate();
+                setBusy(false);
+              }}
+            >
+              重新載入公告
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {message ? (
         <Alert>
           <MegaphoneIcon />
@@ -568,7 +617,7 @@ export function TradePosts({
                   </AlertDescription>
                 </Alert>
               ) : null}
-              <FieldSet>
+              <FieldSet disabled={busy}>
                 <FieldLegend>我可以換出</FieldLegend>
                 <FieldDescription>
                   只列出目前標記為「可交換」且未保留、未被預約的實體卡。
@@ -584,7 +633,7 @@ export function TradePosts({
                 />
               </FieldSet>
 
-              <FieldSet>
+              <FieldSet disabled={busy}>
                 <FieldLegend>我正在找</FieldLegend>
                 <FieldDescription>
                   依目前未滿足的 Want 顯示；這是明確徵求清單，可留空。
@@ -607,6 +656,7 @@ export function TradePosts({
                   maxLength={1000}
                   rows={5}
                   value={editor.note}
+                  disabled={busy}
                   onChange={(event) =>
                     setEditor((current) =>
                       current

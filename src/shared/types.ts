@@ -1,11 +1,6 @@
 export type Rarity = "R" | "SR" | "SSR" | "UR" | "EX";
-export type CardStatus =
-  | "owned"
-  | "for_sale"
-  | "for_trade"
-  | "sold"
-  | "traded"
-  | "gifted";
+export type CardListingStatus = "owned" | "for_sale" | "for_trade";
+export type CardStatus = CardListingStatus | "sold" | "traded" | "gifted";
 export type CardSource = "pull" | "purchase" | "trade_in" | "other";
 export type TransactionType = "sale" | "trade" | "gift";
 
@@ -281,7 +276,7 @@ export interface OpeningCreated {
 }
 
 export interface UpdateCardInput {
-  status?: CardStatus;
+  status?: CardListingStatus;
   askingPrice?: number | null;
   wantInReturn?: string | null;
   note?: string | null;

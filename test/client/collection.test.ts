@@ -1,23 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
   type Matrix,
-  RARITIES,
   type TradeItem,
   buildMatrix,
   computeTrade,
-  computeTradeWithPending,
   exists,
   existsR,
   formatTradeList,
   getAvailableN,
   getHeldN,
   getImage,
+  getIncomingPurchaseN,
+  getIncomingTradeN,
   getN,
   getReservedN,
   getWantN,
   grandTotalByRarity,
   pendingReceiveByCoord,
   receivableCards,
+  remainingWantEntries,
 } from "../../src/client/collection";
 import type {
   OverviewResponse,
@@ -40,6 +41,8 @@ const cell = (
   reserved: 0,
   held: 0,
   available: owned,
+  incomingTrade: 0,
+  incomingPurchase: 0,
   wantCount: 0,
   volume: series === "MP 4TH" ? 2 : 1,
 });
@@ -181,6 +184,28 @@ describe("buildMatrix", () => {
     expect(getAvailableN(m, 0, 0, 0)).toBe(1);
   });
 
+  it("preserves availability and inbound quantities at their catalog coordinates", () => {
+    const m = buildMatrix({
+      cells: [
+        {
+          ...cell("LATER", "Rei", "EX", 5, 1),
+          volume: 3,
+          available: 2,
+          incomingTrade: 3,
+          incomingPurchase: 4,
+        },
+        cell("EARLIER", "Mizuki", "R", 1, 2),
+      ],
+      progress: [],
+    });
+
+    expect(getAvailableN(m, 1, 0, 4)).toBe(2);
+    expect(getIncomingTradeN(m, 1, 0, 4)).toBe(3);
+    expect(getIncomingPurchaseN(m, 1, 0, 4)).toBe(4);
+    expect(getIncomingTradeN(m, 0, 1, 0)).toBe(0);
+    expect(getN(m, 1, 0, 4)).toBe(5);
+  });
+
   it("grand total by rarity sums all owned", () => {
     expect(grandTotalByRarity(buildMatrix(overview))).toEqual([6, 1, 0, 0, 0]);
   });
@@ -213,82 +238,65 @@ describe("computeTrade", () => {
   });
 });
 
-describe("computeTradeWithPending", () => {
-  const wantedOverview: OverviewResponse = {
-    ...overview,
-    cells: overview.cells.map((entry) =>
-      entry.catalogId === 3 ? { ...entry, wantCount: 2 } : entry,
-    ),
+describe("remainingWantEntries", () => {
+  const wanted = {
+    ...cell("NEW YEAR", "Mizuki", "SSR", 1, 3),
+    wantCount: 7,
+    incomingTrade: 2,
+    incomingPurchase: 3,
   };
-  const m = buildMatrix(wantedOverview); // NEW YEAR/Mizuki SSR Want 2
 
-  it("equals computeTrade when there are no pending trades", () => {
-    const base = computeTrade(m);
-    const adj = computeTradeWithPending(m, []);
-    expect(adj.surplus).toHaveLength(base.surplus.length);
-    expect(adj.needs).toHaveLength(base.needs.length);
+  it("subtracts both inbound aggregates without changing physical holdings", () => {
+    const m = buildMatrix({ cells: [wanted], progress: [] });
+
+    expect(remainingWantEntries(m)).toEqual([
+      { si: 0, ci: 0, ri: 2, spare: 1 },
+    ]);
+    expect(computeTrade(m).needs).toEqual(remainingWantEntries(m));
+    expect(getN(m, 0, 0, 2)).toBe(1);
   });
 
-  it("uses reserved counts to remove unavailable give-side surplus", () => {
-    const reservedOverview: OverviewResponse = {
-      ...overview,
-      cells: overview.cells.map((entry) =>
-        entry.catalogId === 5 ? { ...entry, reserved: 1, available: 1 } : entry,
-      ),
-    };
-    const reservedMatrix = buildMatrix(reservedOverview);
-    const pending: PublicPendingTrade[] = [
-      {
-        id: 1,
-        reservedAt: "2026-06-27",
-        give: [
-          {
-            direction: "give",
-            catalogId: 5,
-            series: "MP 4TH",
-            character: "Mizuki",
-            rarity: "R",
-            qty: 1,
-          },
+  it("keeps Wants stable across a receipt that moves incoming copies to owned", () => {
+    const before = buildMatrix({ cells: [wanted], progress: [] });
+    const after = buildMatrix({
+      cells: [{ ...wanted, owned: 4, available: 4, incomingPurchase: 0 }],
+      progress: [],
+    });
+
+    expect(remainingWantEntries(after)).toEqual(remainingWantEntries(before));
+    expect(getN(before, 0, 0, 2)).toBe(1);
+    expect(getN(after, 0, 0, 2)).toBe(4);
+  });
+
+  it("clamps fulfilled Wants to zero and never invents unissued slots", () => {
+    const m = buildMatrix({
+      cells: [{ ...wanted, wantCount: 2 }],
+      progress: [],
+    });
+
+    expect(remainingWantEntries(m)).toEqual([]);
+  });
+
+  it.each(["incomingTrade", "incomingPurchase"] as const)(
+    "withholds all Wants if an older snapshot is missing %s",
+    (field) => {
+      const m = buildMatrix({
+        cells: [
+          wanted,
+          { ...cell("NEW YEAR", "Mizuki", "R", 0, 1), [field]: undefined },
         ],
-        receive: [],
-      },
-    ];
-    const adj = computeTradeWithPending(reservedMatrix, pending);
-    expect(adj.surplus.some((entry) => entry.si === 1 && entry.ri === 0)).toBe(
-      false,
-    );
-    expect(getN(reservedMatrix, 1, 0, 0)).toBe(2);
-  });
+        progress: [],
+      });
 
-  it("a receive line reduces the matching Want by its quantity", () => {
-    const base = computeTrade(m);
-    const target = base.needs[0];
-    const pending: PublicPendingTrade[] = [
-      {
-        id: 2,
-        reservedAt: "2026-06-27",
-        give: [],
-        receive: [
-          {
-            direction: "receive",
-            catalogId: 0,
-            series: m.series[target.si],
-            character: m.characters[target.ci],
-            rarity: RARITIES[target.ri],
-            qty: 1,
-          },
-        ],
-      },
-    ];
-    const adj = computeTradeWithPending(m, pending);
-    expect(
-      adj.needs.find(
-        (n) => n.si === target.si && n.ci === target.ci && n.ri === target.ri,
-      )?.spare,
-    ).toBe(1);
-    expect(adj.needs).toHaveLength(base.needs.length);
-  });
+      expect(
+        field === "incomingTrade"
+          ? getIncomingTradeN(m, 0, 0, 0)
+          : getIncomingPurchaseN(m, 0, 0, 0),
+      ).toBeNull();
+      expect(remainingWantEntries(m)).toBeNull();
+      expect(computeTrade(m).needs).toBeNull();
+    },
+  );
 });
 
 describe("held cards (保留)", () => {
@@ -414,6 +422,9 @@ describe("formatTradeList", () => {
     cards: [],
     reserved: [],
     held: [],
+    available: [],
+    incomingTrade: [],
+    incomingPurchase: [],
     wants: [],
     slots: [],
     images: [],
@@ -463,6 +474,9 @@ describe("formatTradeList", () => {
       cards: [],
       reserved: [],
       held: [],
+      available: [],
+      incomingTrade: [],
+      incomingPurchase: [],
       wants: [],
       slots: [],
       images: [],

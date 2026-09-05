@@ -14,6 +14,7 @@ import { ManageCards } from "../../src/client/admin/ManageCards";
 import { Openings } from "../../src/client/admin/Openings";
 import { PendingTrades } from "../../src/client/admin/PendingTrades";
 import { QuickPackOpening } from "../../src/client/admin/QuickPackOpening";
+import type { OverviewResponse } from "../../src/shared/types";
 
 beforeEach(() => sessionStorage.clear());
 
@@ -631,17 +632,27 @@ describe("ManageCards", () => {
 });
 
 // Overview where every type is missing except two duplicates we can give away.
-const overviewJson = () => ({
-  cells: buildCatalog().map((c, i) => ({
-    catalogId: i + 1,
-    series: c.series,
-    character: c.character,
-    rarity: c.rarity,
-    owned:
+const overviewJson = (): OverviewResponse => ({
+  cells: buildCatalog().map((c, i) => {
+    const owned =
       c.series === "MP 4TH" && c.character === "Mizuki" && c.rarity === "R"
         ? 2
-        : 0,
-  })),
+        : 0;
+    return {
+      catalogId: i + 1,
+      series: c.series,
+      volume: c.series === "MP 4TH" ? 2 : 1,
+      character: c.character,
+      rarity: c.rarity,
+      owned,
+      reserved: 0,
+      held: 0,
+      available: owned,
+      wantCount: 0,
+      incomingTrade: 0,
+      incomingPurchase: 0,
+    };
+  }),
   progress: [],
 });
 

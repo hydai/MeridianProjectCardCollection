@@ -2,28 +2,28 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { Fragment } from "react";
-import type { PublicPendingPurchase } from "../../shared/types";
 import {
   type Matrix,
   RARITIES,
   exists,
   existsR,
+  getIncomingPurchaseN,
   getN,
-  pendingPurchaseByCoord,
+  hasIncomingPurchaseSnapshot,
 } from "../collection";
 import {
   CARD_COUNT,
   CARD_HEADER,
   CARD_SHELL,
   CARD_TITLE,
+  IncomingUnavailable,
   MissChip,
 } from "./shared";
 
-export function Wishlist({
-  m,
-  pendingPurchases = [],
-}: { m: Matrix; pendingPurchases?: PublicPendingPurchase[] }) {
-  const pendingByCoord = pendingPurchaseByCoord(m, pendingPurchases);
+export function Wishlist({ m }: { m: Matrix }) {
+  if (!hasIncomingPurchaseSnapshot(m)) {
+    return <IncomingUnavailable />;
+  }
   const charMissing = m.characters.map((charName, ci) => {
     const seriesIdxs = m.series
       .map((_s, si) => si)
@@ -36,7 +36,7 @@ export function Wishlist({
                 name,
                 ri,
                 count: getN(m, si, ci, ri),
-                pendingPurchase: pendingByCoord.get(`${si}|${ci}|${ri}`) ?? 0,
+                pendingPurchase: getIncomingPurchaseN(m, si, ci, ri) ?? 0,
               },
             ]
           : [],
