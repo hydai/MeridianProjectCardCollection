@@ -48,6 +48,7 @@ import {
 } from "./db/acquisition-requests";
 import {
   CardInputError,
+  CatalogMediaConflictError,
   addCards,
   addPack,
   cancelPurchaseReservation,
@@ -137,8 +138,17 @@ function claimedUploadSize(request: Request): number | null {
   return Number.isInteger(size) ? size : Number.NaN;
 }
 
-function immutableImageRequest(request: Request, revision: number): boolean {
-  return new URL(request.url).searchParams.get("v") === String(revision);
+function immutableImageRequest(
+  request: Request,
+  revision: number,
+  generation: string | null,
+): boolean {
+  const params = new URL(request.url).searchParams;
+  return (
+    generation !== null &&
+    params.get("g") === generation &&
+    params.get("v") === String(revision)
+  );
 }
 
 function catalogImageCacheKey(
@@ -148,13 +158,16 @@ function catalogImageCacheKey(
   variant: "thumb" | "card",
 ): Request | null {
   const requestedRevision = new URL(request.url).searchParams.get("v");
+  const generation = new URL(request.url).searchParams.get("g");
   if (!requestedRevision || !/^\d+$/.test(requestedRevision)) return null;
+  if (!generation || !/^[a-f0-9]{32}$/.test(generation)) return null;
 
   const url = new URL(request.url);
   url.search = "";
   url.searchParams.set("side", side);
   url.searchParams.set("variant", variant);
   url.searchParams.set("v", requestedRevision);
+  url.searchParams.set("g", generation);
   const headers = new Headers();
   const ifNoneMatch = request.headers.get("if-none-match");
   if (ifNoneMatch) headers.set("if-none-match", ifNoneMatch);
@@ -829,9 +842,12 @@ app.get("/api/catalog/:id/image", async (c) => {
     });
   }
   const requestedRevision = c.req.query("v");
+  const requestedGeneration = c.req.query("g");
   if (
-    requestedRevision !== undefined &&
-    requestedRevision !== String(stored.revision)
+    (requestedRevision !== undefined &&
+      requestedRevision !== String(stored.revision)) ||
+    (requestedGeneration !== undefined &&
+      requestedGeneration !== stored.generation)
   ) {
     return c.json({ error: "image revision not found" }, 404, {
       "cache-control": "no-store",
@@ -864,7 +880,11 @@ app.get("/api/catalog/:id/image", async (c) => {
   );
   headers.set("etag", object.httpEtag);
   headers.set("x-content-type-options", "nosniff");
-  const immutable = immutableImageRequest(c.req.raw, stored.revision);
+  const immutable = immutableImageRequest(
+    c.req.raw,
+    stored.revision,
+    stored.generation,
+  );
   headers.set(
     "cache-control",
     immutable
@@ -1055,15 +1075,19 @@ admin.put("/catalog/:id/image", async (c) => {
 
   let revision: number;
   try {
-    revision = await saveCatalogMedia(c.env.DB, {
-      catalogId,
-      side,
-      objectKey: objectKeys.card,
-      contentType: CATALOG_IMAGE_OUTPUT_CONTENT_TYPE,
-      byteSize: uploaded.card.size,
-      etag: uploaded.card.etag,
-      originalFilename: uploadFilename.filename,
-    });
+    revision = await saveCatalogMedia(
+      c.env.DB,
+      {
+        catalogId,
+        side,
+        objectKey: objectKeys.card,
+        contentType: CATALOG_IMAGE_OUTPUT_CONTENT_TYPE,
+        byteSize: uploaded.card.size,
+        etag: uploaded.card.etag,
+        originalFilename: uploadFilename.filename,
+      },
+      oldMedia?.objectKey ?? null,
+    );
   } catch (error) {
     try {
       await c.env.CARD_IMAGES.delete(Object.values(objectKeys));
@@ -1077,6 +1101,9 @@ admin.put("/catalog/:id/image", async (c) => {
           error: String(cleanupError),
         }),
       );
+    }
+    if (error instanceof CatalogMediaConflictError) {
+      return c.json({ error: error.message }, 409);
     }
     console.error(
       JSON.stringify({
@@ -1119,11 +1146,18 @@ admin.delete("/catalog/:id/image", async (c) => {
   if (!stored) return c.json({ error: "image not found" }, 404);
 
   try {
-    await c.env.CARD_IMAGES.delete(
-      catalogImageStoredObjectKeys(stored.objectKey),
-    );
-    if (!(await deleteCatalogMediaMetadata(c.env.DB, catalogId, side))) {
-      return c.json({ error: "image not found" }, 404);
+    if (
+      !(await deleteCatalogMediaMetadata(
+        c.env.DB,
+        catalogId,
+        side,
+        stored.objectKey,
+      ))
+    ) {
+      return c.json(
+        { error: "catalog image changed; refresh before retrying" },
+        409,
+      );
     }
   } catch (error) {
     console.error(
@@ -1135,6 +1169,21 @@ admin.delete("/catalog/:id/image", async (c) => {
       }),
     );
     return c.json({ error: "image could not be deleted" }, 503);
+  }
+  try {
+    await c.env.CARD_IMAGES.delete(
+      catalogImageStoredObjectKeys(stored.objectKey),
+    );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        message: "failed to clean up removed catalog media objects",
+        catalogId,
+        side,
+        objectKey: stored.objectKey,
+        error: String(error),
+      }),
+    );
   }
   return c.json({ ok: true as const });
 });

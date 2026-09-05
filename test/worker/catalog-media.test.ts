@@ -8,6 +8,11 @@ import {
   catalogImageObjectKeyForVariant,
   catalogImageStoredObjectKeys,
 } from "../../src/worker/catalog-images";
+import {
+  deleteCatalogMediaMetadata,
+  getStoredCatalogMedia,
+  saveCatalogMedia,
+} from "../../src/worker/db/queries";
 
 const VALID_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -92,11 +97,17 @@ describe("catalog media", () => {
       revision: 1,
     });
     expect(saved?.front?.byteSize).toBeGreaterThan(0);
-    expect(saved?.front?.url).toBe(
-      `/api/catalog/${catalogId}/image?side=front&variant=card&v=1`,
+    const imageUrl = new URL(saved?.front?.url ?? "", "https://example.com");
+    expect(imageUrl.pathname).toBe(`/api/catalog/${catalogId}/image`);
+    expect(imageUrl.searchParams.get("v")).toBe("1");
+    expect(imageUrl.searchParams.get("g")).toMatch(/^[a-f0-9]{32}$/);
+    const thumbnailUrl = new URL(
+      saved?.front?.thumbnailUrl ?? "",
+      "https://example.com",
     );
-    expect(saved?.front?.thumbnailUrl).toBe(
-      `/api/catalog/${catalogId}/image?side=front&variant=thumb&v=1`,
+    expect(thumbnailUrl.searchParams.get("variant")).toBe("thumb");
+    expect(thumbnailUrl.searchParams.get("g")).toBe(
+      imageUrl.searchParams.get("g"),
     );
     expect(
       (
@@ -113,8 +124,8 @@ describe("catalog media", () => {
       (cell) => cell.catalogId === catalogId,
     );
     expect(publicCell?.image).toEqual({
-      url: `/api/catalog/${catalogId}/image?side=front&variant=card&v=1`,
-      thumbnailUrl: `/api/catalog/${catalogId}/image?side=front&variant=thumb&v=1`,
+      url: saved?.front?.url,
+      thumbnailUrl: saved?.front?.thumbnailUrl,
     });
     expect(Object.keys(publicCell?.image ?? {})).toEqual([
       "url",
@@ -237,6 +248,103 @@ describe("catalog media", () => {
     expect(
       deletedOverview.cells.find((cell) => cell.catalogId === catalogId)?.image,
     ).toBeNull();
+  });
+
+  it("never reuses an immutable URL after deletion and reupload", async () => {
+    const catalogId = await firstCatalogId();
+    expect((await upload(catalogId, validPng())).status).toBe(200);
+    const original = (await listMedia()).find(
+      (entry) => entry.catalogId === catalogId,
+    );
+    if (!original?.front) throw new Error("original image is missing");
+    const oldImage = await SELF.fetch(
+      `https://example.com${original.front.url}`,
+    );
+    expect(oldImage.headers.get("cache-control")).toContain("immutable");
+    await oldImage.arrayBuffer();
+
+    expect(
+      (
+        await SELF.fetch(
+          `https://example.com/api/admin/catalog/${catalogId}/image`,
+          { method: "DELETE" },
+        )
+      ).status,
+    ).toBe(200);
+    expect((await upload(catalogId, validPng())).status).toBe(200);
+    const current = (await listMedia()).find(
+      (entry) => entry.catalogId === catalogId,
+    );
+    if (!current?.front) throw new Error("replacement image is missing");
+    expect(current.front.revision).toBe(1);
+    expect(current.front.url).not.toBe(original.front.url);
+    expect(current.front.thumbnailUrl).not.toBe(original.front.thumbnailUrl);
+    const newImage = await SELF.fetch(
+      `https://example.com${current.front.url}`,
+    );
+    expect(newImage.status).toBe(200);
+    expect(newImage.headers.get("cache-control")).toContain("immutable");
+    await newImage.arrayBuffer();
+
+    const unversionedGeneration = await SELF.fetch(
+      `https://example.com/api/catalog/${catalogId}/image?v=1`,
+    );
+    expect(unversionedGeneration.status).toBe(200);
+    expect(unversionedGeneration.headers.get("cache-control")).toContain(
+      "must-revalidate",
+    );
+    expect(unversionedGeneration.headers.get("cache-control")).not.toContain(
+      "immutable",
+    );
+    await unversionedGeneration.arrayBuffer();
+  });
+
+  it("rejects replacing or deleting an image using an outdated identity", async () => {
+    const catalogId = await firstCatalogId();
+    await upload(catalogId, validPng());
+    const original = await getStoredCatalogMedia(env.DB, catalogId, "front");
+    if (!original) throw new Error("original image is missing");
+    await upload(catalogId, validPng());
+    const current = await getStoredCatalogMedia(env.DB, catalogId, "front");
+    if (!current) throw new Error("replacement image is missing");
+    await expect(
+      saveCatalogMedia(env.DB, original, original.objectKey),
+    ).rejects.toThrow(/image changed/);
+    expect(
+      await deleteCatalogMediaMetadata(
+        env.DB,
+        catalogId,
+        "front",
+        original.objectKey,
+      ),
+    ).toBe(false);
+    expect(await getStoredCatalogMedia(env.DB, catalogId, "front")).toEqual(
+      current,
+    );
+    expect(await env.CARD_IMAGES.get(current.objectKey)).not.toBeNull();
+  });
+
+  it("preserves stored objects when removing metadata fails", async () => {
+    const catalogId = await firstCatalogId();
+    await upload(catalogId, validPng());
+    const stored = await getStoredCatalogMedia(env.DB, catalogId, "front");
+    if (!stored) throw new Error("image is missing");
+    await env.DB.prepare(
+      `CREATE TRIGGER reject_media_delete BEFORE DELETE ON catalog_media
+       BEGIN SELECT RAISE(ABORT, 'temporary metadata failure'); END`,
+    ).run();
+    const response = await SELF.fetch(
+      `https://example.com/api/admin/catalog/${catalogId}/image`,
+      { method: "DELETE" },
+    );
+    expect(response.status).toBe(503);
+    expect(await getStoredCatalogMedia(env.DB, catalogId, "front")).toEqual(
+      stored,
+    );
+    for (const key of catalogImageStoredObjectKeys(stored.objectKey)) {
+      expect(await env.CARD_IMAGES.get(key)).not.toBeNull();
+    }
+    await env.DB.exec("DROP TRIGGER reject_media_delete");
   });
 
   it("rejects unsupported, invalid, oversized, and unknown-slot uploads", async () => {

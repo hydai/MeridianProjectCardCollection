@@ -228,6 +228,7 @@ export interface StoredCatalogMedia {
   etag: string;
   originalFilename: string | null;
   revision: number;
+  generation: string | null;
   updatedAt: string;
 }
 
@@ -243,6 +244,7 @@ interface CatalogMediaListRow {
   byteSize: number | null;
   originalFilename: string | null;
   revision: number | null;
+  generation: string | null;
   updatedAt: string | null;
 }
 
@@ -250,6 +252,7 @@ function catalogMediaUrl(
   catalogId: number,
   side: CatalogMediaSide,
   revision: number,
+  generation: string | null,
   variant: "thumb" | "card" = "card",
 ): string {
   const params = new URLSearchParams({
@@ -257,6 +260,7 @@ function catalogMediaUrl(
     variant,
     v: String(revision),
   });
+  if (generation !== null) params.set("g", generation);
   return `/api/catalog/${catalogId}/image?${params}`;
 }
 
@@ -271,7 +275,7 @@ export async function listCatalogMedia(
                 m.side, m.object_key AS objectKey,
                 m.content_type AS contentType, m.byte_size AS byteSize,
                 m.original_filename AS originalFilename,
-                m.revision, m.updated_at AS updatedAt
+                m.revision, m.generation, m.updated_at AS updatedAt
          FROM card_catalog c
          JOIN series s ON s.name = c.series
          LEFT JOIN catalog_media m
@@ -297,11 +301,17 @@ export async function listCatalogMedia(
       row.updatedAt
         ? {
             side: row.side,
-            url: catalogMediaUrl(row.catalogId, row.side, row.revision),
+            url: catalogMediaUrl(
+              row.catalogId,
+              row.side,
+              row.revision,
+              row.generation,
+            ),
             thumbnailUrl: catalogMediaUrl(
               row.catalogId,
               row.side,
               row.revision,
+              row.generation,
               "thumb",
             ),
             contentType: row.contentType,
@@ -334,7 +344,7 @@ export async function getStoredCatalogMedia(
     .prepare(
       `SELECT catalog_id AS catalogId, side, object_key AS objectKey,
               content_type AS contentType, byte_size AS byteSize, etag,
-              original_filename AS originalFilename, revision,
+              original_filename AS originalFilename, revision, generation,
               updated_at AS updatedAt
        FROM catalog_media
        WHERE catalog_id = ? AND side = ?`,
@@ -343,24 +353,33 @@ export async function getStoredCatalogMedia(
     .first<StoredCatalogMedia>();
 }
 
+export class CatalogMediaConflictError extends Error {}
+
 export async function saveCatalogMedia(
   db: D1Database,
-  input: Omit<StoredCatalogMedia, "revision" | "updatedAt">,
+  input: Omit<StoredCatalogMedia, "revision" | "updatedAt" | "generation">,
+  expectedObjectKey: string | null,
 ): Promise<number> {
   const saved = await db
     .prepare(
       `INSERT INTO catalog_media
          (catalog_id, side, object_key, content_type, byte_size, etag,
-          original_filename)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+          original_filename, generation)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE ? IS NULL OR EXISTS (
+         SELECT 1 FROM catalog_media
+         WHERE catalog_id = ? AND side = ? AND object_key = ?
+       )
        ON CONFLICT(catalog_id, side) DO UPDATE SET
          object_key = excluded.object_key,
          content_type = excluded.content_type,
          byte_size = excluded.byte_size,
          etag = excluded.etag,
          original_filename = excluded.original_filename,
+         generation = excluded.generation,
          revision = catalog_media.revision + 1,
          updated_at = datetime('now')
+       WHERE catalog_media.object_key = ?
        RETURNING revision`,
     )
     .bind(
@@ -371,9 +390,19 @@ export async function saveCatalogMedia(
       input.byteSize,
       input.etag,
       input.originalFilename,
+      crypto.randomUUID().replaceAll("-", ""),
+      expectedObjectKey,
+      input.catalogId,
+      input.side,
+      expectedObjectKey,
+      expectedObjectKey,
     )
     .first<{ revision: number }>();
-  if (!saved) throw new Error("catalog media was not saved");
+  if (!saved) {
+    throw new CatalogMediaConflictError(
+      "catalog image changed; refresh before retrying",
+    );
+  }
   return saved.revision;
 }
 
@@ -381,10 +410,13 @@ export async function deleteCatalogMediaMetadata(
   db: D1Database,
   catalogId: number,
   side: CatalogMediaSide,
+  expectedObjectKey: string,
 ): Promise<boolean> {
   const result = await db
-    .prepare("DELETE FROM catalog_media WHERE catalog_id = ? AND side = ?")
-    .bind(catalogId, side)
+    .prepare(
+      "DELETE FROM catalog_media WHERE catalog_id = ? AND side = ? AND object_key = ?",
+    )
+    .bind(catalogId, side, expectedObjectKey)
     .run();
   return (result.meta.changes ?? 0) > 0;
 }
@@ -567,7 +599,7 @@ export async function getOverview(db: D1Database): Promise<OverviewResponse> {
                 COALESCE(w.desired_count, 0) AS wantCount,
                 COALESCE(r.incoming, 0) AS incomingTrade,
                 COALESCE(p.incoming, 0) AS incomingPurchase,
-                m.revision AS imageRevision
+                m.revision AS imageRevision, m.generation AS imageGeneration
          FROM card_catalog c
          JOIN series s ON s.name = c.series
          LEFT JOIN cards k ON k.catalog_id = c.id AND k.status IN ${ACTIVE}
@@ -600,28 +632,37 @@ export async function getOverview(db: D1Database): Promise<OverviewResponse> {
       .all<
         Omit<OverviewCell, "available" | "image"> & {
           imageRevision: number | null;
+          imageGeneration: string | null;
         }
       >()
   ).results;
   // held and reserved never cover the same physical card (holding requires an
   // unreserved card; reservation allocation skips held cards), so subtracting
   // both never double-counts.
-  const cells: OverviewCell[] = rawCells.map(({ imageRevision, ...cell }) => ({
-    ...cell,
-    available: Math.max(0, cell.owned - cell.reserved - cell.held),
-    image:
-      imageRevision === null
-        ? null
-        : {
-            url: catalogMediaUrl(cell.catalogId, "front", imageRevision),
-            thumbnailUrl: catalogMediaUrl(
-              cell.catalogId,
-              "front",
-              imageRevision,
-              "thumb",
-            ),
-          },
-  }));
+  const cells: OverviewCell[] = rawCells.map(
+    ({ imageRevision, imageGeneration, ...cell }) => ({
+      ...cell,
+      available: Math.max(0, cell.owned - cell.reserved - cell.held),
+      image:
+        imageRevision === null
+          ? null
+          : {
+              url: catalogMediaUrl(
+                cell.catalogId,
+                "front",
+                imageRevision,
+                imageGeneration,
+              ),
+              thumbnailUrl: catalogMediaUrl(
+                cell.catalogId,
+                "front",
+                imageRevision,
+                imageGeneration,
+                "thumb",
+              ),
+            },
+    }),
+  );
 
   const progress = (
     await db
