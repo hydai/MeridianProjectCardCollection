@@ -9,7 +9,7 @@ import {
   MegaphoneIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { TradePost } from "../shared/types";
 import { fetchTradePost } from "./api";
@@ -24,15 +24,23 @@ export default function TradePostPage() {
   const [post, setPost] = useState<TradePost | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const pageGeneration = useRef(0);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    pageGeneration.current += 1;
     let active = true;
     setPost(null);
     setError(null);
+    setCopyError(null);
+    setCopied(false);
     if (!publicId) {
       setError("缺少公告識別碼");
       return () => {
         active = false;
+        pageGeneration.current += 1;
+        if (copyTimer.current !== null) clearTimeout(copyTimer.current);
       };
     }
     fetchTradePost(publicId)
@@ -44,18 +52,26 @@ export default function TradePostPage() {
       });
     return () => {
       active = false;
+      pageGeneration.current += 1;
+      if (copyTimer.current !== null) clearTimeout(copyTimer.current);
     };
   }, [publicId]);
 
   const copyUrl = async () => {
+    const generation = ++pageGeneration.current;
     try {
       if (!publicId) throw new Error("missing public id");
       const url = new URL(`/exchange/${publicId}`, location.origin).toString();
       await navigator.clipboard.writeText(url);
+      if (generation !== pageGeneration.current) return;
+      setCopyError(null);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      if (copyTimer.current !== null) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 2000);
     } catch {
-      setError("瀏覽器無法複製網址，請從網址列手動複製。");
+      if (generation === pageGeneration.current) {
+        setCopyError("瀏覽器無法複製網址，請從網址列手動複製。");
+      }
     }
   };
 
@@ -99,6 +115,12 @@ export default function TradePostPage() {
         ) : null}
       </header>
 
+      {copyError ? (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>無法複製網址</AlertTitle>
+          <AlertDescription>{copyError}</AlertDescription>
+        </Alert>
+      ) : null}
       {error ? (
         <Alert variant="destructive">
           <TriangleAlertIcon />

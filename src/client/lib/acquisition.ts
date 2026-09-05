@@ -110,6 +110,7 @@ export function useAcquisitionSubmission(scope: string) {
       if (!Array.isArray(result.ids)) {
         throw new Error("入藏回應缺少卡片識別碼。");
       }
+      if (!active.current) return null;
       operation.current = null;
       try {
         if (readOperation(storageKey)?.id === current.id) {

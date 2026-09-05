@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -92,6 +93,71 @@ function stubFetch(initialPending: AdminPendingPurchase[] = pending) {
 }
 
 describe("PendingPurchases", () => {
+  it.each(["complete", "cancel"] as const)(
+    "does not resurrect a %s purchase when an older reload arrives late",
+    async (action) => {
+      let current = structuredClone(pending);
+      let reads = 0;
+      let resolveOldRead!: (response: Response) => void;
+      const oldRead = new Promise<Response>((resolve) => {
+        resolveOldRead = resolve;
+      });
+      let oldSnapshot: AdminPendingPurchase[] = [];
+      const response = (body: unknown) => new Response(JSON.stringify(body));
+      const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/api/catalog") return response(catalog);
+        if (url === "/api/admin/pending-purchases" && !init?.method) {
+          reads += 1;
+          if (reads === 2) {
+            oldSnapshot = structuredClone(current);
+            return oldRead;
+          }
+          return response(current);
+        }
+        if (url === "/api/admin/pending-purchases" && init?.method === "POST") {
+          current = [
+            ...current,
+            { ...structuredClone(pending[0]), id: 9, seller: "New Shop" },
+          ];
+          return response({ id: 9 });
+        }
+        if (url.startsWith("/api/admin/pending-purchases/7")) {
+          current = current.filter((purchase) => purchase.id !== 7);
+          return response({ ok: true });
+        }
+        throw new Error(`unexpected request: ${url}`);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      render(<PendingPurchases />);
+      await screen.findByRole("table");
+      fireEvent.click(screen.getByRole("button", { name: /新增卡片/ }));
+      fireEvent.change(screen.getByLabelText("單價 (TWD)"), {
+        target: { value: "100" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "新增購入預約" }));
+      await waitFor(() => expect(reads).toBe(2));
+      const row = screen.getByText("Card Shop").closest("tr");
+      if (!row) throw new Error("missing purchase row");
+      fireEvent.click(
+        within(row).getByRole("button", {
+          name: action === "complete" ? "確認收貨" : "取消預約",
+        }),
+      );
+      fireEvent.click(
+        within(row).getByRole("button", {
+          name: action === "complete" ? "確定收貨" : "確定取消",
+        }),
+      );
+      await screen.findByText("New Shop");
+      expect(screen.queryByText("Card Shop")).toBeNull();
+      await act(async () => {
+        resolveOldRead(response(oldSnapshot));
+      });
+      expect(screen.queryByText("Card Shop")).toBeNull();
+      expect(screen.getByText("New Shop")).toBeInTheDocument();
+    },
+  );
+
   it("is grouped under the admin trade section", () => {
     vi.stubGlobal("fetch", stubFetch([]));
     render(<Admin />);

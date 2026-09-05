@@ -78,16 +78,16 @@ function stubFetch(rows: CardRow[]) {
   const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/catalog") {
-      return { ok: true, json: async () => catalog };
+      return { ok: true, json: async () => structuredClone(catalog) };
     }
     if (url === "/api/overview") {
-      return { ok: true, json: async () => overview };
+      return { ok: true, json: async () => structuredClone(overview) };
     }
     if (url === "/api/admin/cards" && init?.method === "POST") {
       return { ok: true, json: async () => ({ ids: [101, 102] }) };
     }
     if (url === "/api/admin/cards") {
-      return { ok: true, json: async () => rows };
+      return { ok: true, json: async () => structuredClone(rows) };
     }
     if (url === "/api/admin/transactions" && init?.method === "POST") {
       return { ok: true, json: async () => ({ id: 15 }) };
@@ -185,6 +185,12 @@ describe("ManageCards single-card workspace actions", () => {
       });
     });
     expect(await within(dialog).findByText("購入入藏完成")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url) === "/api/overview"),
+      ).toHaveLength(2),
+    );
+    expect(within(dialog).getByText("購入入藏完成")).toBeInTheDocument();
   });
 
   it("records a gift with its recipient, date, and note", async () => {

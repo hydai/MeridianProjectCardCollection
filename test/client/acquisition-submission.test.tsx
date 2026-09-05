@@ -144,6 +144,35 @@ describe("acquisition operation identity", () => {
     );
   });
 
+  it("keeps a late acknowledgement recoverable when its form is no longer mounted", async () => {
+    const response = deferred<Response>();
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+      json({ ids: [1] }),
+    );
+    fetchMock.mockReturnValueOnce(response.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const first = renderHook(() => useAcquisitionSubmission("late-ack"));
+    let submission!: Promise<unknown>;
+    act(() => {
+      submission = first.result.current.submit(() => request);
+    });
+    first.unmount();
+    await act(async () => {
+      response.resolve(json({ ids: [1] }));
+      await submission;
+    });
+    const second = renderHook(() => useAcquisitionSubmission("late-ack"));
+    expect(second.result.current.locked).toBe(true);
+    await act(async () => {
+      await second.result.current.submit(() => ({ cards: [] }));
+    });
+    expect(keyOf(fetchMock.mock.calls[1][1])).toBe(
+      keyOf(fetchMock.mock.calls[0][1]),
+    );
+    expect(second.result.current.locked).toBe(false);
+    expect(sessionStorage.length).toBe(0);
+  });
+
   it("guards same-tick submissions and does not unlock an unknown operation on a later conflict", async () => {
     const pending = deferred<Response>();
     const fetchMock = vi.fn(

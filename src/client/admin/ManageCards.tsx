@@ -37,6 +37,7 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { RARITY_ORDER } from "../../shared/rarity";
@@ -349,6 +350,7 @@ function ActionForm({
       : catalogCells;
   const [targetCatalogId, setTargetCatalogId] = useState("");
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const selectedTarget = catalogCells.find(
     (cell) => cell.catalogId === Number(targetCatalogId),
@@ -364,6 +366,8 @@ function ActionForm({
   };
 
   const submit = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setErr(null);
     try {
@@ -435,6 +439,7 @@ function ActionForm({
       }
       onDone();
     } catch (e) {
+      submitting.current = false;
       setErr(String(e));
       setBusy(false);
     }
@@ -462,6 +467,7 @@ function ActionForm({
               step="0.01"
               inputMode="decimal"
               value={price}
+              disabled={busy}
               onChange={(e) => setPrice(e.target.value)}
               placeholder="選填"
             />
@@ -473,6 +479,7 @@ function ActionForm({
             <Input
               id={`${fieldId}-want`}
               value={want}
+              disabled={busy}
               onChange={(e) => setWant(e.target.value)}
               placeholder="例如 KILLER Kirali UR"
             />
@@ -487,6 +494,7 @@ function ActionForm({
               id={`${fieldId}-counterparty`}
               maxLength={200}
               value={counterparty}
+              disabled={busy}
               onChange={(e) => setCounterparty(e.target.value)}
               placeholder="選填"
             />
@@ -503,6 +511,7 @@ function ActionForm({
               type="date"
               required
               value={happenedAt}
+              disabled={busy}
               onChange={(e) => setHappenedAt(e.target.value)}
             />
           </Field>
@@ -516,6 +525,7 @@ function ActionForm({
               id={`${fieldId}-target`}
               className={CONTROL}
               value={targetCatalogId}
+              disabled={busy}
               required
               onChange={(e) => setTargetCatalogId(e.target.value)}
             >
@@ -557,6 +567,7 @@ function ActionForm({
               id={`${fieldId}-note`}
               maxLength={1000}
               value={note}
+              disabled={busy}
               onChange={(e) => setNote(e.target.value)}
               placeholder="選填"
             />
@@ -764,16 +775,18 @@ function CardWorkspaceSheet({
   cell,
   cards,
   catalogCells,
+  revision,
   onOpenChange,
   onChanged,
 }: {
   cell: OverviewCell | null;
   cards: CardRow[];
   catalogCells: OverviewCell[];
+  revision: number;
   onOpenChange: (open: boolean) => void;
-  onChanged: () => Promise<void>;
+  onChanged: () => Promise<boolean>;
 }) {
-  const [wantInput, setWantInput] = useState("0");
+  const [wantDraft, setWantDraft] = useState<string | null>(null);
   const [wantBusy, setWantBusy] = useState(false);
   const [wantError, setWantError] = useState<string | null>(null);
   const [cardError, setCardError] = useState<string | null>(null);
@@ -785,49 +798,60 @@ function CardWorkspaceSheet({
   const [activityError, setActivityError] = useState<string | null>(null);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [purchaseMessage, setPurchaseMessage] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [activityRetry, setActivityRetry] = useState(0);
+  const [cardBusy, setCardBusy] = useState(false);
+  const active = useRef(false);
+  const cardInFlight = useRef(false);
+  const activityRequest = useRef<{
+    catalogId: number;
+    revision: number;
+    retry: number;
+  } | null>(null);
+  const catalogId = cell?.catalogId;
+  const wantInput = wantDraft ?? String(cell?.wantCount ?? 0);
 
   useEffect(() => {
-    setWantInput(String(cell?.wantCount ?? 0));
-    setWantError(null);
-    setCardError(null);
-    setAction(null);
-    setPurchaseOpen(false);
-    setPurchaseMessage(null);
-  }, [cell]);
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
 
   useEffect(() => {
-    if (!cell) {
+    if (catalogId === undefined) {
       setActivities(null);
       return;
     }
-    let active = true;
+    const request = { catalogId, revision, retry: activityRetry };
+    activityRequest.current = request;
     setActivities(null);
     setActivityError(null);
-    fetchCatalogActivities(cell.catalogId)
+    fetchCatalogActivities(catalogId)
       .then((events) => {
-        if (active) setActivities(events);
+        if (activityRequest.current === request) setActivities(events);
       })
       .catch((error) => {
-        if (active) setActivityError(String(error));
+        if (activityRequest.current === request)
+          setActivityError(String(error));
       });
     return () => {
-      active = false;
+      if (activityRequest.current === request) activityRequest.current = null;
     };
-  }, [cell]);
+  }, [catalogId, revision, activityRetry]);
 
   const refresh = async () => {
-    await onChanged();
-    if (!cell) return;
-    try {
-      setActivities(await fetchCatalogActivities(cell.catalogId));
-      setActivityError(null);
-    } catch (error) {
-      setActivityError(String(error));
+    const updated = await onChanged();
+    if (active.current) {
+      setRefreshError(
+        updated ? null : "操作已完成，但卡片資料未能重新載入；請重試載入資料。",
+      );
     }
+    return updated;
   };
 
   const saveWant = async () => {
-    if (!cell) return;
+    if (!cell || wantBusy) return;
     const wantCount = Number(wantInput);
     if (!Number.isInteger(wantCount) || wantCount < 0 || wantCount > 99) {
       setWantError("Want 張數必須是 0 到 99 的整數。");
@@ -837,21 +861,28 @@ function CardWorkspaceSheet({
     setWantError(null);
     try {
       await putCatalogWant(cell.catalogId, wantCount);
-      await refresh();
+      const updated = await refresh();
+      if (updated && active.current) setWantDraft(null);
     } catch (error) {
-      setWantError(String(error));
+      if (active.current) setWantError(String(error));
     } finally {
-      setWantBusy(false);
+      if (active.current) setWantBusy(false);
     }
   };
 
   const runCardMutation = async (mutation: () => Promise<unknown>) => {
+    if (cardInFlight.current) return;
+    cardInFlight.current = true;
+    setCardBusy(true);
     setCardError(null);
     try {
       await mutation();
       await refresh();
     } catch (error) {
-      setCardError(String(error));
+      if (active.current) setCardError(String(error));
+    } finally {
+      cardInFlight.current = false;
+      if (active.current) setCardBusy(false);
     }
   };
 
@@ -890,6 +921,21 @@ function CardWorkspaceSheet({
             </SheetHeader>
 
             <div className="flex flex-col gap-6 px-4 pb-6">
+              {refreshError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>卡片資料更新失敗</AlertTitle>
+                  <AlertDescription>
+                    <p>{refreshError}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void refresh()}
+                    >
+                      重新載入卡片資料
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
               <section aria-labelledby="workspace-summary-title">
                 <h3
                   id="workspace-summary-title"
@@ -949,7 +995,8 @@ function CardWorkspaceSheet({
                         max={99}
                         step={1}
                         value={wantInput}
-                        onChange={(event) => setWantInput(event.target.value)}
+                        disabled={wantBusy}
+                        onChange={(event) => setWantDraft(event.target.value)}
                         aria-invalid={Boolean(wantError)}
                         className="max-w-28"
                       />
@@ -965,7 +1012,7 @@ function CardWorkspaceSheet({
                           type="button"
                           variant="ghost"
                           disabled={wantBusy}
-                          onClick={() => setWantInput("0")}
+                          onClick={() => setWantDraft("0")}
                         >
                           設為 0
                         </Button>
@@ -1130,6 +1177,7 @@ function CardWorkspaceSheet({
                                   type="button"
                                   variant="outline"
                                   size="sm"
+                                  disabled={cardBusy}
                                   onClick={() =>
                                     runCardMutation(() => unholdCard(card.id))
                                   }
@@ -1153,6 +1201,7 @@ function CardWorkspaceSheet({
                                     type="button"
                                     variant="outline"
                                     size="sm"
+                                    disabled={cardBusy}
                                     onClick={() =>
                                       setAction({ cardId: card.id, kind })
                                     }
@@ -1165,6 +1214,7 @@ function CardWorkspaceSheet({
                                     type="button"
                                     variant="outline"
                                     size="sm"
+                                    disabled={cardBusy}
                                     onClick={() =>
                                       setAction({
                                         cardId: card.id,
@@ -1180,6 +1230,7 @@ function CardWorkspaceSheet({
                                     type="button"
                                     variant="outline"
                                     size="sm"
+                                    disabled={cardBusy}
                                     onClick={() =>
                                       runCardMutation(() =>
                                         patchCard(card.id, { status: "owned" }),
@@ -1193,6 +1244,7 @@ function CardWorkspaceSheet({
                                     type="button"
                                     variant="outline"
                                     size="sm"
+                                    disabled={cardBusy}
                                     onClick={() =>
                                       runCardMutation(() => holdCard(card.id))
                                     }
@@ -1206,14 +1258,20 @@ function CardWorkspaceSheet({
                                 已由交換預約鎖定
                               </p>
                             ) : null}
-                            {actionOpen && action ? (
+                            {actionOpen &&
+                            action &&
+                            isActive &&
+                            !card.reserved &&
+                            !card.held ? (
                               <ActionForm
                                 key={`${card.id}-${action.kind}`}
                                 card={card}
                                 catalogCells={catalogCells}
                                 kind={action.kind}
                                 onDone={() => {
-                                  setAction(null);
+                                  setAction((current) =>
+                                    current === action ? null : current,
+                                  );
                                   void refresh();
                                 }}
                                 onCancel={() => setAction(null)}
@@ -1237,9 +1295,16 @@ function CardWorkspaceSheet({
                   這張卡的痕跡
                 </h3>
                 {activityError ? (
-                  <p role="alert" className="text-sm text-destructive">
-                    {activityError}
-                  </p>
+                  <div role="alert" className="text-sm text-destructive">
+                    <p>{activityError}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setActivityRetry((current) => current + 1)}
+                    >
+                      重新載入痕跡
+                    </Button>
+                  </div>
                 ) : activities === null ? (
                   <p className="text-sm text-muted-foreground">載入痕跡中…</p>
                 ) : activities.length === 0 ? (
@@ -1341,7 +1406,10 @@ export function ManageCards() {
   );
   const [rows, setRows] = useState<CardRow[] | null>(null);
   const [catalog, setCatalog] = useState<CatalogSeries[] | null>(null);
+  const catalogRef = useRef<CatalogSeries[] | null>(null);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [revision, setRevision] = useState(0);
+  const requestGeneration = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedCatalogId, setSelectedCatalogId] = useState<number | null>(
     null,
@@ -1355,32 +1423,36 @@ export function ManageCards() {
   );
 
   const reload = useCallback(async () => {
-    setRows(null);
+    const generation = ++requestGeneration.current;
     setError(null);
     try {
-      const [nextRows, nextOverview] = await Promise.all([
+      const [nextRows, nextOverview, nextCatalog] = await Promise.all([
         listCards(),
         fetchOverview(),
+        catalogRef.current ?? fetchCatalog(),
       ]);
+      if (generation !== requestGeneration.current) return true;
       setRows(nextRows);
       setOverview(nextOverview);
+      catalogRef.current = nextCatalog;
+      setCatalog(nextCatalog);
+      setRevision((current) => current + 1);
+      return true;
     } catch (caught) {
+      if (generation !== requestGeneration.current) return true;
       setError(String(caught));
+      return false;
     }
   }, []);
 
   useEffect(() => {
     void reload();
+    return () => {
+      requestGeneration.current += 1;
+    };
   }, [reload]);
 
-  useEffect(() => {
-    fetchCatalog()
-      .then(setCatalog)
-      .catch((e) => setError(String(e)));
-  }, []);
-
   const onDone = () => {
-    setAction(null);
     void reload();
   };
 
@@ -1519,7 +1591,14 @@ export function ManageCards() {
         />
       </div>
 
-      {error ? <div className={ERROR_TEXT}>{error}</div> : null}
+      {error ? (
+        <div className={ERROR_TEXT} role="alert">
+          {error}
+          <Button type="button" variant="outline" onClick={() => void reload()}>
+            重新載入資料
+          </Button>
+        </div>
+      ) : null}
       {rows !== null && catalog !== null && overview !== null ? (
         <output
           className="mb-3 block font-mono text-[11px] text-[var(--text-tertiary)]"
@@ -1921,7 +2000,9 @@ export function ManageCards() {
                                                       status: "owned",
                                                     })
                                                       .then(onDone)
-                                                      .catch(() => {});
+                                                      .catch((cause) =>
+                                                        setError(String(cause)),
+                                                      );
                                                   }}
                                                 >
                                                   取消上架
@@ -1955,7 +2036,11 @@ export function ManageCards() {
                                           )}
                                         </td>
                                       </tr>
-                                      {open && action ? (
+                                      {open &&
+                                      action &&
+                                      isActive &&
+                                      !card.reserved &&
+                                      !card.held ? (
                                         <tr>
                                           <td className={TD} colSpan={4}>
                                             <ActionForm
@@ -1963,7 +2048,14 @@ export function ManageCards() {
                                               card={card}
                                               catalogCells={overview.cells}
                                               kind={action.kind}
-                                              onDone={onDone}
+                                              onDone={() => {
+                                                setAction((current) =>
+                                                  current === action
+                                                    ? null
+                                                    : current,
+                                                );
+                                                onDone();
+                                              }}
                                               onCancel={() => setAction(null)}
                                             />
                                           </td>
@@ -1986,9 +2078,11 @@ export function ManageCards() {
         </div>
       )}
       <CardWorkspaceSheet
+        key={selectedCatalogId ?? "closed"}
         cell={selectedCell}
         cards={selectedCards}
         catalogCells={overview?.cells ?? []}
+        revision={revision}
         onOpenChange={(open) => {
           if (!open) setSelectedCatalogId(null);
         }}

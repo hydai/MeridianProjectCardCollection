@@ -512,18 +512,28 @@ export function PendingPurchases() {
   const [catalog, setCatalog] = useState<CatalogSeries[] | null>(null);
   const [pending, setPending] = useState<AdminPendingPurchase[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const requestGeneration = useRef(0);
 
   const reload = useCallback(() => {
+    const generation = ++requestGeneration.current;
     setError(null);
     Promise.all([fetchCatalog(), fetchAdminPendingPurchases()])
       .then(([nextCatalog, nextPending]) => {
+        if (generation !== requestGeneration.current) return;
         setCatalog(nextCatalog);
         setPending(nextPending);
       })
-      .catch((reason) => setError(String(reason)));
+      .catch((reason) => {
+        if (generation === requestGeneration.current) setError(String(reason));
+      });
   }, []);
 
-  useEffect(() => reload(), [reload]);
+  useEffect(() => {
+    reload();
+    return () => {
+      requestGeneration.current += 1;
+    };
+  }, [reload]);
 
   return (
     <section className={PANEL}>
@@ -571,12 +581,13 @@ export function PendingPurchases() {
                     <PendingPurchaseRow
                       key={purchase.id}
                       purchase={purchase}
-                      onChange={(id) =>
+                      onChange={(id) => {
                         setPending(
                           (current) =>
                             current?.filter((item) => item.id !== id) ?? [],
-                        )
-                      }
+                        );
+                        reload();
+                      }}
                     />
                   ))}
                 </tbody>
