@@ -1325,7 +1325,9 @@ admin.post("/cards", async (c) => {
     return rejected("cards required");
   }
   if (input.cards.length > MAX_CARD_BATCH_SIZE) {
-    return rejected(`at most ${MAX_CARD_BATCH_SIZE} cards are allowed per batch`);
+    return rejected(
+      `at most ${MAX_CARD_BATCH_SIZE} cards are allowed per batch`,
+    );
   }
   const cards = input.cards as AddCardInput[];
   let opening: OpeningInput | undefined;

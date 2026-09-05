@@ -1532,7 +1532,9 @@ async function resolveCards(
           })),
         ),
       )
-      .all<CatalogEntry & Pick<AddCardInput, "series" | "character" | "rarity">>()
+      .all<
+        CatalogEntry & Pick<AddCardInput, "series" | "character" | "rarity">
+      >()
   ).results;
   const cache = new Map(
     rows.map((row) => [
@@ -1647,7 +1649,9 @@ export async function addCards(
   const statements: D1PreparedStatement[] = [];
   if (insertEvent) statements.push(insertEvent);
   const cardResultStart = statements.length;
-  statements.push(...acquiredCardStatements(db, sourceKey, resolved, openingId));
+  statements.push(
+    ...acquiredCardStatements(db, sourceKey, resolved, openingId),
+  );
   const batch = await runAcquisitionBatch(db, statements, sourceKey, request);
   if ("replay" in batch) return batch.replay.ids;
   return acquiredCardIds(batch.results[cardResultStart]);
@@ -1713,7 +1717,7 @@ export async function addPack(
   }
   const { results } = batch;
   const created = results[1].results[0] as OpeningCreated | undefined;
-  if (!created)   throw new CardInputError("failed to create opening");
+  if (!created) throw new Error("failed to create opening");
   const ids = acquiredCardIds(results[3]);
   return { ids, opening: created };
 }
