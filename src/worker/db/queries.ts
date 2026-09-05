@@ -50,6 +50,7 @@ import type {
   UpdateCatalogWantInput,
   UpdateSeriesInput,
 } from "../../shared/types";
+import { acquiredCardIds, acquiredCardStatements } from "./acquisition-cards";
 import {
   type AcquisitionRequest,
   runAcquisitionBatch,
@@ -664,22 +665,20 @@ export async function getOverview(db: D1Database): Promise<OverviewResponse> {
     }),
   );
 
-  const progress = (
-    await db
-      .prepare(
-        `SELECT series,
-                COUNT(*) AS totalTypes,
-                SUM(CASE WHEN owned > 0 THEN 1 ELSE 0 END) AS collectedTypes
-         FROM (
-           SELECT c.id, c.series, COUNT(k.id) AS owned
-           FROM card_catalog c
-           LEFT JOIN cards k ON k.catalog_id = c.id AND k.status IN ${ACTIVE}
-           GROUP BY c.id
-         )
-         GROUP BY series`,
-      )
-      .all<SeriesProgress>()
-  ).results;
+  const bySeries = new Map<string, SeriesProgress>();
+  for (const cell of cells) {
+    const row = bySeries.get(cell.series) ?? {
+      series: cell.series,
+      totalTypes: 0,
+      collectedTypes: 0,
+    };
+    row.totalTypes += 1;
+    if (cell.owned > 0) row.collectedTypes += 1;
+    bySeries.set(cell.series, row);
+  }
+  const progress = [...bySeries.values()].sort((left, right) =>
+    left.series < right.series ? -1 : left.series > right.series ? 1 : 0,
+  );
 
   return { cells, progress };
 }
@@ -1511,22 +1510,47 @@ async function resolveCards(
   db: D1Database,
   cards: AddCardInput[],
 ): Promise<ResolvedCard[]> {
-  const cache = new Map<string, CatalogEntry>();
-  const resolved: ResolvedCard[] = [];
-  for (const card of cards) {
-    const key = `${card.series}\u0000${card.character}\u0000${card.rarity}`;
-    let entry = cache.get(key);
-    if (entry === undefined) {
-      entry = await catalogEntry(db, card.series, card.character, card.rarity);
-      cache.set(key, entry);
+  if (cards.length === 0) return [];
+  const rows = (
+    await db
+      .prepare(
+        `SELECT DISTINCT c.id, s.volume_number AS volume,
+                c.series, c.character, c.rarity
+         FROM json_each(?) requested
+         JOIN card_catalog c
+           ON c.series = json_extract(requested.value, '$.series')
+          AND c.character = json_extract(requested.value, '$.character')
+          AND c.rarity = json_extract(requested.value, '$.rarity')
+         JOIN series s ON s.name = c.series`,
+      )
+      .bind(
+        JSON.stringify(
+          cards.map(({ series, character, rarity }) => ({
+            series,
+            character,
+            rarity,
+          })),
+        ),
+      )
+      .all<CatalogEntry & Pick<AddCardInput, "series" | "character" | "rarity">>()
+  ).results;
+  const cache = new Map(
+    rows.map((row) => [
+      `${row.series}\u0000${row.character}\u0000${row.rarity}`,
+      row,
+    ]),
+  );
+  return cards.map((input) => {
+    const entry = cache.get(
+      `${input.series}\u0000${input.character}\u0000${input.rarity}`,
+    );
+    if (!entry) {
+      throw new CardInputError(
+        `unknown card type: ${input.series}/${input.character}/${input.rarity}`,
+      );
     }
-    resolved.push({
-      input: card,
-      catalogId: entry.id,
-      volume: entry.volume,
-    });
-  }
-  return resolved;
+    return { input, catalogId: entry.id, volume: entry.volume };
+  });
 }
 
 function insertedId(result: D1Result<unknown>, message: string): number {
@@ -1623,46 +1647,10 @@ export async function addCards(
   const statements: D1PreparedStatement[] = [];
   if (insertEvent) statements.push(insertEvent);
   const cardResultStart = statements.length;
-  for (const { input, catalogId: id } of resolved) {
-    statements.push(
-      db
-        .prepare(
-          `INSERT INTO cards
-             (catalog_id, status, source, opening_id, purchase_price, note,
-              acquired_event_id)
-           VALUES (
-             ?, 'owned', ?, ?, ?, ?,
-             (SELECT id FROM activity_events WHERE source_key = ?)
-           )
-           RETURNING id`,
-        )
-        .bind(
-          id,
-          input.source ?? "pull",
-          openingId ?? null,
-          input.purchasePrice ?? null,
-          input.note ?? null,
-          sourceKey,
-        ),
-    );
-  }
-  for (const { input, catalogId: id } of resolved) {
-    statements.push(
-      insertActivityLineStatement(db, sourceKey, {
-        catalogId: id,
-        action: "acquired",
-        delta: 1,
-        afterStatus: "owned",
-        unitAmount: input.purchasePrice ?? null,
-        note: input.note ?? null,
-      }),
-    );
-  }
+  statements.push(...acquiredCardStatements(db, sourceKey, resolved, openingId));
   const batch = await runAcquisitionBatch(db, statements, sourceKey, request);
   if ("replay" in batch) return batch.replay.ids;
-  return batch.results
-    .slice(cardResultStart, cardResultStart + resolved.length)
-    .map((result) => insertedId(result, "failed to add card"));
+  return acquiredCardIds(batch.results[cardResultStart]);
 }
 
 export async function addPack(
@@ -1715,37 +1703,7 @@ export async function addPack(
       )
       .bind(opening.volume, sourceKey),
   ];
-  for (const { input, catalogId: id } of resolved) {
-    statements.push(
-      db
-        .prepare(
-          `INSERT INTO cards
-             (catalog_id, status, source, opening_id, purchase_price, note,
-              acquired_event_id)
-           VALUES (
-             ?, 'owned', 'pull',
-             (SELECT id FROM openings
-              WHERE volume_number = ?
-              ORDER BY pack_number DESC LIMIT 1),
-             NULL, ?,
-             (SELECT id FROM activity_events WHERE source_key = ?)
-           )
-           RETURNING id`,
-        )
-        .bind(id, opening.volume, input.note ?? null, sourceKey),
-    );
-  }
-  for (const { input, catalogId: id } of resolved) {
-    statements.push(
-      insertActivityLineStatement(db, sourceKey, {
-        catalogId: id,
-        action: "acquired",
-        delta: 1,
-        afterStatus: "owned",
-        note: input.note ?? null,
-      }),
-    );
-  }
+  statements.push(...acquiredCardStatements(db, sourceKey, resolved));
   const batch = await runAcquisitionBatch(db, statements, sourceKey, request);
   if ("replay" in batch) {
     if (!batch.replay.opening) {
@@ -1755,10 +1713,8 @@ export async function addPack(
   }
   const { results } = batch;
   const created = results[1].results[0] as OpeningCreated | undefined;
-  if (!created) throw new Error("failed to create opening");
-  const ids = results
-    .slice(3, 3 + resolved.length)
-    .map((result) => insertedId(result, "failed to add pack card"));
+  if (!created)   throw new CardInputError("failed to create opening");
+  const ids = acquiredCardIds(results[3]);
   return { ids, opening: created };
 }
 
@@ -2443,7 +2399,14 @@ export async function listCards(
   }
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const stmt = db.prepare(
-    `SELECT k.id, c.series, c.character, c.rarity, k.status, k.source,
+    `WITH active_counts AS (
+       SELECT catalog_id, COUNT(*) AS count
+       FROM cards WHERE status IN ${ACTIVE} GROUP BY catalog_id
+     ), reserved_counts AS (
+       SELECT catalog_id, SUM(qty) AS count
+       FROM trade_reservation_lines WHERE direction = 'give' GROUP BY catalog_id
+     )
+     SELECT k.id, c.series, c.character, c.rarity, k.status, k.source,
             k.purchase_price AS purchasePrice,
             COALESCE(
               p.seller,
@@ -2459,10 +2422,8 @@ export async function listCards(
             ) AS purchaseNote,
             k.asking_price AS askingPrice,
             k.want_in_return AS wantInReturn, k.note,
-            (SELECT COUNT(*) FROM cards k2
-             WHERE k2.catalog_id = k.catalog_id AND k2.status IN ${ACTIVE}) AS activeCount,
-            (SELECT COALESCE(SUM(qty), 0) FROM trade_reservation_lines l
-             WHERE l.catalog_id = k.catalog_id AND l.direction = 'give') AS reservedGive,
+            COALESCE(active_counts.count, 0) AS activeCount,
+            COALESCE(reserved_counts.count, 0) AS reservedGive,
             k.held AS held,
             EXISTS(
               SELECT 1 FROM trade_reservation_lines l
@@ -2470,6 +2431,8 @@ export async function listCards(
             ) AS reserved
      FROM cards k
      JOIN card_catalog c ON c.id = k.catalog_id
+     LEFT JOIN active_counts ON active_counts.catalog_id = k.catalog_id
+     LEFT JOIN reserved_counts ON reserved_counts.catalog_id = k.catalog_id
      LEFT JOIN purchase_reservations p ON p.id = k.purchase_reservation_id
      LEFT JOIN activity_events acquired ON acquired.id = k.acquired_event_id
      ${where}
