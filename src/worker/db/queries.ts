@@ -50,6 +50,16 @@ import type {
   UpdateCatalogWantInput,
   UpdateSeriesInput,
 } from "../../shared/types";
+import {
+  ACQUISITION_IS_UNDOABLE,
+  CARD_IS_UNRESERVED,
+  CARD_IS_UNTOUCHED,
+  type CardSnapshot,
+  LEGACY_RESERVED_CARD_IDS,
+  type SqlCondition,
+  readCardSnapshot,
+  unchangedCardsCondition,
+} from "./card-command";
 
 // Cards still in the owner's possession (excludes sold/traded/gifted history).
 const ACTIVE = "('owned','for_sale','for_trade')";
@@ -88,13 +98,15 @@ function activityKey(prefix: string): string {
 function insertActivityEventStatement(
   db: D1Database,
   input: ActivityEventInput,
+  condition?: SqlCondition,
 ): D1PreparedStatement {
   return db
     .prepare(
       `INSERT INTO activity_events
          (source_key, kind, occurred_at, source_type, source_id,
           counterparty, amount, note, reverts_event_id, trade_post_id)
-       VALUES (?, ?, COALESCE(?, datetime('now')), ?, ?, ?, ?, ?, ?, ?)
+       SELECT ?, ?, COALESCE(?, datetime('now')), ?, ?, ?, ?, ?, ?, ?
+       WHERE ${condition?.sql ?? "1"}
        RETURNING id`,
     )
     .bind(
@@ -108,6 +120,7 @@ function insertActivityEventStatement(
       input.note ?? null,
       input.revertsEventId ?? null,
       input.tradePostId ?? null,
+      ...(condition?.values ?? []),
     );
 }
 
@@ -115,6 +128,7 @@ function insertActivityLineStatement(
   db: D1Database,
   sourceKey: string,
   input: ActivityLineInput,
+  condition?: SqlCondition,
 ): D1PreparedStatement {
   return db
     .prepare(
@@ -123,7 +137,8 @@ function insertActivityLineStatement(
           before_status, after_status, before_want, after_want,
           unit_amount, note)
        SELECT id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-       FROM activity_events WHERE source_key = ?`,
+       FROM activity_events WHERE source_key = ?
+         AND (${condition?.sql ?? "1"})`,
     )
     .bind(
       input.catalogId ?? null,
@@ -137,7 +152,21 @@ function insertActivityLineStatement(
       input.unitAmount ?? null,
       input.note ?? null,
       sourceKey,
+      ...(condition?.values ?? []),
     );
+}
+
+function activityExistsCondition(
+  sourceKey: string,
+  condition?: SqlCondition,
+): SqlCondition {
+  return {
+    sql: `EXISTS (
+      SELECT 1 FROM activity_events WHERE source_key = ?
+        AND (${condition?.sql ?? "1"})
+    )`,
+    values: [sourceKey, ...(condition?.values ?? [])],
+  };
 }
 
 export async function getCatalog(db: D1Database): Promise<CatalogSeries[]> {
@@ -1685,33 +1714,12 @@ async function assertCardNotReserved(
     throw new Error(`card ${cardId} is reserved for a pending trade`);
 }
 
-async function assertCardNotHeld(
-  db: D1Database,
-  cardId: number,
-): Promise<void> {
-  const row = await db
-    .prepare("SELECT held FROM cards WHERE id = ?")
-    .bind(cardId)
-    .first<{ held: number }>();
-  if (row?.held)
-    throw new Error(`card ${cardId} is held (保留); unhold it first`);
-}
-
-// Toggle the owner-held (保留) flag on a physical card. Holding locks a card out
-// of the tradeable list and every give-side allocation; only an unreserved
-// 'owned' card can be held. Unholding is an idempotent clear.
 export async function setCardHeld(
   db: D1Database,
   id: number,
   held: boolean,
 ): Promise<void> {
-  const card = await db
-    .prepare(
-      "SELECT catalog_id AS catalogId, status, held FROM cards WHERE id = ?",
-    )
-    .bind(id)
-    .first<{ catalogId: number; status: CardStatus; held: number }>();
-  if (!card) throw new Error(`card ${id} not found`);
+  const card = await readCardSnapshot(db, id);
   if (card.held === (held ? 1 : 0)) return;
   if (held) {
     if (card.status !== "owned") {
@@ -1722,18 +1730,30 @@ export async function setCardHeld(
     await assertCardNotReserved(db, id);
   }
   const sourceKey = activityKey(held ? "hold" : "unhold");
-  await db.batch([
-    insertActivityEventStatement(db, {
-      sourceKey,
-      kind: held ? "hold" : "unhold",
-      sourceType: "card",
-      sourceId: id,
-    }),
+  const claim = unchangedCardsCondition([card], {
+    sql: held
+      ? `k.status = 'owned' AND k.held = 0 AND ${CARD_IS_UNRESERVED}`
+      : "k.held = 1",
+    values: [],
+  });
+  const gate = activityExistsCondition(sourceKey);
+  const results = await db.batch([
+    insertActivityEventStatement(
+      db,
+      {
+        sourceKey,
+        kind: held ? "hold" : "unhold",
+        sourceType: "card",
+        sourceId: id,
+      },
+      claim,
+    ),
     db
       .prepare(
-        "UPDATE cards SET held = ?, updated_at = datetime('now') WHERE id = ?",
+        `UPDATE cards SET held = ?, updated_at = datetime('now')
+         WHERE id = ? AND ${gate.sql}`,
       )
-      .bind(held ? 1 : 0, id),
+      .bind(held ? 1 : 0, id, ...gate.values),
     insertActivityLineStatement(db, sourceKey, {
       catalogId: card.catalogId,
       action: held ? "held" : "released",
@@ -1741,6 +1761,9 @@ export async function setCardHeld(
       afterStatus: card.status,
     }),
   ]);
+  if (results[0].results.length === 0) {
+    throw new Error(`card ${id} changed; refresh and retry`);
+  }
 }
 
 export async function updateCard(
@@ -1748,6 +1771,15 @@ export async function updateCard(
   id: number,
   update: UpdateCardInput,
 ): Promise<void> {
+  if (update.status !== undefined && !ACTIVE_STATUSES.has(update.status)) {
+    throw new Error("status must be owned, for_sale, or for_trade");
+  }
+  if (
+    update.askingPrice != null &&
+    (!Number.isFinite(update.askingPrice) || update.askingPrice < 0)
+  ) {
+    throw new Error("askingPrice must be finite and nonnegative, or null");
+  }
   const sets: string[] = [];
   const values: unknown[] = [];
   if (update.status !== undefined) {
@@ -1767,18 +1799,15 @@ export async function updateCard(
     values.push(update.note);
   }
   if (sets.length === 0) return;
+  const card = await readCardSnapshot(db, id);
   await assertCardNotReserved(db, id);
-  await assertCardNotHeld(db, id);
-  const card = await db
-    .prepare(
-      `SELECT catalog_id AS catalogId, status
-       FROM cards WHERE id = ?`,
-    )
-    .bind(id)
-    .first<{ catalogId: number; status: CardStatus }>();
-  if (!card) throw new Error(`card ${id} not found`);
+  if (card.held) {
+    throw new Error(`card ${id} is held (保留); unhold it first`);
+  }
+  if (update.status !== undefined && !ACTIVE_STATUSES.has(card.status)) {
+    throw new Error(`card ${id} is no longer in the collection`);
+  }
   sets.push("updated_at = datetime('now')");
-  const args = [...values, id];
   const nextStatus = update.status ?? card.status;
   const classified = nextStatus !== card.status;
   const details = [
@@ -1795,16 +1824,27 @@ export async function updateCard(
     update.note !== undefined ? "更新備註" : null,
   ].filter((detail): detail is string => detail !== null);
   const sourceKey = activityKey(classified ? "classification" : "card-update");
-  await db.batch([
-    insertActivityEventStatement(db, {
-      sourceKey,
-      kind: classified ? "card_classified" : "card_updated",
-      sourceType: "card",
-      sourceId: id,
-    }),
+  const claim = unchangedCardsCondition([card], {
+    sql: `k.held = 0 AND ${CARD_IS_UNRESERVED}`,
+    values: [],
+  });
+  const gate = activityExistsCondition(sourceKey);
+  const results = await db.batch([
+    insertActivityEventStatement(
+      db,
+      {
+        sourceKey,
+        kind: classified ? "card_classified" : "card_updated",
+        sourceType: "card",
+        sourceId: id,
+      },
+      claim,
+    ),
     db
-      .prepare(`UPDATE cards SET ${sets.join(", ")} WHERE id = ?`)
-      .bind(...args),
+      .prepare(
+        `UPDATE cards SET ${sets.join(", ")} WHERE id = ? AND ${gate.sql}`,
+      )
+      .bind(...values, id, ...gate.values),
     insertActivityLineStatement(db, sourceKey, {
       catalogId: card.catalogId,
       action: classified ? "classified" : "updated",
@@ -1814,6 +1854,9 @@ export async function updateCard(
       note: details.join("、") || null,
     }),
   ]);
+  if (results[0].results.length === 0) {
+    throw new Error(`card ${id} changed; refresh and retry`);
+  }
 }
 
 export async function reclassifyCard(
@@ -1821,13 +1864,11 @@ export async function reclassifyCard(
   id: number,
   input: ReclassifyCardInput,
 ): Promise<void> {
+  const card = await readCardSnapshot(db, id);
   await assertCardNotReserved(db, id);
-  await assertCardNotHeld(db, id);
-  const card = await db
-    .prepare("SELECT catalog_id AS catalogId, status FROM cards WHERE id = ?")
-    .bind(id)
-    .first<{ catalogId: number; status: CardStatus }>();
-  if (!card) throw new Error(`card ${id} not found`);
+  if (card.held) {
+    throw new Error(`card ${id} is held (保留); unhold it first`);
+  }
   if (card.status !== "owned") {
     throw new Error(
       `only an owned card can be reclassified; card ${id} is ${card.status}`,
@@ -1843,22 +1884,31 @@ export async function reclassifyCard(
   if (!target) throw new Error(`catalog ${input.targetCatalogId} not found`);
 
   const sourceKey = activityKey("reclassification");
-  await db.batch([
-    insertActivityEventStatement(db, {
-      sourceKey,
-      kind: "card_reclassified",
-      occurredAt: input.happenedAt,
-      sourceType: "card",
-      sourceId: id,
-      note: input.note ?? null,
-    }),
+  const claim = unchangedCardsCondition([card], {
+    sql: `k.status = 'owned' AND k.held = 0 AND ${CARD_IS_UNRESERVED}`,
+    values: [],
+  });
+  const gate = activityExistsCondition(sourceKey);
+  const results = await db.batch([
+    insertActivityEventStatement(
+      db,
+      {
+        sourceKey,
+        kind: "card_reclassified",
+        occurredAt: input.happenedAt,
+        sourceType: "card",
+        sourceId: id,
+        note: input.note ?? null,
+      },
+      claim,
+    ),
     db
       .prepare(
         `UPDATE cards
          SET catalog_id = ?, updated_at = datetime('now')
-         WHERE id = ?`,
+         WHERE id = ? AND ${gate.sql}`,
       )
-      .bind(input.targetCatalogId, id),
+      .bind(input.targetCatalogId, id, ...gate.values),
     insertActivityLineStatement(db, sourceKey, {
       catalogId: card.catalogId,
       action: "reclassified_from",
@@ -1874,6 +1924,9 @@ export async function reclassifyCard(
       afterStatus: card.status,
     }),
   ]);
+  if (results[0].results.length === 0) {
+    throw new Error(`card ${id} changed; refresh and retry`);
+  }
 }
 
 export async function recordTransaction(
@@ -1907,13 +1960,11 @@ export async function recordTransaction(
   ) {
     throw new Error("a received card needs series, character, and rarity");
   }
+  const outgoing = await readCardSnapshot(db, cardId);
   await assertCardNotReserved(db, cardId);
-  await assertCardNotHeld(db, cardId);
-  const outgoing = await db
-    .prepare("SELECT catalog_id AS catalogId, status FROM cards WHERE id = ?")
-    .bind(cardId)
-    .first<{ catalogId: number; status: CardStatus }>();
-  if (!outgoing) throw new Error(`card ${cardId} not found`);
+  if (outgoing.held) {
+    throw new Error(`card ${cardId} is held (保留); unhold it first`);
+  }
   if (!ACTIVE_STATUSES.has(outgoing.status)) {
     throw new Error(`card ${cardId} is no longer in the collection`);
   }
@@ -1934,17 +1985,26 @@ export async function recordTransaction(
   const sourceKey = activityKey(t.type);
   const nextStatus: CardStatus =
     t.type === "sale" ? "sold" : t.type === "trade" ? "traded" : "gifted";
+  const claim = unchangedCardsCondition([outgoing], {
+    sql: `k.status IN ${ACTIVE} AND k.held = 0 AND ${CARD_IS_UNRESERVED}`,
+    values: [],
+  });
+  const gate = activityExistsCondition(sourceKey);
   const statements: D1PreparedStatement[] = [
-    insertActivityEventStatement(db, {
-      sourceKey,
-      kind: t.type,
-      occurredAt: t.happenedAt,
-      sourceType: "card",
-      sourceId: cardId,
-      counterparty: t.counterparty ?? null,
-      amount: t.type === "gift" ? null : (t.price ?? null),
-      note: t.note ?? null,
-    }),
+    insertActivityEventStatement(
+      db,
+      {
+        sourceKey,
+        kind: t.type,
+        occurredAt: t.happenedAt,
+        sourceType: "card",
+        sourceId: cardId,
+        counterparty: t.counterparty ?? null,
+        amount: t.type === "gift" ? null : (t.price ?? null),
+        note: t.note ?? null,
+      },
+      claim,
+    ),
   ];
   if (receivedCatalogId != null) {
     statements.push(
@@ -1952,10 +2012,8 @@ export async function recordTransaction(
         .prepare(
           `INSERT INTO cards
              (catalog_id, status, source, acquired_event_id)
-           VALUES (
-             ?, 'owned', 'trade_in',
-             (SELECT id FROM activity_events WHERE source_key = ?)
-           )`,
+           SELECT ?, 'owned', 'trade_in', id
+           FROM activity_events WHERE source_key = ?`,
         )
         .bind(receivedCatalogId, sourceKey),
     );
@@ -1963,9 +2021,10 @@ export async function recordTransaction(
   statements.push(
     db
       .prepare(
-        "UPDATE cards SET status = ?, updated_at = datetime('now') WHERE id = ?",
+        `UPDATE cards SET status = ?, updated_at = datetime('now')
+         WHERE id = ? AND ${gate.sql}`,
       )
-      .bind(nextStatus, cardId),
+      .bind(nextStatus, cardId, ...gate.values),
   );
   const transactionResultIndex = statements.length;
   statements.push(
@@ -1974,14 +2033,13 @@ export async function recordTransaction(
         `INSERT INTO transactions
            (card_id, type, counterparty, price, received_catalog_id,
             received_card_id, happened_at, note)
-         VALUES (
-           ?, ?, ?, ?, ?,
+         SELECT ?, ?, ?, ?, ?,
            (SELECT k.id FROM cards k
             JOIN activity_events e ON e.id = k.acquired_event_id
             WHERE e.source_key = ? AND k.catalog_id = ?
             ORDER BY k.id DESC LIMIT 1),
            ?, ?
-         )
+         WHERE ${gate.sql}
          RETURNING id`,
       )
       .bind(
@@ -1994,6 +2052,7 @@ export async function recordTransaction(
         receivedCatalogId,
         t.happenedAt,
         t.note ?? null,
+        ...gate.values,
       ),
     insertActivityLineStatement(db, sourceKey, {
       catalogId: outgoing.catalogId,
@@ -2014,6 +2073,9 @@ export async function recordTransaction(
     );
   }
   const results = await db.batch(statements);
+  if (results[0].results.length === 0) {
+    throw new Error(`card ${cardId} changed; refresh and retry`);
+  }
   return insertedId(
     results[transactionResultIndex],
     "failed to record transaction",
@@ -2102,55 +2164,7 @@ export async function getActivities(
                 e.reversed_at AS reversedAt, e.created_at AS createdAt,
                 e.trade_post_id AS tradePostId,
                 p.public_id AS tradePostPublicId,
-                CASE
-                  WHEN e.kind IN ('opening', 'purchase', 'acquisition')
-                   AND e.reversed_at IS NULL
-                   AND EXISTS (
-                     SELECT 1 FROM activity_event_lines l
-                     WHERE l.event_id = e.id AND l.delta > 0
-                   )
-                   AND (
-                     SELECT COALESCE(SUM(l.qty), 0)
-                     FROM activity_event_lines l
-                     WHERE l.event_id = e.id AND l.delta > 0
-                   ) = (
-                     SELECT COUNT(*) FROM cards k
-                     WHERE k.acquired_event_id = e.id
-                   )
-                   AND NOT EXISTS (
-                     SELECT 1 FROM cards k
-                     WHERE k.acquired_event_id = e.id
-                       AND (
-                         k.status <> 'owned'
-                         OR k.held <> 0
-                         OR k.updated_at <> k.created_at
-                         OR EXISTS (
-                           SELECT 1 FROM trade_reservation_lines l
-                           WHERE l.card_id = k.id
-                         )
-                         OR EXISTS (
-                           SELECT 1 FROM trade_reservation_lines legacy
-                           WHERE legacy.direction = 'give'
-                             AND legacy.card_id IS NULL
-                             AND legacy.catalog_id = k.catalog_id
-                         )
-                         OR EXISTS (
-                           SELECT 1 FROM transactions t
-                           WHERE t.card_id = k.id OR t.received_card_id = k.id
-                         )
-                         OR EXISTS (
-                           SELECT 1 FROM activity_events later
-                           WHERE later.source_type = 'card'
-                             AND later.source_id = k.id
-                         )
-                       )
-                   )
-                   AND (
-                     e.kind <> 'opening'
-                     OR EXISTS (
-                       SELECT 1 FROM openings o WHERE o.id = e.source_id
-                     )
-                   )
+                CASE WHEN ${ACQUISITION_IS_UNDOABLE}
                   THEN 1 ELSE 0
                 END AS canUndo
          FROM activity_events e
@@ -2224,28 +2238,7 @@ export async function undoActivity(db: D1Database, id: number): Promise<void> {
                WHERE k.acquired_event_id = e.id) AS currentCards,
               (SELECT COUNT(*) FROM cards k
                WHERE k.acquired_event_id = e.id
-                 AND k.status = 'owned'
-                 AND k.held = 0
-                 AND k.updated_at = k.created_at
-                 AND NOT EXISTS (
-                   SELECT 1 FROM trade_reservation_lines l
-                   WHERE l.card_id = k.id
-                 )
-                 AND NOT EXISTS (
-                   SELECT 1 FROM trade_reservation_lines legacy
-                   WHERE legacy.direction = 'give'
-                     AND legacy.card_id IS NULL
-                     AND legacy.catalog_id = k.catalog_id
-                 )
-                 AND NOT EXISTS (
-                   SELECT 1 FROM transactions t
-                   WHERE t.card_id = k.id OR t.received_card_id = k.id
-                 )
-                 AND NOT EXISTS (
-                   SELECT 1 FROM activity_events later
-                   WHERE later.source_type = 'card'
-                     AND later.source_id = k.id
-                 )) AS eligibleCards
+                 AND ${CARD_IS_UNTOUCHED}) AS eligibleCards
        FROM activity_events e WHERE e.id = ?`,
     )
     .bind(id)
@@ -2290,23 +2283,33 @@ export async function undoActivity(db: D1Database, id: number): Promise<void> {
   }
 
   const undoKey = `undo:${id}`;
+  const unreversed: SqlCondition = {
+    sql: `EXISTS (
+      SELECT 1 FROM activity_events original
+      WHERE original.id = ? AND original.reversed_at IS NULL
+    )`,
+    values: [id],
+  };
+  const gate = activityExistsCondition(undoKey, unreversed);
   const statements: D1PreparedStatement[] = [
-    db
-      .prepare(
-        `UPDATE activity_events
-         SET reversed_at = datetime('now')
-         WHERE id = ? AND reversed_at IS NULL
-         RETURNING id`,
-      )
-      .bind(id),
-    insertActivityEventStatement(db, {
-      sourceKey: undoKey,
-      kind: "undo",
-      sourceType: "activity",
-      sourceId: id,
-      revertsEventId: id,
-      note: `撤銷 #${id}`,
-    }),
+    insertActivityEventStatement(
+      db,
+      {
+        sourceKey: undoKey,
+        kind: "undo",
+        sourceType: "activity",
+        sourceId: id,
+        revertsEventId: id,
+        note: `撤銷 #${id}`,
+      },
+      {
+        sql: `EXISTS (
+          SELECT 1 FROM activity_events e
+          WHERE e.id = ? AND ${ACQUISITION_IS_UNDOABLE}
+        )`,
+        values: [id],
+      },
+    ),
     db
       .prepare(
         `INSERT INTO activity_event_lines
@@ -2317,58 +2320,39 @@ export async function undoActivity(db: D1Database, id: number): Promise<void> {
                 original.unit_amount, original.note
          FROM activity_event_lines original
          JOIN activity_events undo ON undo.source_key = ?
-         WHERE original.event_id = ?`,
+         WHERE original.event_id = ? AND ${unreversed.sql}`,
       )
-      .bind(undoKey, id),
-    db.prepare("DELETE FROM cards WHERE acquired_event_id = ?").bind(id),
+      .bind(undoKey, id, ...unreversed.values),
+    db
+      .prepare(`DELETE FROM cards WHERE acquired_event_id = ? AND ${gate.sql}`)
+      .bind(id, ...gate.values),
   ];
   if (state.kind === "opening" && state.sourceId != null) {
     statements.push(
-      db.prepare("DELETE FROM openings WHERE id = ?").bind(state.sourceId),
+      db
+        .prepare(`DELETE FROM openings WHERE id = ? AND ${gate.sql}`)
+        .bind(state.sourceId, ...gate.values),
     );
   }
+  statements.push(
+    db
+      .prepare(
+        `UPDATE activity_events SET reversed_at = datetime('now')
+         WHERE id = ? AND ${gate.sql}`,
+      )
+      .bind(id, ...gate.values),
+  );
   const results = await db.batch(statements);
   if (results[0].results.length === 0) {
-    throw new Error("this activity was already undone");
+    throw new Error(
+      "this activity was already undone or its cards have later changes",
+    );
   }
 }
 
 async function legacyReservedCardIds(db: D1Database): Promise<Set<number>> {
   const rows = (
-    await db
-      .prepare(
-        `WITH legacy AS (
-           SELECT catalog_id, SUM(qty) AS qty
-           FROM trade_reservation_lines
-           WHERE direction = 'give' AND card_id IS NULL
-           GROUP BY catalog_id
-         ), ranked AS (
-           SELECT k.id, k.catalog_id,
-                  ROW_NUMBER() OVER (
-                    PARTITION BY k.catalog_id
-                    ORDER BY (k.status = 'owned') DESC,
-                             CASE k.source
-                               WHEN 'pull' THEN 0
-                               WHEN 'trade_in' THEN 1
-                               ELSE 2
-                             END,
-                             k.id
-                  ) AS position
-           FROM cards k
-           JOIN legacy ON legacy.catalog_id = k.catalog_id
-           WHERE k.status IN ${ACTIVE}
-             AND k.held = 0
-             AND NOT EXISTS (
-               SELECT 1 FROM trade_reservation_lines explicit
-               WHERE explicit.direction = 'give' AND explicit.card_id = k.id
-             )
-         )
-         SELECT ranked.id
-         FROM ranked
-         JOIN legacy ON legacy.catalog_id = ranked.catalog_id
-         WHERE ranked.position <= legacy.qty`,
-      )
-      .all<{ id: number }>()
+    await db.prepare(LEGACY_RESERVED_CARD_IDS).all<{ id: number }>()
   ).results;
   return new Set(rows.map((row) => row.id));
 }
@@ -2550,13 +2534,53 @@ interface PendingLine {
   cardId: number | null;
 }
 
+function tradePostReservationCondition(
+  input: ResolvedReservationInput,
+  tradePostId: number | null,
+): SqlCondition {
+  if (tradePostId === null) return { sql: "1", values: [] };
+  const requested = [
+    ...input.give.map((line) => ({ ...line, direction: "give" })),
+    ...input.receive.map((line) => ({ ...line, direction: "want" })),
+  ];
+  return {
+    sql: `EXISTS (
+      SELECT 1 FROM trade_posts WHERE id = ? AND status = 'published'
+    ) AND NOT EXISTS (
+      SELECT 1 FROM json_each(?) requested
+      LEFT JOIN trade_post_lines advertised
+        ON advertised.post_id = ?
+        AND advertised.direction = json_extract(requested.value, '$.direction')
+        AND advertised.catalog_id = json_extract(requested.value, '$.catalogId')
+      WHERE advertised.id IS NULL
+        OR advertised.qty < json_extract(requested.value, '$.qty')
+        OR (
+          advertised.direction = 'want'
+          AND json_extract(requested.value, '$.qty') > (
+            COALESCE((
+              SELECT desired_count FROM catalog_wants
+              WHERE catalog_id = advertised.catalog_id
+            ), 0)
+            - (SELECT COUNT(*) FROM cards
+               WHERE catalog_id = advertised.catalog_id AND status IN ${ACTIVE})
+            - (SELECT COALESCE(SUM(qty), 0) FROM trade_reservation_lines
+               WHERE catalog_id = advertised.catalog_id AND direction = 'receive')
+            - (SELECT COALESCE(SUM(l.qty), 0)
+               FROM purchase_reservation_lines l
+               JOIN purchase_reservations r ON r.id = l.reservation_id
+               WHERE l.catalog_id = advertised.catalog_id AND r.status = 'pending')
+          )
+        )
+    )`,
+    values: [tradePostId, JSON.stringify(requested), tradePostId],
+  };
+}
+
 async function createResolvedReservation(
   db: D1Database,
   input: ResolvedReservationInput,
   tradePostId: number | null = null,
 ): Promise<number> {
-  // Resolve and allocate everything before writing. The partial unique index on
-  // card_id is the final concurrency guard if two requests race this read phase.
   const giveRequests = input.give;
   for (const line of [...giveRequests, ...input.receive]) {
     if (
@@ -2578,17 +2602,17 @@ async function createResolvedReservation(
       (demandByCatalog.get(give.catalogId) ?? 0) + give.qty,
     );
   }
-  const allocatedByCatalog = new Map<number, number[]>();
+  const allocatedByCatalog = new Map<number, CardSnapshot[]>();
+  const allocatedCards: CardSnapshot[] = [];
   const legacyReserved = await legacyReservedCardIds(db);
+  const statusFilter =
+    tradePostId === null ? `k.status IN ${ACTIVE}` : "k.status = 'for_trade'";
   for (const [catalog, demand] of demandByCatalog) {
-    const statusFilter =
-      tradePostId === null
-        ? "k.status IN ('owned','for_sale','for_trade')"
-        : "k.status = 'for_trade'";
     const candidates = (
       await db
         .prepare(
-          `SELECT k.id
+          `SELECT k.id, k.catalog_id AS catalogId, k.status, k.held,
+                  k.mutation_version AS version
            FROM cards k
            WHERE k.catalog_id = ?
              AND ${statusFilter}
@@ -2606,29 +2630,28 @@ async function createResolvedReservation(
                     k.id`,
         )
         .bind(catalog)
-        .all<{ id: number }>()
+        .all<CardSnapshot>()
     ).results;
     const available = candidates.filter((card) => !legacyReserved.has(card.id));
     if (available.length < demand) {
       throw new Error(`not enough unreserved holdings for catalog ${catalog}`);
     }
-    allocatedByCatalog.set(
-      catalog,
-      available.slice(0, demand).map((card) => card.id),
-    );
+    const selected = available.slice(0, demand);
+    allocatedByCatalog.set(catalog, selected);
+    allocatedCards.push(...selected);
   }
   for (const give of giveRequests) {
     const allocated = allocatedByCatalog.get(give.catalogId) ?? [];
     for (let i = 0; i < give.qty; i++) {
-      const cardId = allocated.shift();
-      if (cardId === undefined) {
+      const card = allocated.shift();
+      if (card === undefined) {
         throw new Error(`failed to allocate catalog ${give.catalogId}`);
       }
       lines.push({
         direction: "give",
         catalogId: give.catalogId,
         qty: 1,
-        cardId,
+        cardId: card.id,
       });
     }
   }
@@ -2641,42 +2664,45 @@ async function createResolvedReservation(
     });
   }
 
-  const id =
-    (
-      await db
-        .prepare(
-          `SELECT COALESCE(
-             (SELECT seq FROM sqlite_sequence WHERE name = 'trade_reservations'),
-             0
-           ) + 1 AS id`,
-        )
-        .first<{ id: number }>()
-    )?.id ?? 1;
   const sourceKey = activityKey("trade-reserved");
+  const cardClaim = unchangedCardsCondition(allocatedCards, {
+    sql: `${statusFilter} AND k.held = 0 AND ${CARD_IS_UNRESERVED}`,
+    values: [],
+  });
+  const postClaim = tradePostReservationCondition(input, tradePostId);
   const statements: D1PreparedStatement[] = [
-    insertActivityEventStatement(db, {
-      sourceKey,
-      kind: "trade_reserved",
-      occurredAt: input.reservedAt,
-      sourceType: "trade_reservation",
-      sourceId: id,
-      counterparty: input.counterparty ?? null,
-      note: input.note ?? null,
-      tradePostId,
-    }),
+    insertActivityEventStatement(
+      db,
+      {
+        sourceKey,
+        kind: "trade_reserved",
+        occurredAt: input.reservedAt,
+        sourceType: "trade_reservation",
+        counterparty: input.counterparty ?? null,
+        note: input.note ?? null,
+        tradePostId,
+      },
+      {
+        sql: `(${cardClaim.sql}) AND (${postClaim.sql})`,
+        values: [...cardClaim.values, ...postClaim.values],
+      },
+    ),
     db
       .prepare(
         `INSERT INTO trade_reservations
-           (id, counterparty, reserved_at, note, trade_post_id)
-         VALUES (?, ?, ?, ?, ?)`,
+           (counterparty, reserved_at, note, trade_post_id)
+         SELECT counterparty, occurred_at, note, trade_post_id
+         FROM activity_events WHERE source_key = ?
+         RETURNING id`,
       )
-      .bind(
-        id,
-        input.counterparty ?? null,
-        input.reservedAt,
-        input.note ?? null,
-        tradePostId,
-      ),
+      .bind(sourceKey),
+    db
+      .prepare(
+        `UPDATE activity_events
+         SET source_id = (SELECT id FROM trade_reservations ORDER BY id DESC LIMIT 1)
+         WHERE source_key = ?`,
+      )
+      .bind(sourceKey),
   ];
   for (const line of lines) {
     statements.push(
@@ -2684,9 +2710,10 @@ async function createResolvedReservation(
         .prepare(
           `INSERT INTO trade_reservation_lines
              (reservation_id, direction, catalog_id, qty, card_id)
-           VALUES (?, ?, ?, ?, ?)`,
+           SELECT source_id, ?, ?, ?, ?
+           FROM activity_events WHERE source_key = ?`,
         )
-        .bind(id, line.direction, line.catalogId, line.qty, line.cardId),
+        .bind(line.direction, line.catalogId, line.qty, line.cardId, sourceKey),
     );
   }
   for (const line of lines) {
@@ -2699,8 +2726,11 @@ async function createResolvedReservation(
       }),
     );
   }
-  await db.batch(statements);
-  return id;
+  const results = await db.batch(statements);
+  return insertedId(
+    results[1],
+    "reservation availability changed; refresh and retry",
+  );
 }
 
 export async function createReservation(
@@ -2898,7 +2928,6 @@ export async function completeReservation(
   id: number,
   happenedAt: string,
 ): Promise<void> {
-  // ---- READ PHASE (no writes) ----
   const header = await db
     .prepare(
       `SELECT counterparty, note, trade_post_id AS tradePostId
@@ -2950,23 +2979,25 @@ export async function completeReservation(
     throw new Error("a completed trade needs at least one give line");
   }
 
-  // New reservations already identify physical cards. Legacy NULL-card lines
-  // are allocated at completion while avoiding every explicitly reserved card.
   const giveCardIds: number[] = [];
+  const giveCards: CardSnapshot[] = [];
   for (const g of gives) {
     if (g.cardId !== null) {
       const card = await db
         .prepare(
-          `SELECT id FROM cards
+          `SELECT id, catalog_id AS catalogId, status, held,
+                  mutation_version AS version
+           FROM cards
            WHERE id = ? AND catalog_id = ?
-             AND status IN ('owned','for_sale','for_trade')`,
+             AND status IN ('owned','for_sale','for_trade') AND held = 0`,
         )
         .bind(g.cardId, g.catalogId)
-        .first<{ id: number }>();
+        .first<CardSnapshot>();
       if (!card || giveCardIds.includes(card.id)) {
         throw new Error(`reserved card ${g.cardId} is no longer available`);
       }
       giveCardIds.push(card.id);
+      giveCards.push(card);
       continue;
     }
     const exclude = giveCardIds.length
@@ -2974,7 +3005,9 @@ export async function completeReservation(
       : "";
     const card = await db
       .prepare(
-        `SELECT id FROM cards
+        `SELECT id, catalog_id AS catalogId, status, held,
+                mutation_version AS version
+         FROM cards
          WHERE catalog_id = ? AND status IN ('owned','for_sale','for_trade')
            AND held = 0 ${exclude}
            AND NOT EXISTS (
@@ -2991,11 +3024,12 @@ export async function completeReservation(
          LIMIT 1`,
       )
       .bind(g.catalogId, ...giveCardIds)
-      .first<{ id: number }>();
+      .first<CardSnapshot>();
     if (!card) {
       throw new Error(`not enough holdings to fulfil catalog ${g.catalogId}`);
     }
     giveCardIds.push(card.id);
+    giveCards.push(card);
   }
 
   // Receives beyond the give count (一換多): note them on the last transaction.
@@ -3005,58 +3039,77 @@ export async function completeReservation(
       ? `額外換得：${extra.map((r) => `${r.series} ${r.character} ${r.rarity}`).join("、")}`
       : "";
 
-  // ---- WRITE PHASE (single atomic batch; reservation claimed within it) ----
   const sourceKey = `trade-terminal:${lifecycleId}`;
+  const pending: SqlCondition = {
+    sql: "EXISTS (SELECT 1 FROM trade_reservations WHERE id = ?)",
+    values: [id],
+  };
+  const cardClaim = unchangedCardsCondition(giveCards, {
+    sql: `k.status IN ${ACTIVE} AND k.held = 0
+      AND NOT EXISTS (
+        SELECT 1 FROM trade_reservation_lines reserved
+        WHERE reserved.direction = 'give' AND reserved.card_id = k.id
+          AND reserved.reservation_id <> ?
+      )`,
+    values: [id],
+  });
+  const gate = activityExistsCondition(sourceKey, pending);
   const stmts: D1PreparedStatement[] = [
-    insertActivityEventStatement(db, {
-      sourceKey,
-      kind: "trade_completed",
-      occurredAt: happenedAt,
-      sourceType: "trade_reservation",
-      sourceId: id,
-      counterparty: header.counterparty,
-      note: header.note,
-      tradePostId: header.tradePostId,
-    }),
+    insertActivityEventStatement(
+      db,
+      {
+        sourceKey,
+        kind: "trade_completed",
+        occurredAt: happenedAt,
+        sourceType: "trade_reservation",
+        sourceId: id,
+        counterparty: header.counterparty,
+        note: header.note,
+        tradePostId: header.tradePostId,
+      },
+      {
+        sql: `${pending.sql} AND (${cardClaim.sql})`,
+        values: [...pending.values, ...cardClaim.values],
+      },
+    ),
   ];
   for (const line of raw) {
     stmts.push(
-      insertActivityLineStatement(db, sourceKey, {
-        catalogId: line.catalogId,
-        action: line.direction === "give" ? "given" : "received",
-        qty: line.qty,
-        delta: line.direction === "give" ? -line.qty : line.qty,
-        afterStatus: line.direction === "give" ? "traded" : "owned",
-      }),
+      insertActivityLineStatement(
+        db,
+        sourceKey,
+        {
+          catalogId: line.catalogId,
+          action: line.direction === "give" ? "given" : "received",
+          qty: line.qty,
+          delta: line.direction === "give" ? -line.qty : line.qty,
+          afterStatus: line.direction === "give" ? "traded" : "owned",
+        },
+        pending,
+      ),
     );
   }
-  stmts.push(
-    db
-      .prepare("DELETE FROM trade_reservation_lines WHERE reservation_id = ?")
-      .bind(id),
-    db.prepare("DELETE FROM trade_reservations WHERE id = ?").bind(id),
-  );
   for (const r of receives) {
     stmts.push(
       db
         .prepare(
           `INSERT INTO cards
              (catalog_id, status, source, acquired_event_id)
-           VALUES (
-             ?, 'owned', 'trade_in',
-             (SELECT id FROM activity_events WHERE source_key = ?)
-           )`,
+           SELECT ?, 'owned', 'trade_in', id
+           FROM activity_events
+           WHERE source_key = ? AND ${pending.sql}`,
         )
-        .bind(r.catalogId, sourceKey),
+        .bind(r.catalogId, sourceKey, ...pending.values),
     );
   }
   for (let i = 0; i < gives.length; i++) {
     stmts.push(
       db
         .prepare(
-          "UPDATE cards SET status = 'traded', updated_at = datetime('now') WHERE id = ?",
+          `UPDATE cards SET status = 'traded', updated_at = datetime('now')
+           WHERE id = ? AND ${gate.sql}`,
         )
-        .bind(giveCardIds[i]),
+        .bind(giveCardIds[i], ...gate.values),
     );
     const receivedCatalogId =
       i < receives.length ? receives[i].catalogId : null;
@@ -3069,7 +3122,8 @@ export async function completeReservation(
         .prepare(
           `INSERT INTO transactions
              (card_id, type, counterparty, price, received_catalog_id, received_card_id, happened_at, note)
-           VALUES (?, 'trade', ?, NULL, ?, NULL, ?, ?)`,
+           SELECT ?, 'trade', ?, NULL, ?, NULL, ?, ?
+           WHERE ${gate.sql}`,
         )
         .bind(
           giveCardIds[i],
@@ -3077,10 +3131,25 @@ export async function completeReservation(
           receivedCatalogId,
           happenedAt,
           note,
+          ...gate.values,
         ),
     );
   }
-  await db.batch(stmts);
+  stmts.push(
+    db
+      .prepare(
+        `DELETE FROM trade_reservation_lines
+         WHERE reservation_id = ? AND ${gate.sql}`,
+      )
+      .bind(id, ...gate.values),
+    db
+      .prepare(`DELETE FROM trade_reservations WHERE id = ? AND ${gate.sql}`)
+      .bind(id, ...gate.values),
+  );
+  const results = await db.batch(stmts);
+  if (results[0].results.length === 0) {
+    throw new Error(`reservation ${id} changed; refresh and retry`);
+  }
 }
 
 // ---- Pending purchase reservations ----

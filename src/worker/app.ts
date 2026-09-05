@@ -468,6 +468,56 @@ function normalizeTransactionInput(body: unknown): {
   };
 }
 
+function normalizeUpdateCardInput(body: unknown): {
+  value?: UpdateCardInput;
+  error?: string;
+} {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { error: "invalid card update" };
+  }
+  const input = body as Record<string, unknown>;
+  if (
+    input.status !== undefined &&
+    input.status !== "owned" &&
+    input.status !== "for_sale" &&
+    input.status !== "for_trade"
+  ) {
+    return { error: "status must be owned, for_sale, or for_trade" };
+  }
+  if (
+    input.askingPrice !== undefined &&
+    input.askingPrice !== null &&
+    (typeof input.askingPrice !== "number" ||
+      !Number.isFinite(input.askingPrice) ||
+      input.askingPrice < 0)
+  ) {
+    return { error: "askingPrice must be finite and nonnegative, or null" };
+  }
+  for (const field of ["wantInReturn", "note"] as const) {
+    if (
+      input[field] !== undefined &&
+      input[field] !== null &&
+      typeof input[field] !== "string"
+    ) {
+      return { error: `${field} must be a string or null` };
+    }
+  }
+  return {
+    value: {
+      ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(input.askingPrice !== undefined
+        ? { askingPrice: input.askingPrice as number | null }
+        : {}),
+      ...(input.wantInReturn !== undefined
+        ? { wantInReturn: input.wantInReturn as string | null }
+        : {}),
+      ...(input.note !== undefined
+        ? { note: input.note as string | null }
+        : {}),
+    },
+  };
+}
+
 function normalizeReclassifyCardInput(body: unknown): {
   value?: ReclassifyCardInput;
   error?: string;
@@ -1243,10 +1293,19 @@ admin.post("/cards", async (c) => {
 
 admin.patch("/cards/:id", async (c) => {
   const id = Number(c.req.param("id"));
-  if (!Number.isInteger(id)) return c.json({ error: "bad id" }, 400);
-  const body = await c.req.json<UpdateCardInput>();
+  if (!Number.isInteger(id) || id < 1) return c.json({ error: "bad id" }, 400);
+  let body: unknown;
   try {
-    await updateCard(c.env.DB, id, body);
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const normalized = normalizeUpdateCardInput(body);
+  if (!normalized.value) {
+    return c.json({ error: normalized.error ?? "invalid card update" }, 400);
+  }
+  try {
+    await updateCard(c.env.DB, id, normalized.value);
   } catch (error) {
     return c.json({ error: String(error) }, 409);
   }
