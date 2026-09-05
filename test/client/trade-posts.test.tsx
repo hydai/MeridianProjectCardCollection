@@ -82,7 +82,7 @@ describe("public exchange announcements", () => {
     expect(
       await screen.findByRole("heading", { name: "交換公告" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("這則公告已關閉")).toBeInTheDocument();
+    expect(await screen.findByText("這則公告已關閉")).toBeInTheDocument();
     expect(screen.getByText("台北面交優先")).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith("/api/trade-posts/public-3");
   });
@@ -115,5 +115,37 @@ describe("public exchange announcements", () => {
         screen.getByRole("link", { name: /查看公告/ }),
       ).toBeInTheDocument(),
     );
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).not.toHaveBeenCalledWith("/api/market");
+    expect(fetch).not.toHaveBeenCalledWith("/api/pending-trades");
+    expect(fetch).not.toHaveBeenCalledWith("/api/pending-purchases");
+
+    fireEvent.click(screen.getByRole("tab", { name: /交換 Trade/ }));
+    await screen.findByText("想換入");
+    fireEvent.click(screen.getByRole("tab", { name: /公告 Posts/ }));
+    expect(screen.getByRole("link", { name: /查看公告/ })).toBeInTheDocument();
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([url]) => url === "/api/trade-posts"),
+    ).toHaveLength(1);
+  });
+
+  it("loads announcements independently when overview fails", async () => {
+    history.replaceState(null, "", "/#posts");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url === "/api/overview"
+          ? { ok: false, status: 503, json: async () => ({}) }
+          : { ok: true, json: async () => [publishedPost] },
+      ),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("link", { name: /查看公告/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/無法載入資料/)).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

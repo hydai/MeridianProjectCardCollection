@@ -1,12 +1,10 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRovingTablist } from "@/lib/tablist";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
-  MarketListing,
   PublicPendingPurchase,
   PublicPendingTrade,
-  TradePost,
 } from "../shared/types";
 import {
   fetchMarket,
@@ -84,8 +82,6 @@ function tabFor(id: TabId) {
 function ActiveView({
   id,
   m,
-  listings,
-  marketError,
   pending,
   pendingError,
   pendingPurchases,
@@ -93,8 +89,6 @@ function ActiveView({
 }: {
   id: TabId;
   m: Matrix;
-  listings: MarketListing[] | null;
-  marketError: string | null;
   pending: PublicPendingTrade[] | null;
   pendingError: string | null;
   pendingPurchases: PublicPendingPurchase[] | null;
@@ -123,8 +117,6 @@ function ActiveView({
           pendingPurchaseError={pendingPurchaseError}
         />
       );
-    case "market":
-      return <MarketBoard listings={listings} error={marketError} />;
     default:
       return null;
   }
@@ -135,52 +127,50 @@ function initialTab(): TabId {
   return TABS.some((t) => t.id === hash) ? (hash as TabId) : "char";
 }
 
-export default function PublicViewer() {
-  const [matrix, setMatrix] = useState<Matrix | null>(null);
+function usePublicResource<T>(enabled: boolean, load: () => Promise<T>) {
+  const request = useRef<Promise<T> | null>(null);
+  const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    request.current ??= load();
+    request.current.then(
+      (value) => {
+        if (active) setData(value);
+      },
+      (reason) => {
+        if (active) setError(String(reason));
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [enabled, load]);
+
+  return { data, error };
+}
+
+const loadMatrix = () => fetchOverview().then(buildMatrix);
+
+export default function PublicViewer() {
   const [tab, setTab] = useState<TabId>(initialTab);
-  const [listings, setListings] = useState<MarketListing[] | null>(null);
-  const [marketError, setMarketError] = useState<string | null>(null);
-  const [pending, setPending] = useState<PublicPendingTrade[] | null>(null);
-  const [pendingError, setPendingError] = useState<string | null>(null);
-  const [pendingPurchases, setPendingPurchases] = useState<
-    PublicPendingPurchase[] | null
-  >(null);
-  const [pendingPurchaseError, setPendingPurchaseError] = useState<
-    string | null
-  >(null);
-  const [tradePosts, setTradePosts] = useState<TradePost[] | null>(null);
-  const [tradePostsError, setTradePostsError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchOverview()
-      .then((o) => setMatrix(buildMatrix(o)))
-      .catch((e) => setError(String(e)));
-  }, []);
-
-  useEffect(() => {
-    fetchMarket()
-      .then(setListings)
-      .catch((e) => setMarketError(String(e)));
-  }, []);
-
-  useEffect(() => {
-    fetchPendingTrades()
-      .then(setPending)
-      .catch((e) => setPendingError(String(e)));
-  }, []);
-
-  useEffect(() => {
-    fetchPendingPurchases()
-      .then(setPendingPurchases)
-      .catch((e) => setPendingPurchaseError(String(e)));
-  }, []);
-
-  useEffect(() => {
-    fetchTradePosts()
-      .then(setTradePosts)
-      .catch((e) => setTradePostsError(String(e)));
-  }, []);
+  const { data: matrix, error } = usePublicResource(true, loadMatrix);
+  const { data: listings, error: marketError } = usePublicResource(
+    tab === "market",
+    fetchMarket,
+  );
+  const { data: pending, error: pendingError } = usePublicResource(
+    tab === "trade",
+    fetchPendingTrades,
+  );
+  const { data: pendingPurchases, error: pendingPurchaseError } =
+    usePublicResource(tab === "trade", fetchPendingPurchases);
+  const { data: tradePosts, error: tradePostsError } = usePublicResource(
+    tab === "posts",
+    fetchTradePosts,
+  );
 
   const selectTab = (id: TabId) => {
     setTab(id);
@@ -282,6 +272,8 @@ export default function PublicViewer() {
       >
         {tab === "posts" ? (
           <TradePostsView posts={tradePosts} error={tradePostsError} />
+        ) : tab === "market" ? (
+          <MarketBoard listings={listings} error={marketError} />
         ) : error ? (
           <p className="py-12 text-center font-accent italic tracking-[0.1em] text-muted-foreground">
             無法載入資料：{error}
@@ -290,8 +282,6 @@ export default function PublicViewer() {
           <ActiveView
             id={tab}
             m={matrix}
-            listings={listings}
-            marketError={marketError}
             pending={pending}
             pendingError={pendingError}
             pendingPurchases={pendingPurchases}

@@ -110,6 +110,20 @@ describe("public pending purchases", () => {
     expect(screen.getByText(/預定購入 2 張（待收件）/)).toBeInTheDocument();
   });
 
+  it("does not request descriptive pending resources for the wishlist", async () => {
+    history.replaceState(null, "", "/#wishlist");
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => overview,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PublicViewer />);
+
+    expect(await screen.findByText("預定購入 ×2")).toBeInTheDocument();
+    expect(fetchMock.mock.calls).toEqual([["/api/overview"]]);
+  });
+
   it("shows a privacy-safe pending list alongside snapshot-derived Wants", () => {
     const payload = [
       {
@@ -175,6 +189,7 @@ describe("public pending purchases", () => {
             : "無法載入預定購入（待收件）",
         ),
       ).toBeInTheDocument();
+      expect(fetch).toHaveBeenCalledTimes(3);
     },
   );
 
