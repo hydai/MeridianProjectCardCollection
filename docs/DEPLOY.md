@@ -121,9 +121,80 @@ When `ACCESS_TEAM_DOMAIN` is set, the worker verifies the Access JWT on every
 - Schema changes: after the backup passes, run
   `npx wrangler d1 migrations apply meridian-cards --remote` before deploying
   the code that depends on them.
-- **New series or character:** use the **manage-card-catalog** skill (`.claude/skills/`).
-  Do NOT run `npm run seed:gen` for this — it would overwrite `0002`/`0003` and
-  re-import the collection. Edit `seed/catalog-def.ts`, then `npm run catalog:sync`
-  (writes an additive UPSERT migration), apply it `--local` then `--remote`, and
-  `npm run deploy`.
+- **New series or character:** use `/admin` → **系列管理**, or the scripted
+  additions workflow below. Both public views and admin controls read live D1;
+  catalog-only changes need a reload, not a frontend rebuild or deploy.
 - The local dev DB and the remote DB are separate; `--local` vs `--remote`.
+
+## Scripted catalog additions
+
+D1's `series` and `card_catalog` tables are the runtime authority.
+`seed/catalog-def.ts` and `VOLUMES` describe the historical import and test
+fixtures, not desired production state. Never regenerate `0002`/`0003`, edit
+applied migrations, or change `seed/cards.ts` to extend the catalog.
+
+1. Create a JSON file containing **only the additions you intend to make**.
+   Each entry specifies a name, positive integer volume, ordered characters,
+   and selected rarities. For example (illustrative, not a catalog definition):
+
+   ```json
+   [
+     {
+       "name": "EXAMPLE SERIES",
+       "volume": 3,
+       "characters": ["Example Character"],
+       "rarities": ["R", "SR", "SSR", "UR", "EX"]
+     }
+   ]
+   ```
+
+   An entry adds its character × rarity cross-product. To add characters or
+   rarities to an existing series, use its exact current name and volume and
+   list only the intended types. Requested rarities are canonicalized to
+   R / SR / SSR / UR / EX before inserting new rows; existing rows keep their
+   ordering. EX requires volume 3 or later and is not implicitly added.
+   Names and characters are trimmed and must be unique.
+
+2. Generate and review the migration:
+
+   ```bash
+   npm run catalog:sync -- catalog-additions.json
+   ```
+
+   The command requires explicit input; running it without a file fails rather
+   than replaying the seed. It writes the next `migrations/NNNN_sync_catalog.sql`
+   and never overwrites an existing file. New series get `volume_number`,
+   `is_active = 1`, and an appended `sort_order`, followed by their catalog rows.
+
+   **Conflict contract:** existing series metadata (volume, order, active flag),
+   catalog IDs, and catalog ordering are never overwritten. New rows append to
+   the live order. A different existing volume or an ASCII case-only spelling
+   conflict (or existing EX types below volume 3) aborts the entire migration
+   with `catalog_sync_runtime_conflict`;
+   inspect D1 and revise the unapplied addition instead of forcing stale data.
+   Existing inactive series stay inactive. Omitted types are not recreated,
+   changed, or deleted. Explicitly listing a previously removed type **does**
+   request its restoration; never supply a full seed or old catalog snapshot.
+   Reapplying unchanged additions to unchanged D1 is a no-op. Once applied,
+   keep that migration immutable and use a fresh delta for later changes.
+
+3. Record local catalog/card counts, apply locally, and compare them:
+
+   ```bash
+   npx wrangler d1 execute meridian-cards --local --command \
+     "SELECT (SELECT COUNT(*) FROM card_catalog) catalog, (SELECT COUNT(*) FROM cards) cards"
+   npx wrangler d1 migrations apply meridian-cards --local
+   npx wrangler d1 execute meridian-cards --local --command \
+     "SELECT (SELECT COUNT(*) FROM card_catalog) catalog, (SELECT COUNT(*) FROM cards) cards"
+   npm run test:worker -- test/worker/catalog-sync.test.ts test/worker/seed.test.ts test/worker/seed-applied.test.ts test/worker/queries-read.test.ts test/worker/api-public.test.ts test/worker/flexible-management.test.ts
+   ```
+
+   Only the requested missing catalog types should be added; physical `cards`
+   must be unchanged. Verify `/api/catalog` and `/api/overview` include the
+   series with the intended volume and rarities, and reload the admin controls.
+
+4. Commit the reviewed additions JSON and generated migration. Before any
+   authorized production application, create and verify the backup described
+   above, check the live catalog for conflicts, then apply migrations remotely.
+   Do not run `seed:gen` or re-import owned cards. No redeploy is needed for
+   catalog-only additions.

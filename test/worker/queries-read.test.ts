@@ -1,6 +1,5 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { buildCatalog } from "../../seed/catalog-def";
 import {
   getMarket,
   getMissing,
@@ -11,14 +10,20 @@ import {
 describe("read queries", () => {
   it("overview has one cell per catalog type and correct per-series progress", async () => {
     const o = await getOverview(env.DB);
-    expect(o.cells).toHaveLength(buildCatalog().length);
+    const counts = await env.DB.prepare(
+      "SELECT series, COUNT(*) AS totalTypes FROM card_catalog GROUP BY series",
+    ).all<{ series: string; totalTypes: number }>();
+    expect(o.cells).toHaveLength(
+      counts.results.reduce((total, series) => total + series.totalTypes, 0),
+    );
+    for (const series of counts.results) {
+      expect(
+        o.progress.find((progress) => progress.series === series.series),
+      ).toMatchObject(series);
+    }
 
     const ny = o.progress.find((p) => p.series === "NEW YEAR");
-    expect(ny?.totalTypes).toBe(44);
     expect(ny?.collectedTypes).toBe(29); // from the Sheet 收藏總覽 tab
-
-    const mp = o.progress.find((p) => p.series === "MP 4TH");
-    expect(mp?.totalTypes).toBe(48);
   });
 
   it("overview owned counts sum to 258 active cards", async () => {
@@ -32,7 +37,10 @@ describe("read queries", () => {
     expect(m.length).toBeGreaterThan(0);
     expect(m.every((x) => x.catalogId > 0)).toBe(true);
     // total types minus distinct collected; sanity bound.
-    expect(m.length).toBeLessThan(buildCatalog().length);
+    const catalog = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM card_catalog",
+    ).first<{ n: number }>();
+    expect(m.length).toBeLessThan(catalog?.n ?? 0);
   });
 
   it("market lists only for_sale/for_trade cards", async () => {

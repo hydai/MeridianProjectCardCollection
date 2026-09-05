@@ -1,6 +1,5 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { SERIES, buildCatalog } from "../../seed/catalog-def";
 
 describe("public api", () => {
   it("GET /api/overview returns one cell per catalog type", async () => {
@@ -10,8 +9,11 @@ describe("public api", () => {
       cells: unknown[];
       progress: unknown[];
     };
-    expect(body.cells).toHaveLength(buildCatalog().length);
-    expect(body.progress).toHaveLength(SERIES.length);
+    const counts = await env.DB.prepare(
+      "SELECT COUNT(*) AS types, COUNT(DISTINCT series) AS series FROM card_catalog",
+    ).first<{ types: number; series: number }>();
+    expect(body.cells.length).toBe(counts?.types);
+    expect(body.progress.length).toBe(counts?.series);
   });
 
   it("GET /api/stats returns all five pull rates", async () => {

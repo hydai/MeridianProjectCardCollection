@@ -186,9 +186,16 @@ See **[docs/DEPLOY.md](docs/DEPLOY.md)** for the full walkthrough. In short:
 - **Card images:** use **收藏 → 卡圖資料**. JPEG, PNG, WebP, and AVIF files up
   to 15 MB are accepted; one front image is shared by the whole catalog slot.
   Only 320px and 960px WebP variants are retained after conversion.
-- **New series or character** (e.g. an "MP 5TH"): edit `seed/catalog-def.ts`,
-  then `npm run catalog:sync` to generate an additive migration. (Claude Code
-  users: the bundled `manage-card-catalog` skill walks through this.)
+- **New series or character:** use `/admin` → **系列管理**. D1's `series`
+  (including volume/order/active metadata) and `card_catalog` tables are the
+  runtime authority for both public views and admin controls.
+- **Scripted catalog additions:** use an explicit additions JSON file with
+  `npm run catalog:sync -- <additions.json>`, then review and apply the generated
+  migration. It creates missing series metadata and card types without replacing
+  existing runtime edits. See [the workflow and conflict contract](docs/DEPLOY.md#scripted-catalog-additions)
+  or the bundled `manage-card-catalog` skill. `seed/catalog-def.ts` is historical
+  import data, not a live catalog to reconcile; do not edit it for new additions.
+  Catalog-only updates do not require a frontend redeploy; reload to fetch D1.
 
 ## License
 
