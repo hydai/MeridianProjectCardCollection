@@ -308,14 +308,19 @@ describe("App", () => {
     ).toHaveLength(1);
   });
 
-  it("keeps a late resource failure scoped to that resource and caches the failure", async () => {
+  it("keeps a late failure scoped and retries it when the resource is revisited", async () => {
     history.replaceState(null, "", "/#market");
     const market = deferred<ReturnType<typeof response>>();
-    const fetchMock = vi.fn((url: string) =>
-      url === "/api/market"
-        ? market.promise
-        : Promise.resolve(response(url === "/api/overview" ? overview : [])),
-    );
+    let attempts = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/market") {
+        attempts += 1;
+        return attempts === 1
+          ? market.promise
+          : Promise.resolve(response(listings));
+      }
+      return Promise.resolve(response(url === "/api/overview" ? overview : []));
+    });
     vi.stubGlobal("fetch", fetchMock);
     render(<App />);
     await screen.findByText("張總計");
@@ -327,16 +332,53 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "交易 Trade" }));
     fireEvent.click(screen.getByRole("tab", { name: "交易看板 Market" }));
-    expect(await screen.findByText(/無法載入交易資料/)).toHaveTextContent(
-      "market unavailable",
-    );
+    expect(await screen.findByText("500 元")).toBeInTheDocument();
+    expect(screen.queryByText(/market unavailable/)).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "交換 Trade" }));
     fireEvent.click(screen.getByRole("tab", { name: "交易看板 Market" }));
-    expect(screen.getByText(/無法載入交易資料/)).toBeInTheDocument();
+    expect(screen.getByText("500 元")).toBeInTheDocument();
     expect(
       fetchMock.mock.calls.filter(([url]) => url === "/api/market"),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
+
+  it.each([
+    ["market", "交易看板 Market", "/api/market"],
+    ["posts", "公告 Posts", "/api/trade-posts"],
+    ["trade", "交換 Trade", "/api/pending-trades"],
+    ["trade", "交換 Trade", "/api/pending-purchases"],
+  ])(
+    "recovers %s data from %s after a transient %s failure",
+    async (tab, label, endpoint) => {
+      history.replaceState(null, "", `/#${tab}`);
+      let attempts = 0;
+      const fetchMock = vi.fn(async (url: string) => {
+        if (url === endpoint) {
+          attempts += 1;
+          if (attempts === 1) return response({}, 503);
+        }
+        return response(
+          url === "/api/overview"
+            ? overview
+            : url === "/api/market"
+              ? listings
+              : [],
+        );
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
+      await screen.findByText(/503/);
+      fireEvent.click(screen.getByRole("button", { name: "收藏 Collection" }));
+      fireEvent.click(screen.getByRole("button", { name: "交易 Trade" }));
+      fireEvent.click(screen.getByRole("tab", { name: label }));
+      await waitFor(() => expect(attempts).toBe(2));
+      await waitFor(() => expect(screen.queryByText(/503/)).toBeNull());
+    },
+  );
 
   it("does not reuse or apply a previous viewer's late overview response", async () => {
     const oldOverview = deferred<ReturnType<typeof response>>();

@@ -135,12 +135,17 @@ function usePublicResource<T>(enabled: boolean, load: () => Promise<T>) {
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    request.current ??= load();
-    request.current.then(
+    if (request.current === null) {
+      setError(null);
+      request.current = load();
+    }
+    const pending = request.current;
+    pending.then(
       (value) => {
         if (active) setData(value);
       },
       (reason) => {
+        if (request.current === pending) request.current = null;
         if (active) setError(String(reason));
       },
     );
