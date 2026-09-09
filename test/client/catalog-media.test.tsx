@@ -42,6 +42,31 @@ afterEach(() => {
 });
 
 describe("CatalogMedia", () => {
+  it.each([
+    { entry: missing, action: "上傳卡圖" },
+    { entry: ready, action: "更換卡圖" },
+  ])(
+    "opens the matching file picker when clicking $action",
+    async ({ entry, action }) => {
+      const fetchMock = vi.fn(async () => jsonResponse([missing, ready]));
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(<CatalogMedia />);
+      await screen.findByText("Mizuki");
+      fireEvent.click(screen.getByRole("radio", { name: "全部" }));
+
+      const input = screen.getByLabelText(
+        `選擇 ${entry.series} ${entry.character} ${entry.rarity} 卡面`,
+      );
+      const inputClick = vi.spyOn(input, "click").mockImplementation(() => {});
+      fireEvent.click(screen.getByRole("button", { name: action }));
+
+      expect(inputClick).toHaveBeenCalledOnce();
+      // Opening the picker alone must not submit an upload.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("uses missing images as the default work queue and can show completed slots", async () => {
     vi.stubGlobal(
       "fetch",
