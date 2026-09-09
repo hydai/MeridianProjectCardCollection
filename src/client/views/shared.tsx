@@ -42,6 +42,10 @@ export const CARD_TITLE =
 export const CARD_COUNT =
   "font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground";
 
+// Bound long series headings in wide tables while preserving the full name.
+export const SERIES_TABLE_LABEL =
+  "mx-auto block w-max max-w-36 wrap-anywhere whitespace-normal";
+
 // Editorial sub-panel (shared by Trade + Market): the legacy `.trade-panel`
 // rebuilt on shadcn Card — 0.5px border, 4px radius, serif title with a mono
 // sub on the right and a 0.5px header divider. Smaller than CARD_SHELL.

@@ -44,6 +44,7 @@ import {
   PANEL_TITLE,
   Panel,
   RARITY_TEXT,
+  SERIES_TABLE_LABEL,
 } from "./shared";
 
 type Filter = "all" | RarityKey;
@@ -100,7 +101,7 @@ function PendingCard({
       <div className="mb-1.5 text-xs text-[var(--text-tertiary)]">
         {p.reservedAt}
       </div>
-      <Table>
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow className="border-0 hover:bg-transparent">
             <TableHead className="h-auto px-2 py-1 text-left">給出</TableHead>
@@ -113,7 +114,7 @@ function PendingCard({
               key={`${row.give?.rarity ?? "none"}-${row.receive?.rarity ?? "none"}-${i}`}
               className="border-0 hover:bg-transparent"
             >
-              <TableCell className="px-2 py-1 text-left text-foreground">
+              <TableCell className="wrap-anywhere whitespace-normal px-2 py-1 text-left text-foreground">
                 {row.give ? (
                   <span className="flex flex-wrap items-center gap-2">
                     <MissChip
@@ -126,7 +127,7 @@ function PendingCard({
                   "—"
                 )}
               </TableCell>
-              <TableCell className="px-2 py-1 text-left text-foreground">
+              <TableCell className="wrap-anywhere whitespace-normal px-2 py-1 text-left text-foreground">
                 {row.receive ? (
                   <span className="flex flex-wrap items-center gap-2">
                     <MissChip
@@ -178,7 +179,7 @@ function PendingPurchaseCard({
           <TableHeader>
             <TableRow className="border-0 hover:bg-transparent">
               <TableHead className="h-auto px-2 py-1 text-left">卡片</TableHead>
-              <TableHead className="h-auto px-2 py-1 text-right">
+              <TableHead className="h-auto w-16 px-2 py-1 text-right">
                 數量
               </TableHead>
             </TableRow>
@@ -189,7 +190,7 @@ function PendingPurchaseCard({
                 key={`${line.catalogId}-${index}`}
                 className="border-0 hover:bg-transparent"
               >
-                <TableCell className="px-2 py-1 text-left text-foreground">
+                <TableCell className="wrap-anywhere whitespace-normal px-2 py-1 text-left text-foreground">
                   <span className="flex flex-wrap items-center gap-2">
                     <MissChip
                       ri={RARITIES.indexOf(line.rarity)}
@@ -330,11 +331,11 @@ function TradeGrid({
   }
 
   return (
-    <div
-      className={`trade-grid overflow-x-auto ${CARD_FRAME}`}
-      data-kind={kind}
-    >
-      <table className="trade-grid-table w-full border-collapse text-xs">
+    <div className={`trade-grid ${CARD_FRAME}`} data-kind={kind}>
+      <Table
+        scrollLabel={kind === "surplus" ? "可換出卡片格表" : "想換入卡片格表"}
+        className="trade-grid-table w-max min-w-full table-auto border-collapse text-xs"
+      >
         <thead>
           <tr>
             <th
@@ -349,7 +350,9 @@ function TradeGrid({
                 colSpan={c.ris.length}
                 className={`trade-grid-series-head border-b-[0.5px] border-border bg-secondary px-1.5 pt-2.5 pb-2 text-center font-accent text-xs font-medium uppercase italic tracking-[0.12em] text-foreground ${TG_BORDER_STRONG_L} max-sm:px-1 max-sm:pt-2 max-sm:pb-1.5 max-sm:text-[11px]`}
               >
-                {formatTradeLabel(m.series[c.si], language, "series")}
+                <span className={SERIES_TABLE_LABEL}>
+                  {formatTradeLabel(m.series[c.si], language, "series")}
+                </span>
               </th>
             ))}
           </tr>
@@ -413,7 +416,7 @@ function TradeGrid({
             </tr>
           ))}
         </tbody>
-      </table>
+      </Table>
     </div>
   );
 }

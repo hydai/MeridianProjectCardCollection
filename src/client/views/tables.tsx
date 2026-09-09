@@ -23,11 +23,14 @@ import {
   CARD_SHELL,
   CARD_TITLE,
   NumCell,
+  SERIES_TABLE_LABEL,
 } from "./shared";
 
 // Editorial column-header style: tight, uppercase, letter-spaced, dim.
 const TH = "h-auto py-2.5 text-[10px] font-normal uppercase tracking-[0.2em]";
-const NAME_CELL = "text-left font-sans";
+const NAME_CELL = "wrap-anywhere whitespace-normal text-left font-sans";
+const SUMMARY_TABLE = "min-w-[28rem] table-fixed";
+const STICKY_NAME = "sticky left-0 z-10 min-w-24 bg-card";
 const TOTAL_CELL = "border-l border-border text-right font-mono";
 const CARD_TITLE_SERIES =
   "font-accent text-[26px] font-medium uppercase italic tracking-[0.08em] text-foreground max-sm:text-[22px]";
@@ -111,7 +114,14 @@ export function ByCharacter({ m }: { m: Matrix }) {
               </span>
             </CardHeader>
             <CardContent className="px-0">
-              <Table>
+              <Table
+                className={SUMMARY_TABLE}
+                scrollLabel={`${charName} 收藏統計表`}
+              >
+                <colgroup>
+                  <col className="w-[36%]" />
+                  <col span={rarityIndexes.length + 1} />
+                </colgroup>
                 <TableHeader>
                   <TableRow>
                     <TableHead className={cn(TH, "text-left")}>系列</TableHead>
@@ -209,7 +219,14 @@ export function BySeries({ m }: { m: Matrix }) {
               </span>
             </CardHeader>
             <CardContent className="px-0">
-              <Table>
+              <Table
+                className={SUMMARY_TABLE}
+                scrollLabel={`${seriesName} 收藏統計表`}
+              >
+                <colgroup>
+                  <col className="w-[36%]" />
+                  <col span={rarityIndexes.length + 1} />
+                </colgroup>
                 <TableHeader>
                   <TableRow>
                     <TableHead className={cn(TH, "text-left")}>角色</TableHead>
@@ -310,13 +327,18 @@ export function ByRarity({ m }: { m: Matrix }) {
               </span>
             </CardHeader>
             <CardContent className="px-0">
-              <Table className="rarity-table w-max min-w-full table-auto">
+              <Table
+                className="rarity-table w-max min-w-full table-auto"
+                scrollLabel={`${rarityName} 稀有度統計表`}
+              >
                 <TableHeader>
                   <TableRow>
-                    <TableHead className={cn(TH, "text-left")}>角色</TableHead>
+                    <TableHead className={cn(TH, STICKY_NAME, "text-left")}>
+                      角色
+                    </TableHead>
                     {m.series.map((s) => (
                       <TableHead key={s} className={cn(TH, "text-center")}>
-                        {s}
+                        <span className={SERIES_TABLE_LABEL}>{s}</span>
                       </TableHead>
                     ))}
                     <TableHead
@@ -334,7 +356,9 @@ export function ByRarity({ m }: { m: Matrix }) {
                     );
                     return (
                       <TableRow key={charName}>
-                        <TableCell className={NAME_CELL}>{charName}</TableCell>
+                        <TableCell className={cn(NAME_CELL, STICKY_NAME)}>
+                          {charName}
+                        </TableCell>
                         {m.series.map((s, si) => (
                           <CatalogNumCell
                             key={s}
@@ -357,7 +381,11 @@ export function ByRarity({ m }: { m: Matrix }) {
                   })}
                   <TableRow className="border-t border-border bg-foreground/[0.02] hover:bg-foreground/[0.02]">
                     <TableCell
-                      className={cn(NAME_CELL, "text-muted-foreground")}
+                      className={cn(
+                        NAME_CELL,
+                        STICKY_NAME,
+                        "text-muted-foreground",
+                      )}
                     >
                       小計
                     </TableCell>

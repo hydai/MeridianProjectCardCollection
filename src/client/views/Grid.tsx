@@ -1,3 +1,4 @@
+import { Table } from "@/components/ui/table";
 import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useEffect, useState } from "react";
@@ -17,6 +18,7 @@ import {
   MODE_TOGGLE,
   PROGRESS_LINE,
   RARITY_TEXT,
+  SERIES_TABLE_LABEL,
   VIEW_HEADER,
 } from "./shared";
 
@@ -227,8 +229,11 @@ export function Grid({ m }: { m: Matrix }) {
               : "（所選系列沒有這個稀有度）"}
         </div>
       ) : (
-        <div className={`overflow-x-auto ${CARD_FRAME}`}>
-          <table className="grid-table w-max min-w-full table-auto border-collapse text-xs">
+        <div className={CARD_FRAME}>
+          <Table
+            scrollLabel="卡片格表"
+            className="grid-table w-max min-w-full table-auto border-collapse text-xs"
+          >
             <thead>
               <tr>
                 <th
@@ -243,7 +248,7 @@ export function Grid({ m }: { m: Matrix }) {
                     colSpan={rarities.length}
                     className={`grid-series-head grid-series-start border-b-[0.5px] border-border bg-secondary px-1.5 pt-2.5 pb-2 text-center font-accent text-xs font-medium uppercase italic tracking-[0.12em] text-foreground ${BORDER_STRONG_L} max-sm:px-1 max-sm:pt-2 max-sm:pb-1.5 max-sm:text-[11px]`}
                   >
-                    {s}
+                    <span className={SERIES_TABLE_LABEL}>{s}</span>
                   </th>
                 ))}
               </tr>
@@ -332,7 +337,7 @@ export function Grid({ m }: { m: Matrix }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         </div>
       )}
 
