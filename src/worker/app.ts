@@ -1,5 +1,9 @@
 import { Hono } from "hono";
 import {
+  BatchListingInputError,
+  parseBatchListingInput,
+} from "../shared/batch-listing";
+import {
   ACQUISITION_KEY_PATTERN,
   MAX_CARD_BATCH_SIZE,
 } from "../shared/card-batch";
@@ -47,10 +51,12 @@ import {
   getAcquisitionResult,
 } from "./db/acquisition-requests";
 import {
+  BatchListingConflictError,
   CardInputError,
   CatalogMediaConflictError,
   addCards,
   addPack,
+  batchListCards,
   cancelPurchaseReservation,
   cancelReservation,
   catalogSlotExists,
@@ -1386,6 +1392,26 @@ admin.patch("/cards/:id", async (c) => {
     return c.json({ error: String(error) }, 409);
   }
   return c.json({ ok: true });
+});
+
+admin.post("/cards/batch-listing", async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "上架資料必須是有效的 JSON。" }, 400);
+  }
+  try {
+    return c.json(await batchListCards(c.env.DB, parseBatchListingInput(body)));
+  } catch (error) {
+    if (error instanceof BatchListingInputError) {
+      return c.json({ error: error.message }, 400);
+    }
+    if (error instanceof BatchListingConflictError) {
+      return c.json({ error: error.message }, 409);
+    }
+    throw error;
+  }
 });
 
 admin.post("/cards/:id/reclassify", async (c) => {

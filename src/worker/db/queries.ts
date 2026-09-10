@@ -1,3 +1,4 @@
+import { parseBatchListingInput } from "../../shared/batch-listing";
 import { RARITY_ORDER, canonicalizeRarities } from "../../shared/rarity";
 import type {
   AcquisitionEventInput,
@@ -10,6 +11,8 @@ import type {
   AdminPendingTrade,
   AdminPurchaseReservationLine,
   AdminTradePost,
+  BatchListingInput,
+  BatchListingResult,
   CardRow,
   CardStatus,
   CatalogMediaEntry,
@@ -1885,6 +1888,79 @@ export async function updateCard(
   if (results[0].results.length === 0) {
     throw new Error(`card ${id} changed; refresh and retry`);
   }
+}
+
+export class BatchListingConflictError extends Error {
+  constructor() {
+    super("卡片庫存已變動，這一批未上架。請重新整理後再選擇數量。");
+  }
+}
+
+export async function batchListCards(
+  db: D1Database,
+  input: BatchListingInput,
+): Promise<BatchListingResult> {
+  const listing = parseBatchListingInput(input);
+  const requested = JSON.stringify(listing.cards);
+  const cards = (
+    await db
+      .prepare(
+        `SELECT k.id, k.catalog_id AS catalogId, k.status, k.held,
+              k.mutation_version AS version
+       FROM json_each(?) requested
+       JOIN cards k ON k.id = json_extract(requested.value, '$.cardId')
+         AND k.catalog_id = json_extract(requested.value, '$.catalogId')
+       WHERE k.status = 'owned' AND k.held = 0 AND ${CARD_IS_UNRESERVED}`,
+      )
+      .bind(requested)
+      .all<CardSnapshot>()
+  ).results;
+  if (cards.length !== listing.cards.length)
+    throw new BatchListingConflictError();
+
+  const sourceKey = activityKey("batch-listing");
+  const claim = unchangedCardsCondition(cards, {
+    sql: `k.status = 'owned' AND k.held = 0 AND ${CARD_IS_UNRESERVED}`,
+    values: [],
+  });
+  const gate = activityExistsCondition(sourceKey);
+  const price = listing.askingPrice ?? null;
+  const want = listing.wantInReturn ?? null;
+  // One claim gates every write in the same transaction. Never loop over
+  // updateCard: an intervening reservation must cancel the whole batch.
+  const results = await db.batch([
+    insertActivityEventStatement(
+      db,
+      {
+        sourceKey,
+        kind: "card_classified",
+        sourceType: "batch_listing",
+        note: `批次上架 ${cards.length} 張（${listing.status === "for_sale" ? "待售" : "待換"}）`,
+      },
+      claim,
+    ),
+    db
+      .prepare(
+        `UPDATE cards SET status = ?, asking_price = ?, want_in_return = ?,
+                        updated_at = datetime('now')
+       WHERE id IN (SELECT json_extract(value, '$.cardId') FROM json_each(?))
+         AND ${gate.sql}`,
+      )
+      .bind(listing.status, price, want, requested, ...gate.values),
+    db
+      .prepare(
+        `INSERT INTO activity_event_lines
+         (event_id, catalog_id, action, qty, delta, before_status, after_status, unit_amount, note)
+       SELECT e.id, json_extract(r.value, '$.catalogId'), 'classified', COUNT(*),
+              0, 'owned', ?, ?, ?
+       FROM activity_events e CROSS JOIN json_each(?) r
+       WHERE e.source_key = ?
+       GROUP BY e.id, json_extract(r.value, '$.catalogId')`,
+      )
+      .bind(listing.status, price, want, requested, sourceKey),
+  ]);
+  if (results[0].results.length === 0) throw new BatchListingConflictError();
+  return { count: cards.length };
 }
 
 export async function reclassifyCard(

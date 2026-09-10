@@ -5,6 +5,8 @@ import type {
   AdminPendingPurchase,
   AdminPendingTrade,
   AdminTradePost,
+  BatchListingInput,
+  BatchListingResult,
   CardRow,
   CatalogMediaEntry,
   CatalogSeries,
@@ -132,6 +134,8 @@ export const patchSeries = (name: string, input: UpdateSeriesInput) =>
 
 export const patchCard = (id: number, update: UpdateCardInput) =>
   send<{ ok: true }>("PATCH", `/api/admin/cards/${id}`, update);
+export const postBatchListing = (input: BatchListingInput) =>
+  send<BatchListingResult>("POST", "/api/admin/cards/batch-listing", input);
 export const reclassifyCard = (id: number, input: ReclassifyCardInput) =>
   send<{ ok: true }>("POST", `/api/admin/cards/${id}/reclassify`, input);
 

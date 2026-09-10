@@ -282,6 +282,18 @@ export interface UpdateCardInput {
   note?: string | null;
 }
 
+export interface BatchListingInput {
+  status: "for_sale" | "for_trade";
+  // Exact physical cards keep retries from listing additional copies.
+  cards: { cardId: number; catalogId: number }[];
+  askingPrice?: number | null;
+  wantInReturn?: string | null;
+}
+
+export interface BatchListingResult {
+  count: number;
+}
+
 export interface UpdateCatalogWantInput {
   wantCount: number;
 }

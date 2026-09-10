@@ -63,6 +63,7 @@ import {
   unholdCard,
 } from "../api";
 import { AcquisitionFeedback } from "./AcquisitionFeedback";
+import { BatchListing, batchListingGroups } from "./BatchListing";
 import {
   ACTION_FORM,
   BTN_GHOST_SM,
@@ -1532,7 +1533,19 @@ export function ManageCards() {
 
   return (
     <section className={PANEL}>
-      <h2 className={PANEL_TITLE}>卡片管理</h2>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className={PANEL_TITLE}>卡片管理</h2>
+        <BatchListing
+          groups={batchListingGroups(filteredRows, filteredCells)}
+          disabled={
+            rows === null ||
+            catalog === null ||
+            overview === null ||
+            error !== null
+          }
+          onReload={reload}
+        />
+      </div>
       <div className="card-filters mb-[18px] flex flex-col gap-3 rounded-[4px] border-[0.5px] border-border bg-[var(--bg-subtle)] p-3.5">
         <FilterButtonGroup
           label="彈數"

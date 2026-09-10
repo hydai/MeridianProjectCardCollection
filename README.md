@@ -42,6 +42,11 @@ with a live site you edit directly.
   corrections with their date, counterparty, amount, and note. **保留 (hold)**
   locks a duplicate so it stays owned but never shows up in the auto-computed
   trade list.
+- **Batch market listing** — use the card-management filters, enter a quantity
+  per card kind, and preview up to 100 copies before listing them together for
+  sale or trade with a shared per-card price or exchange condition. Held,
+  reserved, and already-listed copies are excluded; inventory conflicts cancel
+  the entire batch. Each batch appears as one grouped activity.
 - **Catalog image queue** — every catalog slot has an owner-only missing-image
   workflow. Upload, replace, or remove a shared front image without attaching
   it to one physical copy. Uploads are converted to fixed 320px and 960px WebP
