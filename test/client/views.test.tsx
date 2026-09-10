@@ -240,7 +240,7 @@ describe("MarketBoard", () => {
       <MarketBoard listings={[{ ...sampleListings[3], reserved: true }]} />,
     );
     expect(screen.getByText("暫定交換中")).toHaveClass("text-reservation");
-    expect(screen.getByText("預1")).toBeInTheDocument();
+    expect(screen.getByText("預約 1 張")).toBeInTheDocument();
   });
 
   it("shows an error message scoped to this view", () => {

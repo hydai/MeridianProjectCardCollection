@@ -278,7 +278,7 @@ export default function PublicViewer() {
         {tab === "posts" ? (
           <TradePostsView posts={tradePosts} error={tradePostsError} />
         ) : tab === "market" ? (
-          <MarketBoard listings={listings} error={marketError} />
+          <MarketBoard listings={listings} error={marketError} m={matrix} />
         ) : error ? (
           <p className="py-12 text-center font-accent italic tracking-[0.1em] text-muted-foreground">
             無法載入資料：{error}

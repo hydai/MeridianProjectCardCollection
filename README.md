@@ -19,7 +19,9 @@ with a live site you edit directly.
   series × character × rarity grid remains available for exhaustive inventory.
 - **Trade board** — an explicit "want" list that tracks target quantities after
   pending purchases and incoming trades, plus a "for trade / for sale" list with
-  asking prices or desired cards.
+  asking prices or desired cards. Market listings use an artwork grid with
+  names, quantities, and enlarged card previews; identical copies with the same
+  terms are grouped, with reserved quantities shown separately.
 - **Shareable exchange announcements** — publish selected outgoing cards and
   explicit Wants as an immutable snapshot at a stable `/exchange/:publicId`
   URL. Live availability changes are marked as stale; closed announcements leave
