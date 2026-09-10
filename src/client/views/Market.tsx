@@ -10,7 +10,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import {
   Sheet,
   SheetContent,
@@ -20,6 +25,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useState } from "react";
 import type { CatalogImageRef, MarketListing } from "../../shared/types";
 import { type Matrix, RARITIES, getImage } from "../collection";
 
@@ -188,10 +195,21 @@ function ListingSection({
   title,
   items,
   m,
-}: { title: string; items: MarketListing[]; m?: Matrix | null }) {
-  const groups = groupListings(items);
+  filterByRarity = false,
+}: {
+  title: string;
+  items: MarketListing[];
+  m?: Matrix | null;
+  filterByRarity?: boolean;
+}) {
+  const [rarity, setRarity] = useState("all");
+  const shownItems =
+    !filterByRarity || rarity === "all"
+      ? items
+      : items.filter((item) => item.rarity === rarity);
+  const groups = groupListings(shownItems);
   const typeCount = new Set(
-    items.map((item) =>
+    shownItems.map((item) =>
       JSON.stringify([item.series, item.character, item.rarity]),
     ),
   ).size;
@@ -199,23 +217,59 @@ function ListingSection({
     <section aria-label={title} className="flex flex-col gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-3">
         <h2 className="font-serif text-xl">{title}</h2>
-        <p className="font-mono text-xs text-muted-foreground">
-          {typeCount} 款 · {items.length} 張
+        <p
+          aria-live="polite"
+          aria-atomic="true"
+          className="font-mono text-xs text-muted-foreground"
+        >
+          {typeCount} 款 · {shownItems.length} 張
         </p>
       </div>
-      <ul className={MARKET_GRID} aria-label={`${title}卡片`}>
-        {groups.map((group) => {
-          const image = m
-            ? getImage(
-                m,
-                m.series.indexOf(group.item.series),
-                m.characters.indexOf(group.item.character),
-                RARITIES.indexOf(group.item.rarity),
-              )
-            : null;
-          return <ListingCard key={group.key} group={group} image={image} />;
-        })}
-      </ul>
+      {filterByRarity ? (
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          value={rarity}
+          onValueChange={(value) => {
+            if (value) setRarity(value);
+          }}
+          aria-label={`${title}稀有度篩選`}
+          className="max-w-full flex-wrap"
+        >
+          <ToggleGroupItem value="all">全部</ToggleGroupItem>
+          {RARITIES.map((value) => (
+            <ToggleGroupItem key={value} value={value}>
+              {value}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      ) : null}
+      {groups.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>
+              目前沒有 {rarity} 等級的{title}卡片。
+            </EmptyTitle>
+            <EmptyDescription>
+              選擇其他稀有度或「全部」查看卡片。
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <ul className={MARKET_GRID} aria-label={`${title}卡片`}>
+          {groups.map((group) => {
+            const image = m
+              ? getImage(
+                  m,
+                  m.series.indexOf(group.item.series),
+                  m.characters.indexOf(group.item.character),
+                  RARITIES.indexOf(group.item.rarity),
+                )
+              : null;
+            return <ListingCard key={group.key} group={group} image={image} />;
+          })}
+        </ul>
+      )}
     </section>
   );
 }
@@ -270,10 +324,16 @@ export function MarketBoard({
         同款、同條件合併顯示。點卡面可放大查看。
       </p>
       {forSale.length > 0 ? (
-        <ListingSection title="待售" items={forSale} m={m} />
+        <ListingSection
+          key="sale"
+          title="待售"
+          items={forSale}
+          m={m}
+          filterByRarity
+        />
       ) : null}
       {forTrade.length > 0 ? (
-        <ListingSection title="待換" items={forTrade} m={m} />
+        <ListingSection key="trade" title="待換" items={forTrade} m={m} />
       ) : null}
     </section>
   );
