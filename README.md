@@ -22,6 +22,11 @@ with a live site you edit directly.
   asking prices or desired cards. Market listings use an artwork grid with
   names, quantities, and enlarged card previews; identical copies with the same
   terms are grouped, with reserved quantities shown separately.
+- **Sale image export** — multi-select R / SR / SSR / UR / EX on the market
+  board and switch to **分享版** to preview and download the entire selection
+  as one PNG. Choose 6, 8, or 10 cards per row; artwork, asking prices, available
+  quantities, reservations, and full condition notes stay together. The image
+  includes its date and source, and can be opened or saved directly on mobile.
 - **Shareable exchange announcements** — publish selected outgoing cards and
   explicit Wants as an immutable snapshot at a stable `/exchange/:publicId`
   URL. Live availability changes are marked as stale; closed announcements leave

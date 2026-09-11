@@ -1,4 +1,5 @@
 import { CatalogCardVisual } from "@/components/CatalogCardVisual";
+import { SaleShareSheet } from "@/components/SaleShareSheet";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,64 +27,17 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { useState } from "react";
+import {
+  type ListingGroup,
+  groupListings,
+  listingTerms,
+} from "@/lib/market-listings";
+import { CheckIcon } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { CatalogImageRef, MarketListing } from "../../shared/types";
 import { type Matrix, RARITIES, getImage } from "../collection";
 
 const MARKET_GRID = "grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4";
-
-interface ListingGroup {
-  key: string;
-  item: MarketListing;
-  quantity: number;
-  reserved: number;
-  reservedSale: number;
-}
-
-function groupListings(items: MarketListing[]): ListingGroup[] {
-  const groups = new Map<string, ListingGroup>();
-  for (const item of items) {
-    // Only combine copies with the same public terms and condition notes.
-    // Irrelevant stale fields (e.g. an old trade wish on a sale) are ignored.
-    const key = JSON.stringify([
-      item.series,
-      item.character,
-      item.rarity,
-      item.status,
-      item.status === "for_sale"
-        ? item.askingPrice
-        : item.wantInReturn?.trim() || null,
-      item.note?.trim() || null,
-    ]);
-    const existing = groups.get(key);
-    if (existing) {
-      existing.quantity++;
-      existing.reserved += Number(item.reserved);
-      existing.reservedSale += Number(
-        item.reserved && item.reservationType === "sale",
-      );
-    } else {
-      groups.set(key, {
-        key,
-        item,
-        quantity: 1,
-        reserved: Number(item.reserved),
-        reservedSale: Number(item.reserved && item.reservationType === "sale"),
-      });
-    }
-  }
-  return [...groups.values()];
-}
-
-function listingTerms(item: MarketListing): string {
-  return item.status === "for_sale"
-    ? item.askingPrice == null
-      ? "價格面議"
-      : `${item.askingPrice} 元`
-    : item.wantInReturn?.trim()
-      ? `想換：${item.wantInReturn.trim()}`
-      : "開放出價";
-}
 
 function ListingQuantity({ group }: { group: ListingGroup }) {
   const available = group.quantity - group.reserved;
@@ -216,12 +170,16 @@ function ListingSection({
   m?: Matrix | null;
   filterByRarity?: boolean;
 }) {
-  const [rarity, setRarity] = useState("all");
-  const shownItems =
-    !filterByRarity || rarity === "all"
-      ? items
-      : items.filter((item) => item.rarity === rarity);
-  const groups = groupListings(shownItems);
+  const [rarities, setRarities] = useState<string[]>([]);
+  const [layout, setLayout] = useState("cards");
+  const shownItems = useMemo(
+    () =>
+      !filterByRarity || rarities.length === 0
+        ? items
+        : items.filter((item) => rarities.includes(item.rarity)),
+    [items, filterByRarity, rarities],
+  );
+  const groups = useMemo(() => groupListings(shownItems), [shownItems]);
   const typeCount = new Set(
     shownItems.map((item) =>
       JSON.stringify([item.series, item.character, item.rarity]),
@@ -240,35 +198,68 @@ function ListingSection({
         </p>
       </div>
       {filterByRarity ? (
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          value={rarity}
-          onValueChange={(value) => {
-            if (value) setRarity(value);
-          }}
-          aria-label={`${title}稀有度篩選`}
-          className="max-w-full flex-wrap"
-        >
-          <ToggleGroupItem value="all">全部</ToggleGroupItem>
-          {RARITIES.map((value) => (
-            <ToggleGroupItem key={value} value={value}>
-              {value}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <ToggleGroup
+              type="multiple"
+              variant="outline"
+              value={rarities.length ? rarities : ["all"]}
+              onValueChange={(values) => {
+                setRarities(
+                  values.includes("all") && rarities.length > 0
+                    ? []
+                    : values.filter((value) => value !== "all"),
+                );
+              }}
+              aria-label={`${title}稀有度篩選`}
+              className="max-w-full flex-wrap"
+            >
+              <ToggleGroupItem value="all">
+                {rarities.length === 0 ? (
+                  <CheckIcon data-icon="inline-start" aria-hidden />
+                ) : null}
+                全部
+              </ToggleGroupItem>
+              {RARITIES.map((value) => (
+                <ToggleGroupItem key={value} value={value}>
+                  {rarities.includes(value) ? (
+                    <CheckIcon data-icon="inline-start" aria-hidden />
+                  ) : null}
+                  {value}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              value={layout}
+              onValueChange={(value) => {
+                if (value) setLayout(value);
+              }}
+              aria-label="待售顯示方式"
+            >
+              <ToggleGroupItem value="cards">卡片版</ToggleGroupItem>
+              <ToggleGroupItem value="share">分享版</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            稀有度可複選；選「全部」重設篩選。
+          </p>
+        </div>
       ) : null}
       {groups.length === 0 ? (
         <Empty>
           <EmptyHeader>
             <EmptyTitle>
-              目前沒有 {rarity} 等級的{title}卡片。
+              目前沒有 {rarities.join("、")} 等級的{title}卡片。
             </EmptyTitle>
             <EmptyDescription>
               選擇其他稀有度或「全部」查看卡片。
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
+      ) : filterByRarity && layout === "share" ? (
+        <SaleShareSheet groups={groups} m={m} />
       ) : (
         <ul className={MARKET_GRID} aria-label={`${title}卡片`}>
           {groups.map((group) => {
