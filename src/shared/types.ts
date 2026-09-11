@@ -299,6 +299,11 @@ export interface BatchListingResult {
   count: number;
 }
 
+export interface BatchPriceInput {
+  askingPrice: number;
+  cards: { cardId: number; catalogId: number; currentPrice: number | null }[];
+}
+
 export interface UpdateCatalogWantInput {
   wantCount: number;
 }

@@ -65,6 +65,7 @@ import {
 } from "../api";
 import { AcquisitionFeedback } from "./AcquisitionFeedback";
 import { BatchListing, batchListingGroups } from "./BatchListing";
+import { BatchPrice, batchPriceCards } from "./BatchPrice";
 import {
   ACTION_FORM,
   BTN_GHOST_SM,
@@ -346,7 +347,8 @@ function ActionForm({
 }) {
   const fieldId = useId();
   const [price, setPrice] = useState(
-    kind === "reserve_sale" && card.askingPrice != null
+    (kind === "reserve_sale" || kind === "list_sale") &&
+      card.askingPrice != null
       ? String(card.askingPrice)
       : "",
   );
@@ -373,7 +375,7 @@ function ActionForm({
   );
 
   const actionLabel: Record<ActionKind, string> = {
-    list_sale: "設為待售",
+    list_sale: card.status === "for_sale" ? "修改售價" : "設為待售",
     list_trade: "設為待換",
     sale: "記錄售出",
     reserve_sale: "建立出售預約",
@@ -1247,7 +1249,12 @@ function CardWorkspaceSheet({
                                 ) : null}
                                 {(
                                   [
-                                    ["list_sale", "待售"],
+                                    [
+                                      "list_sale",
+                                      card.status === "for_sale"
+                                        ? "修改售價"
+                                        : "待售",
+                                    ],
                                     ["list_trade", "待換"],
                                     ["sale", "賣出"],
                                     ["trade", "交換"],
@@ -1596,16 +1603,28 @@ export function ManageCards() {
     <section className={PANEL}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className={PANEL_TITLE}>卡片管理</h2>
-        <BatchListing
-          groups={batchListingGroups(filteredRows, filteredCells)}
-          disabled={
-            rows === null ||
-            catalog === null ||
-            overview === null ||
-            error !== null
-          }
-          onReload={reload}
-        />
+        <div className="flex flex-wrap gap-2">
+          <BatchPrice
+            cards={batchPriceCards(filteredRows, filteredCells)}
+            disabled={
+              rows === null ||
+              catalog === null ||
+              overview === null ||
+              error !== null
+            }
+            onReload={reload}
+          />
+          <BatchListing
+            groups={batchListingGroups(filteredRows, filteredCells)}
+            disabled={
+              rows === null ||
+              catalog === null ||
+              overview === null ||
+              error !== null
+            }
+            onReload={reload}
+          />
+        </div>
       </div>
       <div className="card-filters mb-[18px] flex flex-col gap-3 rounded-[4px] border-[0.5px] border-border bg-[var(--bg-subtle)] p-3.5">
         <FilterButtonGroup
@@ -2011,7 +2030,9 @@ export function ManageCards() {
                                                   })
                                                 }
                                               >
-                                                待售
+                                                {card.status === "for_sale"
+                                                  ? "修改售價"
+                                                  : "待售"}
                                               </Button>
                                               <Button
                                                 type="button"

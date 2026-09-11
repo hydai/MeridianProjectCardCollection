@@ -1,4 +1,5 @@
 import { parseBatchListingInput } from "../../shared/batch-listing";
+import { parseBatchPriceInput } from "../../shared/batch-price";
 import { RARITY_ORDER, canonicalizeRarities } from "../../shared/rarity";
 import {
   parseSaleReservationInput,
@@ -18,6 +19,7 @@ import type {
   AdminTradePost,
   BatchListingInput,
   BatchListingResult,
+  BatchPriceInput,
   CardRow,
   CardStatus,
   CatalogMediaEntry,
@@ -1978,6 +1980,75 @@ export async function batchListCards(
       .bind(listing.status, price, want, requested, sourceKey),
   ]);
   if (results[0].results.length === 0) throw new BatchListingConflictError();
+  return { count: cards.length };
+}
+
+export class BatchPriceConflictError extends Error {
+  constructor() {
+    super("卡片售價或庫存已變動，這一批未改價。請重新整理後再預覽。");
+  }
+}
+
+export async function batchUpdatePrice(
+  db: D1Database,
+  input: BatchPriceInput,
+): Promise<{ count: number }> {
+  const parsed = parseBatchPriceInput(input);
+  const changed = parsed.cards.filter(
+    (card) => card.currentPrice !== parsed.askingPrice,
+  );
+  if (!changed.length) return { count: 0 };
+  const requested = JSON.stringify(changed);
+  const cards = (
+    await db
+      .prepare(`
+    SELECT k.id, k.catalog_id AS catalogId, k.status, k.held, k.mutation_version AS version
+    FROM json_each(?) requested
+    JOIN cards k ON k.id = json_extract(requested.value, '$.cardId')
+      AND k.catalog_id = json_extract(requested.value, '$.catalogId')
+      AND k.asking_price IS json_extract(requested.value, '$.currentPrice')
+    WHERE k.status = 'for_sale' AND k.held = 0 AND ${CARD_IS_UNRESERVED}
+  `)
+      .bind(requested)
+      .all<CardSnapshot>()
+  ).results;
+  if (cards.length !== changed.length) throw new BatchPriceConflictError();
+  const sourceKey = activityKey("batch-price");
+  const claim = unchangedCardsCondition(cards, {
+    sql: `k.status = 'for_sale' AND k.held = 0 AND ${CARD_IS_UNRESERVED}`,
+    values: [],
+  });
+  const gate = activityExistsCondition(sourceKey);
+  const results = await db.batch([
+    insertActivityEventStatement(
+      db,
+      {
+        sourceKey,
+        kind: "card_updated",
+        sourceType: "batch_price",
+        note: `批次改價 ${cards.length} 張，每張 ${parsed.askingPrice} 元`,
+      },
+      claim,
+    ),
+    db
+      .prepare(`UPDATE cards SET asking_price = ?, updated_at = datetime('now')
+      WHERE id IN (SELECT json_extract(value, '$.cardId') FROM json_each(?)) AND ${gate.sql}`)
+      .bind(parsed.askingPrice, requested, ...gate.values),
+    db
+      .prepare(`INSERT INTO activity_event_lines
+      (event_id, catalog_id, action, qty, delta, before_status, after_status, unit_amount, note)
+      SELECT e.id, json_extract(r.value, '$.catalogId'), 'updated', COUNT(*), 0,
+        'for_sale', 'for_sale', ?, '原售價 ' || COALESCE(json_extract(r.value, '$.currentPrice') || ' 元', '面議') || ' → ' || ? || ' 元'
+      FROM activity_events e CROSS JOIN json_each(?) r WHERE e.source_key = ?
+      GROUP BY e.id, json_extract(r.value, '$.catalogId'), json_extract(r.value, '$.currentPrice')`)
+      .bind(
+        parsed.askingPrice,
+        String(parsed.askingPrice),
+        requested,
+        sourceKey,
+      ),
+  ]);
+  if (results[0].results.length === 0) throw new BatchPriceConflictError();
   return { count: cards.length };
 }
 

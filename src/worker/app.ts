@@ -4,6 +4,10 @@ import {
   parseBatchListingInput,
 } from "../shared/batch-listing";
 import {
+  BatchPriceInputError,
+  parseBatchPriceInput,
+} from "../shared/batch-price";
+import {
   ACQUISITION_KEY_PATTERN,
   MAX_CARD_BATCH_SIZE,
 } from "../shared/card-batch";
@@ -57,11 +61,13 @@ import {
 } from "./db/acquisition-requests";
 import {
   BatchListingConflictError,
+  BatchPriceConflictError,
   CardInputError,
   CatalogMediaConflictError,
   addCards,
   addPack,
   batchListCards,
+  batchUpdatePrice,
   cancelPurchaseReservation,
   cancelReservation,
   cancelSaleReservation,
@@ -1419,6 +1425,24 @@ admin.post("/cards/batch-listing", async (c) => {
     if (error instanceof BatchListingConflictError) {
       return c.json({ error: error.message }, 409);
     }
+    throw error;
+  }
+});
+
+admin.post("/cards/batch-price", async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "改價資料必須是有效的 JSON。" }, 400);
+  }
+  try {
+    return c.json(await batchUpdatePrice(c.env.DB, parseBatchPriceInput(body)));
+  } catch (error) {
+    if (error instanceof BatchPriceInputError)
+      return c.json({ error: error.message }, 400);
+    if (error instanceof BatchPriceConflictError)
+      return c.json({ error: error.message }, 409);
     throw error;
   }
 });

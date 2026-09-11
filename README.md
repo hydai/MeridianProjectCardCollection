@@ -54,6 +54,11 @@ with a live site you edit directly.
   sale or trade with a shared per-card price or exchange condition. Held,
   reserved, and already-listed copies are excluded; inventory conflicts cancel
   the entire batch. Each batch appears as one grouped activity.
+- **Batch sale repricing** — filter listed cards by rarity, series, or character,
+  choose **批次改價**, then preview original and new prices before updating up to
+  100 copies together. Unchanged prices, held cards, and reservations are skipped;
+  concurrent changes cancel the batch. History records the original and new price.
+  Already-listed cards also have a **修改售價** action with their current price filled in.
 - **Catalog image queue** — every catalog slot has an owner-only missing-image
   workflow. Upload, replace, or remove a shared front image without attaching
   it to one physical copy. Uploads are converted to fixed 320px and 960px WebP
