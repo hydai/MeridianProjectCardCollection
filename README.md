@@ -27,6 +27,10 @@ with a live site you edit directly.
   as one PNG. Choose 6, 8, or 10 cards per row; artwork, asking prices, available
   quantities, reservations, and full condition notes stay together. The image
   includes its date and source, and can be opened or saved directly on mobile.
+- **Copy sale list** — copy the selected sale rarities as plain text, grouped
+  EX → UR → SSR → SR → R and then by `VOL.n`. Each line contains character,
+  series, and available quantity; reservations, prices, and notes are omitted.
+  A selectable text fallback is available when clipboard access is blocked.
 - **Shareable exchange announcements** — publish selected outgoing cards and
   explicit Wants as an immutable snapshot at a stable `/exchange/:publicId`
   URL. Live availability changes are marked as stale; closed announcements leave

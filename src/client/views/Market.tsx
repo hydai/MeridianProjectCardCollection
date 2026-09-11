@@ -1,5 +1,6 @@
 import { CatalogCardVisual } from "@/components/CatalogCardVisual";
 import { SaleShareSheet } from "@/components/SaleShareSheet";
+import { SaleTextCopy } from "@/components/SaleTextCopy";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ import {
   groupListings,
   listingTerms,
 } from "@/lib/market-listings";
+import { formatSaleList } from "@/lib/sale-text";
 import { CheckIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { CatalogImageRef, MarketListing } from "../../shared/types";
@@ -180,6 +182,10 @@ function ListingSection({
     [items, filterByRarity, rarities],
   );
   const groups = useMemo(() => groupListings(shownItems), [shownItems]);
+  const saleText = useMemo(
+    () => (filterByRarity ? formatSaleList(shownItems, m) : ""),
+    [shownItems, m, filterByRarity],
+  );
   const typeCount = new Set(
     shownItems.map((item) =>
       JSON.stringify([item.series, item.character, item.rarity]),
@@ -245,6 +251,7 @@ function ListingSection({
           <p className="text-xs text-muted-foreground">
             稀有度可複選；選「全部」重設篩選。
           </p>
+          <SaleTextCopy key={saleText} text={saleText} />
         </div>
       ) : null}
       {groups.length === 0 ? (
