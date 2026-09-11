@@ -224,8 +224,8 @@ describe("ManageCards card groups", () => {
 
     render(<ManageCards />);
     const groups = await screen.findByRole("table", { name: "卡片群組" });
-    expect(within(groups).getByText("暫定換出 1")).toBeInTheDocument();
-    expect(within(groups).queryByText("暫定換出 2")).toBeNull();
+    expect(within(groups).getByText("預約中 1")).toBeInTheDocument();
+    expect(within(groups).queryByText("預約中 2")).toBeNull();
 
     fireEvent.click(
       within(groups).getByRole("button", {

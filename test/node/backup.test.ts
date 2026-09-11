@@ -173,6 +173,22 @@ describe("versioned backup format", () => {
     );
   });
 
+  it("accepts older snapshots and validates sale table counts when present", () => {
+    const legacy = baseManifest();
+    expect(
+      parseBackupManifest(legacy).database.tableCounts.sale_reservations,
+    ).toBeUndefined();
+    const current = baseManifest();
+    current.database.tableCounts.sale_reservations = 3;
+    current.database.tableCounts.sale_reservation_lines = 8;
+    expect(parseBackupManifest(current).database.tableCounts).toMatchObject({
+      sale_reservations: 3,
+      sale_reservation_lines: 8,
+    });
+    current.database.tableCounts.sale_reservations = -1;
+    expect(() => parseBackupManifest(current)).toThrow(/sale_reservations/);
+  });
+
   it("refuses to restore over either source resource", () => {
     const manifest = baseManifest();
     expect(() =>

@@ -42,6 +42,9 @@ const EVENT_LABEL: Record<ActivityKind, string> = {
   hold: "設為保留",
   unhold: "取消保留",
   sale: "售出卡片",
+  sale_reserved: "建立出售預約",
+  sale_reservation_cancelled: "取消出售預約",
+  sale_completed: "完成出售",
   trade: "交換卡片",
   gift: "贈送卡片",
   trade_reserved: "建立交換預約",
@@ -74,6 +77,9 @@ const COLLECTION_KINDS = new Set<ActivityKind>([
 ]);
 const TRADE_KINDS = new Set<ActivityKind>([
   "sale",
+  "sale_reserved",
+  "sale_reservation_cancelled",
+  "sale_completed",
   "trade",
   "gift",
   "trade_reserved",
@@ -129,6 +135,7 @@ function lineAction(line: ActivityLine): string {
   }
   if (line.action === "ordered") return `預訂 ×${line.qty}`;
   if (line.action === "reserved_give") return `預約換出 ×${line.qty}`;
+  if (line.action === "reserved_sale") return `預約出售 ×${line.qty}`;
   if (line.action === "reserved_receive") return `預約換入 ×${line.qty}`;
   if (line.action === "advertised_give") return `公告換出 ×${line.qty}`;
   if (line.action === "advertised_want") return `公告想找 ×${line.qty}`;

@@ -575,7 +575,7 @@ describe("ManageCards", () => {
     );
     render(<ManageCards />);
     const table = await screen.findByRole("table", { name: "卡片群組" });
-    expect(within(table).getByText("暫定換出 1")).toBeInTheDocument();
+    expect(within(table).getByText("預約中 1")).toBeInTheDocument();
     fireEvent.click(
       within(table).getByRole("button", {
         name: "展開 KILLER Iruni SSR，1 張明細",

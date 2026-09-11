@@ -303,11 +303,11 @@ export function Grid({ m }: { m: Matrix }) {
                                 : "group-hover/row:bg-[rgba(201,161,74,0.26)]"
                             } ${startCls}`}
                             aria-label={`${s} ${charName} ${rarity}：持有 ${n} 張${
-                              reserved > 0 ? `，暫定換出 ${reserved} 張` : ""
+                              reserved > 0 ? `，預約中 ${reserved} 張` : ""
                             }`}
                             title={
                               reserved > 0
-                                ? `持有 ${n} 張，其中 ${reserved} 張暫定換出`
+                                ? `持有 ${n} 張，其中 ${reserved} 張預約中`
                                 : undefined
                             }
                           >
@@ -352,7 +352,7 @@ export function Grid({ m }: { m: Matrix }) {
           <span className={`${LEGEND_SWATCH} ${RESERVED_TINT} text-[10px]`}>
             預1
           </span>{" "}
-          暫定換出（仍持有）
+          預約中（仍持有）
         </span>
         <span className={LEGEND_ITEM}>
           <span

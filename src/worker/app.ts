@@ -16,6 +16,11 @@ import {
   canonicalizeRarities,
   supportsEx,
 } from "../shared/rarity";
+import {
+  SaleReservationInputError,
+  parseSaleReservationInput,
+  saleReservationDate,
+} from "../shared/sale-reservation";
 import type {
   AcquisitionEventInput,
   AddCardInput,
@@ -59,13 +64,16 @@ import {
   batchListCards,
   cancelPurchaseReservation,
   cancelReservation,
+  cancelSaleReservation,
   catalogSlotExists,
   closeTradePost,
   completePurchaseReservation,
   completeReservation,
+  completeSaleReservation,
   createOpening,
   createPurchaseReservation,
   createReservation,
+  createSaleReservation,
   createSeries,
   createTradePost,
   createTradePostReservation,
@@ -73,6 +81,7 @@ import {
   deleteTradePost,
   getActivities,
   getAdminPendingPurchases,
+  getAdminPendingSales,
   getAdminPendingTrades,
   getAdminTradePosts,
   getCatalog,
@@ -1664,6 +1673,65 @@ admin.post("/activities/:id/undo", async (c) => {
     return c.json({ error: String(error) }, 409);
   }
   return c.json({ ok: true });
+});
+
+admin.get("/pending-sales", async (c) =>
+  c.json(await getAdminPendingSales(c.env.DB)),
+);
+
+admin.post("/pending-sales", async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json<unknown>();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  try {
+    const input = parseSaleReservationInput(body);
+    return c.json({ id: await createSaleReservation(c.env.DB, input) });
+  } catch (error) {
+    return c.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      error instanceof SaleReservationInputError ? 400 : 409,
+    );
+  }
+});
+
+admin.post("/pending-sales/:id/complete", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isSafeInteger(id) || id < 1)
+    return c.json({ error: "bad id" }, 400);
+  let body: { happenedAt?: unknown } | null;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  try {
+    const happenedAt = saleReservationDate(body?.happenedAt);
+    await completeSaleReservation(c.env.DB, id, happenedAt);
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      error instanceof SaleReservationInputError ? 400 : 409,
+    );
+  }
+});
+
+admin.delete("/pending-sales/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isSafeInteger(id) || id < 1)
+    return c.json({ error: "bad id" }, 400);
+  try {
+    await cancelSaleReservation(c.env.DB, id);
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      409,
+    );
+  }
 });
 
 admin.get("/pending-trades", async (c) =>

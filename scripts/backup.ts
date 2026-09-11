@@ -25,8 +25,9 @@ import {
   type BackupMediaVariant,
   type BackupMode,
   type BackupReportRecord,
-  type BackupTable,
+  type BackupTableCounts,
   type CsvRow,
+  OPTIONAL_BACKUP_TABLES,
   assertNewRestoreTargets,
   backupFilePath,
   describeBackupFile,
@@ -526,16 +527,43 @@ async function tableCounts(
   database: string,
   mode: BackupMode,
   config?: string,
-): Promise<Record<BackupTable, number>> {
+): Promise<BackupTableCounts> {
   const rows = await queryRows(database, mode, TABLE_COUNT_QUERY, config);
   if (rows.length !== 1)
     throw new Error("table count query returned no summary");
-  return Object.fromEntries(
-    BACKUP_TABLES.map((table) => [
-      table,
-      requiredInteger(rows[0][table], `table count ${table}`),
-    ]),
-  ) as Record<BackupTable, number>;
+  const present = await queryRows(
+    database,
+    mode,
+    "SELECT name FROM sqlite_master WHERE type = 'table'",
+    config,
+  );
+  const optional = OPTIONAL_BACKUP_TABLES.filter((table) =>
+    present.some((row) => row.name === table),
+  );
+  const extra = optional.length
+    ? await queryRows(
+        database,
+        mode,
+        `SELECT ${optional.map((table) => `(SELECT COUNT(*) FROM "${table}") AS "${table}"`).join(", ")}`,
+        config,
+      )
+    : [];
+  if (optional.length && extra.length !== 1)
+    throw new Error("sale reservation table count query returned no summary");
+  return {
+    ...Object.fromEntries(
+      BACKUP_TABLES.map((table) => [
+        table,
+        requiredInteger(rows[0][table], `table count ${table}`),
+      ]),
+    ),
+    ...Object.fromEntries(
+      optional.map((table) => [
+        table,
+        requiredInteger(extra[0][table], `table count ${table}`),
+      ]),
+    ),
+  } as BackupTableCounts;
 }
 
 async function mapLimit<T, R>(
@@ -879,10 +907,13 @@ async function restoreBackup(options: CliOptions) {
     mode,
     options.config,
   );
-  for (const table of BACKUP_TABLES) {
-    if (restoredCounts[table] !== manifest.database.tableCounts[table]) {
+  for (const [table, expected] of Object.entries(
+    manifest.database.tableCounts,
+  )) {
+    const actual = restoredCounts[table as keyof BackupTableCounts];
+    if (actual !== expected) {
       throw new Error(
-        `restored table ${table} has ${restoredCounts[table]} rows; expected ${manifest.database.tableCounts[table]}`,
+        `restored table ${table} has ${actual} rows; expected ${expected}`,
       );
     }
   }

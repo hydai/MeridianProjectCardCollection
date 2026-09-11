@@ -37,6 +37,7 @@ interface ListingGroup {
   item: MarketListing;
   quantity: number;
   reserved: number;
+  reservedSale: number;
 }
 
 function groupListings(items: MarketListing[]): ListingGroup[] {
@@ -58,12 +59,16 @@ function groupListings(items: MarketListing[]): ListingGroup[] {
     if (existing) {
       existing.quantity++;
       existing.reserved += Number(item.reserved);
+      existing.reservedSale += Number(
+        item.reserved && item.reservationType === "sale",
+      );
     } else {
       groups.set(key, {
         key,
         item,
         quantity: 1,
         reserved: Number(item.reserved),
+        reservedSale: Number(item.reserved && item.reservationType === "sale"),
       });
     }
   }
@@ -90,9 +95,18 @@ function ListingQuantity({ group }: { group: ListingGroup }) {
       {group.reserved > 0 ? (
         <p className="text-xs text-reservation">
           {available === 0
-            ? "暫定交換中"
+            ? group.reservedSale > 0
+              ? "全數預約中"
+              : "暫定交換中"
             : `${group.item.status === "for_sale" ? "可售" : "可換"} ${available} 張`}
-          <span className="block">預約 {group.reserved} 張</span>
+          {group.reservedSale > 0 ? (
+            <span className="block">預約出售 {group.reservedSale} 張</span>
+          ) : null}
+          {group.reserved > group.reservedSale ? (
+            <span className="block">
+              預約 {group.reserved - group.reservedSale} 張
+            </span>
+          ) : null}
         </p>
       ) : null}
     </div>

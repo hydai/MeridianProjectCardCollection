@@ -15,6 +15,9 @@ export type ActivityKind =
   | "hold"
   | "unhold"
   | "sale"
+  | "sale_reserved"
+  | "sale_reservation_cancelled"
+  | "sale_completed"
   | "trade"
   | "gift"
   | "trade_reserved"
@@ -40,6 +43,7 @@ export type ActivityLineAction =
   | "held"
   | "released"
   | "reserved_give"
+  | "reserved_sale"
   | "reserved_receive"
   | "advertised_give"
   | "advertised_want"
@@ -143,6 +147,7 @@ export interface MarketListing {
   rarity: Rarity;
   status: "for_sale" | "for_trade";
   reserved: boolean;
+  reservationType?: "sale" | "trade" | null;
   askingPrice: number | null;
   wantInReturn: string | null;
   note: string | null;
@@ -394,9 +399,39 @@ export interface CardRow {
   note: string | null;
   duplicate: boolean;
   reserved: boolean;
+  reservationType?: "sale" | "trade" | null;
   reservedGive: number;
   // Owner has locked this exact physical card out of the tradeable list (保留).
   held: boolean;
+}
+
+// ---- Pending sale reservations (private; public views only expose counts) ----
+export interface SaleReservationCardInput {
+  cardId: number;
+  catalogId: number;
+  unitPrice: number;
+}
+
+export interface CreateSaleReservationInput {
+  counterparty?: string;
+  reservedAt: string;
+  note?: string;
+  cards: SaleReservationCardInput[];
+}
+
+export interface SaleReservationLine extends SaleReservationCardInput {
+  series: string;
+  character: string;
+  rarity: Rarity;
+}
+
+export interface AdminPendingSale {
+  id: number;
+  counterparty: string | null;
+  reservedAt: string;
+  note: string | null;
+  amount: number;
+  cards: SaleReservationLine[];
 }
 
 // ---- Pending trade reservations ----

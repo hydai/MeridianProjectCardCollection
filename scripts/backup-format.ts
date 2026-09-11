@@ -33,6 +33,13 @@ export const BACKUP_TABLES = [
 ] as const;
 
 export type BackupTable = (typeof BACKUP_TABLES)[number];
+// Optional for backups made before the sale-reservation migration was applied.
+export const OPTIONAL_BACKUP_TABLES = [
+  "sale_reservations",
+  "sale_reservation_lines",
+] as const;
+export type BackupTableCounts = Record<BackupTable, number> &
+  Partial<Record<(typeof OPTIONAL_BACKUP_TABLES)[number], number>>;
 export type BackupMode = "local" | "remote";
 export type BackupMediaVariant = "thumb" | "card" | "legacy";
 
@@ -74,7 +81,7 @@ export interface BackupManifestV1 {
   database: {
     schema: BackupFileRecord;
     data: BackupFileRecord;
-    tableCounts: Record<BackupTable, number>;
+    tableCounts: BackupTableCounts;
   };
   reports: BackupReportRecord[];
   media: BackupMediaRecord[];
@@ -147,14 +154,17 @@ function fileRecord(value: unknown, label: string): BackupFileRecord {
   };
 }
 
-function tableCounts(value: unknown): Record<BackupTable, number> {
+function tableCounts(value: unknown): BackupTableCounts {
   const input = record(value, "manifest.database.tableCounts");
   return Object.fromEntries(
-    BACKUP_TABLES.map((table) => [
+    [
+      ...BACKUP_TABLES,
+      ...OPTIONAL_BACKUP_TABLES.filter((table) => input[table] !== undefined),
+    ].map((table) => [
       table,
       integer(input[table], `manifest.database.tableCounts.${table}`),
     ]),
-  ) as Record<BackupTable, number>;
+  ) as BackupTableCounts;
 }
 
 export function parseBackupManifest(value: unknown): BackupManifestV1 {

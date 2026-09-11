@@ -150,7 +150,7 @@ export function NumCell({
     return (
       <TableCell
         className="bg-[var(--reservation-soft)] text-center font-mono text-reservation"
-        title={`持有 ${n} 張，其中 ${reserved} 張暫定換出`}
+        title={`持有 ${n} 張，其中 ${reserved} 張預約中`}
       >
         <span className="inline-flex items-baseline gap-1">
           {n}
@@ -201,7 +201,7 @@ export function MissChip({
         isPendingPurchase
           ? `預定購入 ${pendingPurchase} 張（待收件）`
           : isReserved
-            ? `暫定換出 ${reserved} 張`
+            ? `預約中 ${reserved} 張`
             : undefined
       }
     >

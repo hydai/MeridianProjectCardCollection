@@ -3,6 +3,7 @@ import type {
   ActivityEvent,
   AddCardInput,
   AdminPendingPurchase,
+  AdminPendingSale,
   AdminPendingTrade,
   AdminTradePost,
   BatchListingInput,
@@ -12,6 +13,7 @@ import type {
   CatalogSeries,
   CreatePurchaseReservationInput,
   CreateReservationInput,
+  CreateSaleReservationInput,
   CreateSeriesInput,
   CreateTradePostReservationInput,
   MarketListing,
@@ -231,6 +233,18 @@ export const postTradePostReservation = (
     `/api/admin/trade-posts/${id}/reservations`,
     input,
   );
+
+// ---- Pending sales ----
+export const fetchAdminPendingSales = () =>
+  get<AdminPendingSale[]>("/api/admin/pending-sales");
+export const postSaleReservation = (input: CreateSaleReservationInput) =>
+  send<{ id: number }>("POST", "/api/admin/pending-sales", input);
+export const completeSaleReservation = (id: number, happenedAt: string) =>
+  send<{ ok: true }>("POST", `/api/admin/pending-sales/${id}/complete`, {
+    happenedAt,
+  });
+export const cancelSaleReservation = (id: number) =>
+  send<{ ok: true }>("DELETE", `/api/admin/pending-sales/${id}`, {});
 
 // ---- Pending trades ----
 export const fetchPendingTrades = () =>

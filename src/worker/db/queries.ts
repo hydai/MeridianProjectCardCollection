@@ -1,5 +1,9 @@
 import { parseBatchListingInput } from "../../shared/batch-listing";
 import { RARITY_ORDER, canonicalizeRarities } from "../../shared/rarity";
+import {
+  parseSaleReservationInput,
+  saleReservationDate,
+} from "../../shared/sale-reservation";
 import type {
   AcquisitionEventInput,
   ActivityEvent,
@@ -8,6 +12,7 @@ import type {
   ActivityLineAction,
   AddCardInput,
   AdminPendingPurchase,
+  AdminPendingSale,
   AdminPendingTrade,
   AdminPurchaseReservationLine,
   AdminTradePost,
@@ -21,6 +26,7 @@ import type {
   CharacterStat,
   CreatePurchaseReservationInput,
   CreateReservationInput,
+  CreateSaleReservationInput,
   CreateSeriesInput,
   CreateTradePostReservationInput,
   MarketListing,
@@ -38,6 +44,7 @@ import type {
   ReclassifyCardInput,
   RecordTxnInput,
   ReservationLine,
+  SaleReservationLine,
   SaveTradePostInput,
   SeriesProgress,
   StatsResponse,
@@ -60,6 +67,7 @@ import {
 } from "./acquisition-requests";
 import {
   ACQUISITION_IS_UNDOABLE,
+  CARD_IS_NOT_SALE_RESERVED,
   CARD_IS_UNRESERVED,
   CARD_IS_UNTOUCHED,
   type CardSnapshot,
@@ -611,9 +619,11 @@ export async function getOverview(db: D1Database): Promise<OverviewResponse> {
          LEFT JOIN catalog_media m
            ON m.catalog_id = c.id AND m.side = 'front'
          LEFT JOIN (
-           SELECT catalog_id, SUM(qty) AS reserved
-           FROM trade_reservation_lines
-           WHERE direction = 'give'
+           SELECT catalog_id, SUM(qty) AS reserved FROM (
+             SELECT catalog_id, qty FROM trade_reservation_lines WHERE direction = 'give'
+             UNION ALL
+             SELECT catalog_id, 1 AS qty FROM pending_sale_cards
+           )
            GROUP BY catalog_id
          ) g ON g.catalog_id = c.id
          LEFT JOIN (
@@ -761,7 +771,8 @@ export async function getMarket(db: D1Database): Promise<MarketListing[]> {
                 EXISTS(
                   SELECT 1 FROM trade_reservation_lines l
                   WHERE l.direction = 'give' AND l.card_id = k.id
-                ) AS reserved
+                ) AS reserved,
+                (SELECT 'sale' FROM pending_sale_cards sale WHERE sale.card_id = k.id) AS reservationType
          FROM cards k
          JOIN card_catalog c ON c.id = k.catalog_id
          WHERE k.status IN ('for_sale','for_trade')
@@ -772,7 +783,15 @@ export async function getMarket(db: D1Database): Promise<MarketListing[]> {
   const legacyReserved = await legacyReservedCardIds(db);
   return rows.map((listing) => ({
     ...listing,
-    reserved: Boolean(listing.reserved) || legacyReserved.has(listing.cardId),
+    reserved:
+      Boolean(listing.reserved) ||
+      legacyReserved.has(listing.cardId) ||
+      listing.reservationType === "sale",
+    reservationType:
+      listing.reservationType ??
+      (Boolean(listing.reserved) || legacyReserved.has(listing.cardId)
+        ? "trade"
+        : null),
   }));
 }
 
@@ -824,6 +843,7 @@ async function tradePostAvailability(
          FROM cards k
          WHERE k.status = 'for_trade'
            AND k.held = 0
+           AND ${CARD_IS_NOT_SALE_RESERVED}
            AND NOT EXISTS (
              SELECT 1 FROM trade_reservation_lines l
              WHERE l.direction = 'give' AND l.card_id = k.id
@@ -1731,10 +1751,8 @@ async function assertCardNotReserved(
 ): Promise<void> {
   const reserved = await db
     .prepare(
-      `SELECT 1 AS reserved
-       FROM trade_reservation_lines
-       WHERE direction = 'give' AND card_id = ?
-       LIMIT 1`,
+      `SELECT 1 AS reserved FROM cards k
+       WHERE k.id = ? AND NOT (${CARD_IS_UNRESERVED})`,
     )
     .bind(cardId)
     .first<{ reserved: number }>();
@@ -1742,7 +1760,7 @@ async function assertCardNotReserved(
     ? false
     : (await legacyReservedCardIds(db)).has(cardId);
   if (reserved || legacyReserved)
-    throw new Error(`card ${cardId} is reserved for a pending trade`);
+    throw new Error(`card ${cardId} is reserved for a pending sale or trade`);
 }
 
 export async function setCardHeld(
@@ -2483,8 +2501,10 @@ export async function listCards(
        SELECT catalog_id, COUNT(*) AS count
        FROM cards WHERE status IN ${ACTIVE} GROUP BY catalog_id
      ), reserved_counts AS (
-       SELECT catalog_id, SUM(qty) AS count
-       FROM trade_reservation_lines WHERE direction = 'give' GROUP BY catalog_id
+       SELECT catalog_id, SUM(qty) AS count FROM (
+         SELECT catalog_id, qty FROM trade_reservation_lines WHERE direction = 'give'
+         UNION ALL SELECT catalog_id, 1 AS qty FROM pending_sale_cards
+       ) GROUP BY catalog_id
      )
      SELECT k.id, c.series, c.character, c.rarity, k.status, k.source,
             k.purchase_price AS purchasePrice,
@@ -2508,7 +2528,8 @@ export async function listCards(
             EXISTS(
               SELECT 1 FROM trade_reservation_lines l
               WHERE l.card_id = k.id AND l.direction = 'give'
-            ) AS reserved
+            ) AS reserved,
+            (SELECT 'sale' FROM pending_sale_cards sale WHERE sale.card_id = k.id) AS reservationType
      FROM cards k
      JOIN card_catalog c ON c.id = k.catalog_id
      LEFT JOIN active_counts ON active_counts.catalog_id = k.catalog_id
@@ -2531,10 +2552,252 @@ export async function listCards(
   const legacyReserved = await legacyReservedCardIds(db);
   return rows.map(({ activeCount, reserved, held, ...r }) => ({
     ...r,
-    reserved: Boolean(reserved) || legacyReserved.has(r.id),
+    reserved:
+      Boolean(reserved) ||
+      legacyReserved.has(r.id) ||
+      r.reservationType === "sale",
+    reservationType:
+      r.reservationType ??
+      (Boolean(reserved) || legacyReserved.has(r.id) ? "trade" : null),
     held: Boolean(held),
     duplicate: activeCount - r.reservedGive > 1,
   }));
+}
+
+// ---- Pending sale reservations ----
+
+export async function getAdminPendingSales(
+  db: D1Database,
+): Promise<AdminPendingSale[]> {
+  // A single query gives the header and its physical copies one consistent snapshot.
+  const rows = (
+    await db
+      .prepare(`
+    SELECT r.id, r.counterparty, r.reserved_at AS reservedAt, r.note,
+           l.card_id AS cardId, l.catalog_id AS catalogId, l.unit_price AS unitPrice,
+           c.series, c.character, c.rarity
+    FROM sale_reservations r
+    JOIN sale_reservation_lines l ON l.reservation_id = r.id
+    JOIN card_catalog c ON c.id = l.catalog_id
+    WHERE r.status = 'pending'
+    ORDER BY r.reserved_at DESC, r.id DESC, c.sort_order, l.card_id
+  `)
+      .all<Omit<AdminPendingSale, "cards" | "amount"> & SaleReservationLine>()
+  ).results;
+  const byId = new Map<number, AdminPendingSale>();
+  for (const { id, counterparty, reservedAt, note, ...card } of rows) {
+    let reservation = byId.get(id);
+    if (!reservation) {
+      reservation = {
+        id,
+        counterparty,
+        reservedAt,
+        note,
+        amount: 0,
+        cards: [],
+      };
+      byId.set(id, reservation);
+    }
+    reservation.cards.push(card);
+    reservation.amount =
+      Math.round((reservation.amount + card.unitPrice) * 100) / 100;
+  }
+  return [...byId.values()];
+}
+
+export async function createSaleReservation(
+  db: D1Database,
+  raw: CreateSaleReservationInput,
+): Promise<number> {
+  const input = parseSaleReservationInput(raw);
+  const cards = (
+    await db
+      .prepare(`
+    SELECT k.id, k.catalog_id AS catalogId, k.status, k.held, k.mutation_version AS version
+    FROM json_each(?) requested JOIN cards k
+      ON k.id = json_extract(requested.value, '$.cardId')
+      AND k.catalog_id = json_extract(requested.value, '$.catalogId')
+    WHERE k.status = 'for_sale' AND k.held = 0 AND ${CARD_IS_UNRESERVED}
+  `)
+      .bind(JSON.stringify(input.cards))
+      .all<CardSnapshot>()
+  ).results;
+  if (cards.length !== input.cards.length) {
+    throw new Error(
+      "選取的卡片已預約、已下架或資料已變更，請重新整理後再選擇。",
+    );
+  }
+  const claim = unchangedCardsCondition(cards, {
+    sql: `k.status = 'for_sale' AND k.held = 0 AND ${CARD_IS_UNRESERVED}`,
+    values: [],
+  });
+  const sourceKey = activityKey("sale-reserved");
+  const amount =
+    input.cards.reduce(
+      (total, card) => total + Math.round(card.unitPrice * 100),
+      0,
+    ) / 100;
+  const results = await db.batch([
+    insertActivityEventStatement(
+      db,
+      {
+        sourceKey,
+        kind: "sale_reserved",
+        occurredAt: input.reservedAt,
+        sourceType: "sale_reservation",
+        counterparty: input.counterparty ?? null,
+        note: input.note ?? null,
+        amount,
+      },
+      claim,
+    ),
+    db
+      .prepare(`INSERT INTO sale_reservations (counterparty, reserved_at, note)
+      SELECT counterparty, occurred_at, note FROM activity_events WHERE source_key = ? RETURNING id`)
+      .bind(sourceKey),
+    db
+      .prepare(`UPDATE activity_events
+      SET source_id = (SELECT id FROM sale_reservations ORDER BY id DESC LIMIT 1)
+      WHERE source_key = ?`)
+      .bind(sourceKey),
+    db
+      .prepare(`INSERT INTO sale_reservation_lines (reservation_id, card_id, catalog_id, unit_price)
+      SELECT e.source_id, json_extract(j.value, '$.cardId'), json_extract(j.value, '$.catalogId'), json_extract(j.value, '$.unitPrice')
+      FROM activity_events e, json_each(?) j WHERE e.source_key = ?`)
+      .bind(JSON.stringify(input.cards), sourceKey),
+    db
+      .prepare(`INSERT INTO activity_event_lines (event_id, catalog_id, action, qty, delta, unit_amount)
+      SELECT e.id, l.catalog_id, 'reserved_sale', COUNT(*), 0, l.unit_price
+      FROM activity_events e JOIN sale_reservation_lines l ON l.reservation_id = e.source_id
+      WHERE e.source_key = ? GROUP BY l.catalog_id, l.unit_price`)
+      .bind(sourceKey),
+  ]);
+  return insertedId(results[1], "卡片的預約狀態已變更，請重新整理後再試。");
+}
+
+async function finishSaleReservation(
+  db: D1Database,
+  id: number,
+  completed: boolean,
+  happenedAt?: string,
+): Promise<void> {
+  const date = completed ? saleReservationDate(happenedAt) : undefined;
+  const header = await db
+    .prepare(`SELECT counterparty, note, reserved_at AS reservedAt
+    FROM sale_reservations WHERE id = ? AND status = 'pending'`)
+    .bind(id)
+    .first<{
+      counterparty: string | null;
+      note: string | null;
+      reservedAt: string;
+    }>();
+  if (!header)
+    throw new Error("找不到進行中的出售預約，可能已完成或取消，請重新整理。");
+  if (date && date < header.reservedAt)
+    throw new Error("成交日期不能早於預約日期。");
+  const cards = (
+    await db
+      .prepare(`SELECT k.id, k.catalog_id AS catalogId, k.status, k.held,
+      k.mutation_version AS version, l.unit_price AS unitPrice
+    FROM sale_reservation_lines l JOIN cards k ON k.id = l.card_id
+    WHERE l.reservation_id = ?`)
+      .bind(id)
+      .all<CardSnapshot & { unitPrice: number }>()
+  ).results;
+  if (cards.length === 0) throw new Error("出售預約沒有卡片。");
+  const pending: SqlCondition = {
+    sql: "EXISTS (SELECT 1 FROM sale_reservations WHERE id = ? AND status = 'pending')",
+    values: [id],
+  };
+  const claim = unchangedCardsCondition(cards, {
+    sql: `k.status = 'for_sale' AND k.held = 0 AND EXISTS (
+      SELECT 1 FROM pending_sale_cards sale WHERE sale.card_id = k.id AND sale.reservation_id = ?
+    )`,
+    values: [id],
+  });
+  const sourceKey = `sale-terminal:${id}`;
+  const gate = activityExistsCondition(sourceKey, pending);
+  const statements: D1PreparedStatement[] = [
+    insertActivityEventStatement(
+      db,
+      {
+        sourceKey,
+        kind: completed ? "sale_completed" : "sale_reservation_cancelled",
+        occurredAt: date,
+        sourceType: "sale_reservation",
+        sourceId: id,
+        counterparty: header.counterparty,
+        note: header.note,
+        amount:
+          cards.reduce(
+            (total, card) => total + Math.round(card.unitPrice * 100),
+            0,
+          ) / 100,
+      },
+      {
+        sql: `${pending.sql} AND (${claim.sql})`,
+        values: [...pending.values, ...claim.values],
+      },
+    ),
+    db
+      .prepare(`INSERT INTO activity_event_lines (event_id, catalog_id, action, qty, delta, before_status, after_status, unit_amount)
+      SELECT e.id, l.catalog_id, ?, COUNT(*), ? * COUNT(*), 'for_sale', ?, l.unit_price
+      FROM activity_events e JOIN sale_reservation_lines l ON l.reservation_id = e.source_id
+      WHERE e.source_key = ? AND ${pending.sql} GROUP BY l.catalog_id, l.unit_price`)
+      .bind(
+        completed ? "given" : "cancelled",
+        completed ? -1 : 0,
+        completed ? "sold" : "for_sale",
+        sourceKey,
+        ...pending.values,
+      ),
+  ];
+  // Delta records physical inventory change, including several identical copies.
+  if (completed) {
+    statements.push(
+      db
+        .prepare(`INSERT INTO transactions (card_id, type, counterparty, price, happened_at, note)
+        SELECT l.card_id, 'sale', r.counterparty, l.unit_price, ?, r.note
+        FROM sale_reservation_lines l JOIN sale_reservations r ON r.id = l.reservation_id
+        WHERE r.id = ? AND ${gate.sql}`)
+        .bind(date, id, ...gate.values),
+      db
+        .prepare(`UPDATE cards SET status = 'sold', updated_at = datetime('now')
+        WHERE id IN (SELECT card_id FROM sale_reservation_lines WHERE reservation_id = ?) AND ${gate.sql}`)
+        .bind(id, ...gate.values),
+    );
+  }
+  statements.push(
+    db
+      .prepare(`UPDATE sale_reservations SET status = ?,
+    completed_at = ?, cancelled_at = CASE WHEN ? = 'cancelled' THEN datetime('now') ELSE NULL END
+    WHERE id = ? AND ${gate.sql}`)
+      .bind(
+        completed ? "completed" : "cancelled",
+        date ?? null,
+        completed ? "completed" : "cancelled",
+        id,
+        ...gate.values,
+      ),
+  );
+  const results = await db.batch(statements);
+  if (results[0].results.length === 0)
+    throw new Error("出售預約已變更，請重新整理後再試。");
+}
+
+export async function completeSaleReservation(
+  db: D1Database,
+  id: number,
+  happenedAt: string,
+): Promise<void> {
+  await finishSaleReservation(db, id, true, happenedAt);
+}
+
+export async function cancelSaleReservation(
+  db: D1Database,
+  id: number,
+): Promise<void> {
+  await finishSaleReservation(db, id, false);
 }
 
 // ---- Pending trade reservations ----
@@ -2728,6 +2991,7 @@ async function createResolvedReservation(
            WHERE k.catalog_id = ?
              AND ${statusFilter}
              AND k.held = 0
+             AND ${CARD_IS_NOT_SALE_RESERVED}
              AND NOT EXISTS (
                SELECT 1 FROM trade_reservation_lines l
                WHERE l.direction = 'give' AND l.card_id = k.id
@@ -3121,6 +3385,7 @@ export async function completeReservation(
          FROM cards
          WHERE catalog_id = ? AND status IN ('owned','for_sale','for_trade')
            AND held = 0 ${exclude}
+           AND NOT EXISTS (SELECT 1 FROM pending_sale_cards sale WHERE sale.card_id = cards.id)
            AND NOT EXISTS (
              SELECT 1 FROM trade_reservation_lines l
              WHERE l.direction = 'give' AND l.card_id = cards.id
@@ -3156,7 +3421,7 @@ export async function completeReservation(
     values: [id],
   };
   const cardClaim = unchangedCardsCondition(giveCards, {
-    sql: `k.status IN ${ACTIVE} AND k.held = 0
+    sql: `k.status IN ${ACTIVE} AND k.held = 0 AND ${CARD_IS_NOT_SALE_RESERVED}
       AND NOT EXISTS (
         SELECT 1 FROM trade_reservation_lines reserved
         WHERE reserved.direction = 'give' AND reserved.card_id = k.id

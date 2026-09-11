@@ -477,7 +477,7 @@ describe("Glance collection progress guide", () => {
     fireEvent.click(rei);
 
     expect(
-      screen.getByLabelText("NEW YEAR Rei SR：持有 2 張，其中 1 張暫定換出"),
+      screen.getByLabelText("NEW YEAR Rei SR：持有 2 張，其中 1 張預約中"),
     ).toBeInTheDocument();
     expect(screen.getByText("預 1")).toBeInTheDocument();
     expect(rei).toHaveTextContent("2 / 2");
@@ -538,16 +538,16 @@ describe("Grid pending exchange state", () => {
     const reservedMatrix = buildMatrix(reservedOverview);
     const { container, unmount } = render(<Grid m={reservedMatrix} />);
     const cell = screen.getByLabelText(
-      "NEW YEAR Mizuki R：持有 3 張，暫定換出 1 張",
+      "NEW YEAR Mizuki R：持有 3 張，預約中 1 張",
     );
     expect(cell).toHaveClass("text-reservation");
     expect(cell).toHaveTextContent("預1");
-    expect(screen.getByText("暫定換出（仍持有）")).toBeInTheDocument();
+    expect(screen.getByText("預約中（仍持有）")).toBeInTheDocument();
     expect(container.querySelector(".grid-progress")).toHaveTextContent(/\d+/);
 
     unmount();
     render(<ByCharacter m={reservedMatrix} />);
-    expect(screen.getByTitle("持有 3 張，其中 1 張暫定換出")).toHaveTextContent(
+    expect(screen.getByTitle("持有 3 張，其中 1 張預約中")).toHaveTextContent(
       "3預1",
     );
   });

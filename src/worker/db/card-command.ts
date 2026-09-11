@@ -13,6 +13,9 @@ export interface CardSnapshot {
   version: number;
 }
 
+export const CARD_IS_NOT_SALE_RESERVED = `
+  NOT EXISTS (SELECT 1 FROM pending_sale_cards sale WHERE sale.card_id = k.id)`;
+
 export const LEGACY_RESERVED_CARD_IDS = `
   WITH legacy AS (
     SELECT catalog_id, SUM(qty) AS qty
@@ -35,6 +38,7 @@ export const LEGACY_RESERVED_CARD_IDS = `
     JOIN legacy ON legacy.catalog_id = k.catalog_id
     WHERE k.status IN ('owned','for_sale','for_trade')
       AND k.held = 0
+      AND ${CARD_IS_NOT_SALE_RESERVED}
       AND NOT EXISTS (
         SELECT 1 FROM trade_reservation_lines explicit
         WHERE explicit.direction = 'give' AND explicit.card_id = k.id
@@ -46,6 +50,7 @@ export const LEGACY_RESERVED_CARD_IDS = `
   WHERE ranked.position <= legacy.qty`;
 
 export const CARD_IS_UNRESERVED = `
+  ${CARD_IS_NOT_SALE_RESERVED} AND
   NOT EXISTS (
     SELECT 1 FROM trade_reservation_lines reserved
     WHERE reserved.direction = 'give' AND reserved.card_id = k.id
@@ -59,6 +64,9 @@ export const CARD_IS_UNTOUCHED = `
   AND k.updated_at = k.created_at
   AND NOT EXISTS (
     SELECT 1 FROM trade_reservation_lines l WHERE l.card_id = k.id
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM sale_reservation_lines l WHERE l.card_id = k.id
   )
   AND NOT EXISTS (
     SELECT 1 FROM trade_reservation_lines legacy

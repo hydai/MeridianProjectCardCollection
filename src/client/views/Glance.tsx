@@ -240,7 +240,7 @@ function CardDetailContent({ card }: { card: CardDetail }) {
 
         {card.reserved > 0 ? (
           <p className="rounded-lg border border-border bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
-            其中 {card.reserved} 張正在暫定交換中。
+            其中 {card.reserved} 張預約中。
           </p>
         ) : null}
       </div>
@@ -252,7 +252,7 @@ function Slot({ card }: { card: CardDetail }) {
   const collected = card.owned > 0;
   const label = collected
     ? `${card.series} ${card.character} ${card.rarity}：持有 ${card.owned} 張${
-        card.reserved > 0 ? `，其中 ${card.reserved} 張暫定換出` : ""
+        card.reserved > 0 ? `，其中 ${card.reserved} 張預約中` : ""
       }`
     : `${card.series} ${card.character} ${card.rarity}：尚未收集`;
 

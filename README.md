@@ -61,6 +61,12 @@ with a live site you edit directly.
   reservation-aware duplicate flags. A published exchange announcement can
   prefill an adjustable private reservation without closing the announcement;
   the pending row and its lifecycle activity keep a link to the source post.
+- **Pending sales** — reserve up to 100 listed physical cards for one buyer
+  with agreed per-card prices. Reserved copies stay in holdings but cannot be
+  sold or traded again; completing the reservation records sales and removes
+  them from holdings, while cancellation restores the original listings.
+  Public cards show available and reserved-sale quantities without buyer details.
+  See [sale reservation workflow](docs/SALE_RESERVATIONS.md).
 - **Pending purchases** — record ordered cards without counting them as owned;
   confirm receipt to add them to inventory, or cancel if the seller never ships.
 - **Exchange announcement drafts** — compose, edit, and delete private drafts,

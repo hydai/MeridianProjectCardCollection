@@ -57,6 +57,7 @@ import {
   holdCard,
   listCards,
   patchCard,
+  postSaleReservation,
   postTransaction,
   putCatalogWant,
   reclassifyCard,
@@ -89,10 +90,16 @@ type ActionKind =
   | "list_sale"
   | "list_trade"
   | "sale"
+  | "reserve_sale"
   | "trade"
   | "gift"
   | "reclassify";
-type StatusFilter = "catalog" | "wanted" | "active" | CardStatus;
+type StatusFilter =
+  | "catalog"
+  | "wanted"
+  | "active"
+  | "sale_reserved"
+  | CardStatus;
 
 type FilterValue = string | number;
 
@@ -135,6 +142,7 @@ const STATUS_FILTER_OPTIONS: FilterOption<StatusFilter>[] = [
   { value: "active", label: "持有中（可管理）" },
   { value: "owned", label: "純持有" },
   { value: "for_sale", label: "待售" },
+  { value: "sale_reserved", label: "預約出售" },
   { value: "for_trade", label: "待換" },
   { value: "sold", label: "已售出" },
   { value: "traded", label: "已交換" },
@@ -248,6 +256,9 @@ const ACTIVITY_LABEL: Record<ActivityEvent["kind"], string> = {
   hold: "設為保留",
   unhold: "取消保留",
   sale: "售出卡片",
+  sale_reserved: "建立出售預約",
+  sale_reservation_cancelled: "取消出售預約",
+  sale_completed: "完成出售",
   trade: "交換卡片",
   gift: "贈送卡片",
   trade_reserved: "建立交換預約",
@@ -334,7 +345,11 @@ function ActionForm({
   onCancel: () => void;
 }) {
   const fieldId = useId();
-  const [price, setPrice] = useState("");
+  const [price, setPrice] = useState(
+    kind === "reserve_sale" && card.askingPrice != null
+      ? String(card.askingPrice)
+      : "",
+  );
   const [want, setWant] = useState("");
   const [counterparty, setCounterparty] = useState("");
   const [happenedAt, setHappenedAt] = useState(todayLocal);
@@ -361,6 +376,7 @@ function ActionForm({
     list_sale: "設為待售",
     list_trade: "設為待換",
     sale: "記錄售出",
+    reserve_sale: "建立出售預約",
     trade: "記錄交換",
     gift: "記錄贈送",
     reclassify: "更正卡位",
@@ -384,6 +400,7 @@ function ActionForm({
       }
       if (
         (kind === "sale" ||
+          kind === "reserve_sale" ||
           kind === "trade" ||
           kind === "gift" ||
           kind === "reclassify") &&
@@ -400,6 +417,21 @@ function ActionForm({
         await patchCard(card.id, {
           status: "for_trade",
           wantInReturn: want.trim() || null,
+        });
+      } else if (kind === "reserve_sale") {
+        if (!currentCatalogId || numericPrice === undefined)
+          throw new Error("請填寫約定成交單價。");
+        await postSaleReservation({
+          counterparty: counterparty.trim() || undefined,
+          reservedAt: happenedAt,
+          note: note.trim() || undefined,
+          cards: [
+            {
+              cardId: card.id,
+              catalogId: currentCatalogId,
+              unitPrice: numericPrice,
+            },
+          ],
         });
       } else if (kind === "sale") {
         await postTransaction({
@@ -458,7 +490,7 @@ function ActionForm({
         {actionLabel[kind]}
       </p>
       <FieldGroup className="gap-3 sm:grid sm:grid-cols-2">
-        {kind === "list_sale" || kind === "sale" ? (
+        {kind === "list_sale" || kind === "sale" || kind === "reserve_sale" ? (
           <Field>
             <FieldLabel htmlFor={`${fieldId}-price`}>價格 (TWD)</FieldLabel>
             <Input
@@ -470,7 +502,8 @@ function ActionForm({
               value={price}
               disabled={busy}
               onChange={(e) => setPrice(e.target.value)}
-              placeholder="選填"
+              required={kind === "reserve_sale"}
+              placeholder={kind === "reserve_sale" ? "約定成交單價" : "選填"}
             />
           </Field>
         ) : null}
@@ -486,7 +519,10 @@ function ActionForm({
             />
           </Field>
         ) : null}
-        {kind === "sale" || kind === "trade" || kind === "gift" ? (
+        {kind === "sale" ||
+        kind === "reserve_sale" ||
+        kind === "trade" ||
+        kind === "gift" ? (
           <Field>
             <FieldLabel htmlFor={`${fieldId}-counterparty`}>
               {kind === "gift" ? "贈與對象" : "對象"}
@@ -502,6 +538,7 @@ function ActionForm({
           </Field>
         ) : null}
         {kind === "sale" ||
+        kind === "reserve_sale" ||
         kind === "trade" ||
         kind === "gift" ||
         kind === "reclassify" ? (
@@ -559,6 +596,7 @@ function ActionForm({
           </Field>
         ) : null}
         {kind === "sale" ||
+        kind === "reserve_sale" ||
         kind === "trade" ||
         kind === "gift" ||
         kind === "reclassify" ? (
@@ -948,7 +986,7 @@ function CardWorkspaceSheet({
                   {[
                     ["持有", cell.owned],
                     ["可運用", cell.available],
-                    ["暫定換出", cell.reserved],
+                    ["預約中", cell.reserved],
                     ["保留", cell.held],
                   ].map(([label, value]) => (
                     <Card
@@ -1155,7 +1193,11 @@ function CardWorkspaceSheet({
                                 <Badge variant="secondary">重複</Badge>
                               ) : null}
                               {card.reserved && isActive ? (
-                                <Badge variant="secondary">暫定換出</Badge>
+                                <Badge variant="secondary">
+                                  {card.reservationType === "sale"
+                                    ? "預約出售"
+                                    : "暫定換出"}
+                                </Badge>
                               ) : null}
                               {card.held && isActive ? (
                                 <Badge variant="secondary">保留</Badge>
@@ -1188,6 +1230,21 @@ function CardWorkspaceSheet({
                               </div>
                             ) : isActive && !card.reserved ? (
                               <div className={ROW_ACTIONS}>
+                                {card.status === "for_sale" ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={cardBusy}
+                                    onClick={() =>
+                                      setAction({
+                                        cardId: card.id,
+                                        kind: "reserve_sale",
+                                      })
+                                    }
+                                  >
+                                    預約出售
+                                  </Button>
+                                ) : null}
                                 {(
                                   [
                                     ["list_sale", "待售"],
@@ -1256,7 +1313,9 @@ function CardWorkspaceSheet({
                               </div>
                             ) : card.reserved && isActive ? (
                               <p className="text-xs text-reservation">
-                                已由交換預約鎖定
+                                {card.reservationType === "sale"
+                                  ? "已由出售預約鎖定"
+                                  : "已由交換預約鎖定"}
                               </p>
                             ) : null}
                             {actionOpen &&
@@ -1495,9 +1554,11 @@ export function ManageCards() {
       filterStatus === null ||
       filterStatus === "catalog" ||
       filterStatus === "wanted" ||
-      (filterStatus === "active"
-        ? ACTIVE_STATUSES.has(card.status)
-        : card.status === filterStatus);
+      (filterStatus === "sale_reserved"
+        ? card.reservationType === "sale"
+        : filterStatus === "active"
+          ? ACTIVE_STATUSES.has(card.status)
+          : card.status === filterStatus);
     return (
       matchesStatus &&
       (filterVolume === null ||
@@ -1696,7 +1757,7 @@ export function ManageCards() {
                           )}
                           {group.reservedCount > 0 ? (
                             <span className={cn(PILL_BASE, PILL_RESERVED)}>
-                              暫定換出 {group.reservedCount}
+                              預約中 {group.reservedCount}
                             </span>
                           ) : null}
                           {group.heldCount > 0 ? (
@@ -1876,7 +1937,9 @@ export function ManageCards() {
                                                 "ml-1.5",
                                               )}
                                             >
-                                              暫定換出
+                                              {card.reservationType === "sale"
+                                                ? "預約出售"
+                                                : "暫定換出"}
                                             </span>
                                           ) : null}
                                           {card.held && isActive ? (
@@ -1923,6 +1986,20 @@ export function ManageCards() {
                                             </div>
                                           ) : isActive && !card.reserved ? (
                                             <div className={ROW_ACTIONS}>
+                                              {card.status === "for_sale" ? (
+                                                <Button
+                                                  type="button"
+                                                  size="sm"
+                                                  onClick={() =>
+                                                    setAction({
+                                                      cardId: card.id,
+                                                      kind: "reserve_sale",
+                                                    })
+                                                  }
+                                                >
+                                                  預約出售
+                                                </Button>
+                                              ) : null}
                                               <Button
                                                 type="button"
                                                 variant="outline"
