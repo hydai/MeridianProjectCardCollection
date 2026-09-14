@@ -101,10 +101,10 @@ export const ERROR_TEXT = "text-[13px] text-destructive";
 
 // Admin data table (.admin-table) — bespoke <table>, ported 1:1 from
 // admin.css (4b decision: keep a plain table rather than fight shadcn
-// Table's 1px-row-border / nowrap / last-row-stripped defaults). The
-// hover tint is the legacy `.admin-table tr:hover td` selector verbatim.
+// Table's 1px-row-border / nowrap / last-row-stripped defaults). Blend the
+// hover tint into an opaque surface so sticky cells still hide scrolled content.
 export const TABLE =
-  "w-full border-collapse text-[13px] [&_tr:hover_td]:bg-[rgba(255,255,255,0.012)]";
+  "w-full border-collapse text-[13px] [&_tr:hover_td]:bg-[color-mix(in_srgb,var(--card),var(--foreground)_1.2%)]";
 export const TH =
   "border-b-[0.5px] border-border px-2.5 py-2 text-left text-[10px] font-normal uppercase tracking-[0.18em] text-[var(--text-tertiary)]";
 export const TD =

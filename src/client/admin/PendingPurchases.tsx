@@ -422,14 +422,14 @@ function PendingPurchaseRow({
 
   return (
     <tr ref={rowRef}>
-      <td className={TD}>{purchase.orderedAt}</td>
-      <td className={TD}>{purchase.seller ?? "—"}</td>
-      <td className={TD}>{summary}</td>
-      <td className={TD}>{formatPrice(total)}</td>
+      <td className={cn(TD, "whitespace-nowrap")}>{purchase.orderedAt}</td>
+      <td className={cn(TD, "wrap-anywhere")}>{purchase.seller ?? "—"}</td>
+      <td className={cn(TD, "wrap-anywhere")}>{summary}</td>
+      <td className={cn(TD, "whitespace-nowrap")}>{formatPrice(total)}</td>
       <td className={TD}>
         <span className={cn(PILL_BASE, PILL_RESERVED)}>待收件</span>
       </td>
-      <td className={TD}>{purchase.note ?? "—"}</td>
+      <td className={cn(TD, "wrap-anywhere")}>{purchase.note ?? "—"}</td>
       <td
         className={cn(
           TD,
@@ -560,12 +560,16 @@ export function PendingPurchases() {
               <table className={cn(TABLE, "min-w-[980px]")}>
                 <thead>
                   <tr>
-                    <th className={TH}>訂購日期</th>
-                    <th className={TH}>賣家</th>
+                    <th className={cn(TH, "w-[104px] whitespace-nowrap")}>
+                      訂購日期
+                    </th>
+                    <th className={cn(TH, "w-[120px]")}>賣家</th>
                     <th className={TH}>卡片</th>
-                    <th className={TH}>金額合計</th>
-                    <th className={TH}>狀態</th>
-                    <th className={TH}>備註</th>
+                    <th className={cn(TH, "w-[96px] whitespace-nowrap")}>
+                      金額合計
+                    </th>
+                    <th className={cn(TH, "w-[80px]")}>狀態</th>
+                    <th className={cn(TH, "w-[112px]")}>備註</th>
                     <th
                       className={cn(
                         TH,
