@@ -1,9 +1,33 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 import { todayLocal } from "@/lib/date";
-import { cn } from "@/lib/utils";
-import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { STATE_MSG } from "@/shared/states";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type {
   AdminPendingPurchase,
   CatalogSeries,
@@ -17,26 +41,6 @@ import {
   fetchCatalog,
   postPurchaseReservation,
 } from "../api";
-import {
-  ACTION_FORM,
-  BTN_GHOST_SM,
-  BTN_PRIMARY_SM,
-  CONTROL,
-  ERROR_TEXT,
-  FIELD,
-  FIELD_LABEL,
-  INLINE_FIELDS,
-  LINE_EDITOR,
-  LINE_EDITOR_HEAD,
-  PANEL,
-  PANEL_TITLE,
-  PILL_BASE,
-  PILL_RESERVED,
-  ROW_ACTIONS,
-  TABLE,
-  TD,
-  TH,
-} from "./ui";
 
 interface LineDraft {
   key: number;
@@ -73,6 +77,7 @@ function PurchaseLineEditor({
   drafts: LineDraft[];
   setDrafts: (drafts: LineDraft[]) => void;
 }) {
+  const editorId = useId();
   const add = () => {
     const next = firstLine(
       catalog,
@@ -90,23 +95,23 @@ function PurchaseLineEditor({
     setDrafts(drafts.filter((draft) => draft.key !== key));
 
   return (
-    <div className={LINE_EDITOR}>
-      <div className={LINE_EDITOR_HEAD}>
-        <span className={FIELD_LABEL}>卡片</span>
-        <Button
-          type="button"
-          variant="outline"
-          className={BTN_GHOST_SM}
-          onClick={add}
-          disabled={catalog.length === 0}
-        >
-          ＋ 新增卡片
-        </Button>
-      </div>
+    <FieldSet>
+      <FieldLegend>購買卡片</FieldLegend>
+      <Button
+        type="button"
+        variant="outline"
+        className="self-start"
+        onClick={add}
+        disabled={catalog.length === 0}
+      >
+        ＋ 新增卡片
+      </Button>
       {drafts.length === 0 ? (
-        <p className="text-[13px] text-[var(--text-tertiary)]">
-          尚未加入卡片。
-        </p>
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>尚未加入卡片。</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : null}
       {drafts.map((draft, index) => {
         const selectedSeries = catalog.find(
@@ -116,118 +121,125 @@ function PurchaseLineEditor({
         const unitPriceInvalid =
           draft.unitPrice !== "" &&
           (!Number.isFinite(unitPrice) || unitPrice < 0);
+        const lineId = `${editorId}-${draft.key}`;
 
         return (
-          <fieldset
-            className="mt-2 grid grid-cols-[minmax(140px,1.3fr)_minmax(120px,1fr)_80px_72px_110px_auto] items-end gap-2 border-0 p-0 max-[760px]:grid-cols-2"
+          <FieldSet
+            className="min-w-0 rounded-lg border border-border p-4"
             key={draft.key}
           >
-            <legend className="sr-only">卡片 {index + 1}</legend>
-            <label className={FIELD}>
-              <span className={FIELD_LABEL}>系列</span>
-              <select
-                className={CONTROL}
-                value={draft.series}
-                onChange={(event) => {
-                  const nextSeries = catalog.find(
-                    (item) => item.name === event.target.value,
-                  );
-                  const character = nextSeries?.characters[0];
-                  const rarity = nextSeries?.rarities[0];
-                  if (!nextSeries || !character || !rarity) return;
-                  update(draft.key, {
-                    series: nextSeries.name,
-                    character,
-                    rarity,
-                  });
-                }}
+            <FieldLegend variant="label">卡片 {index + 1}</FieldLegend>
+            <FieldGroup className="grid grid-cols-2 gap-3 [container-type:normal] sm:grid-cols-3">
+              <Field className="col-span-2 min-w-0 sm:col-span-1">
+                <FieldLabel htmlFor={`${lineId}-series`}>系列</FieldLabel>
+                <NativeSelect
+                  id={`${lineId}-series`}
+                  value={draft.series}
+                  onChange={(event) => {
+                    const nextSeries = catalog.find(
+                      (item) => item.name === event.target.value,
+                    );
+                    const character = nextSeries?.characters[0];
+                    const rarity = nextSeries?.rarities[0];
+                    if (!nextSeries || !character || !rarity) return;
+                    update(draft.key, {
+                      series: nextSeries.name,
+                      character,
+                      rarity,
+                    });
+                  }}
+                >
+                  {catalog.map((item) => (
+                    <NativeSelectOption key={item.name} value={item.name}>
+                      {item.name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field className="min-w-0">
+                <FieldLabel htmlFor={`${lineId}-character`}>角色</FieldLabel>
+                <NativeSelect
+                  id={`${lineId}-character`}
+                  value={draft.character}
+                  onChange={(event) =>
+                    update(draft.key, { character: event.target.value })
+                  }
+                >
+                  {selectedSeries?.characters.map((character) => (
+                    <NativeSelectOption key={character} value={character}>
+                      {character}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field className="min-w-0">
+                <FieldLabel htmlFor={`${lineId}-rarity`}>稀有度</FieldLabel>
+                <NativeSelect
+                  id={`${lineId}-rarity`}
+                  value={draft.rarity}
+                  onChange={(event) =>
+                    update(draft.key, { rarity: event.target.value as Rarity })
+                  }
+                >
+                  {selectedSeries?.rarities.map((rarity) => (
+                    <NativeSelectOption key={rarity} value={rarity}>
+                      {rarity}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field className="min-w-0">
+                <FieldLabel htmlFor={`${lineId}-qty`}>數量</FieldLabel>
+                <Input
+                  id={`${lineId}-qty`}
+                  type="number"
+                  min={1}
+                  max={99}
+                  inputMode="numeric"
+                  value={draft.qty}
+                  onChange={(event) =>
+                    update(draft.key, {
+                      qty: Math.max(
+                        1,
+                        Math.min(
+                          99,
+                          Math.trunc(Number(event.target.value)) || 1,
+                        ),
+                      ),
+                    })
+                  }
+                />
+              </Field>
+              <Field className="min-w-0" data-invalid={unitPriceInvalid}>
+                <FieldLabel htmlFor={`${lineId}-price`}>單價 (TWD)</FieldLabel>
+                <Input
+                  id={`${lineId}-price`}
+                  type="number"
+                  min={0}
+                  step="any"
+                  inputMode="decimal"
+                  value={draft.unitPrice}
+                  onChange={(event) =>
+                    update(draft.key, { unitPrice: event.target.value })
+                  }
+                  placeholder="必填"
+                  aria-invalid={unitPriceInvalid}
+                />
+              </Field>
+              <Button
+                type="button"
+                variant="outline"
+                className="self-end justify-self-start"
+                onClick={() => remove(draft.key)}
+                aria-label={`移除卡片 ${index + 1}`}
               >
-                {catalog.map((item) => (
-                  <option key={item.name} value={item.name}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={FIELD}>
-              <span className={FIELD_LABEL}>角色</span>
-              <select
-                className={CONTROL}
-                value={draft.character}
-                onChange={(event) =>
-                  update(draft.key, { character: event.target.value })
-                }
-              >
-                {selectedSeries?.characters.map((character) => (
-                  <option key={character} value={character}>
-                    {character}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={FIELD}>
-              <span className={FIELD_LABEL}>稀有度</span>
-              <select
-                className={CONTROL}
-                value={draft.rarity}
-                onChange={(event) =>
-                  update(draft.key, { rarity: event.target.value as Rarity })
-                }
-              >
-                {selectedSeries?.rarities.map((rarity) => (
-                  <option key={rarity} value={rarity}>
-                    {rarity}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={FIELD}>
-              <span className={FIELD_LABEL}>數量</span>
-              <Input
-                type="number"
-                min={1}
-                max={99}
-                inputMode="numeric"
-                className={CONTROL}
-                value={draft.qty}
-                onChange={(event) =>
-                  update(draft.key, {
-                    qty: Math.max(
-                      1,
-                      Math.min(99, Math.trunc(Number(event.target.value)) || 1),
-                    ),
-                  })
-                }
-              />
-            </label>
-            <label className={FIELD}>
-              <span className={FIELD_LABEL}>單價 (TWD)</span>
-              <Input
-                type="number"
-                min={0}
-                inputMode="decimal"
-                className={CONTROL}
-                value={draft.unitPrice}
-                onChange={(event) =>
-                  update(draft.key, { unitPrice: event.target.value })
-                }
-                placeholder="必填"
-                aria-invalid={unitPriceInvalid}
-              />
-            </label>
-            <Button
-              type="button"
-              variant="outline"
-              className={cn(BTN_GHOST_SM, "max-[760px]:justify-self-start")}
-              onClick={() => remove(draft.key)}
-              aria-label={`移除卡片 ${index + 1}`}
-            >
-              移除
-            </Button>
-          </fieldset>
+                移除
+              </Button>
+            </FieldGroup>
+          </FieldSet>
         );
       })}
-    </div>
+    </FieldSet>
   );
 }
 
@@ -238,6 +250,7 @@ function PurchaseReservationForm({
   catalog: CatalogSeries[];
   onDone: () => void;
 }) {
+  const formId = useId();
   const [seller, setSeller] = useState("");
   const [orderedAt, setOrderedAt] = useState(todayLocal);
   const [note, setNote] = useState("");
@@ -287,66 +300,94 @@ function PurchaseReservationForm({
     }
   };
 
+  const totalQty = lines.reduce((sum, line) => sum + line.qty, 0);
+  const total = lines.reduce(
+    (sum, line) => sum + line.qty * Number(line.unitPrice),
+    0,
+  );
+
   return (
-    <div className={ACTION_FORM}>
-      <div className={INLINE_FIELDS}>
-        <label className={FIELD}>
-          <span className={FIELD_LABEL}>賣家</span>
-          <Input
-            className={CONTROL}
-            value={seller}
-            onChange={(event) => setSeller(event.target.value)}
-          />
-        </label>
-        <label className={FIELD}>
-          <span className={FIELD_LABEL}>訂購日期</span>
-          <Input
-            type="date"
-            className={CONTROL}
-            value={orderedAt}
-            onChange={(event) => setOrderedAt(event.target.value)}
-          />
-        </label>
-        <label className={FIELD}>
-          <span className={FIELD_LABEL}>備註</span>
-          <Input
-            className={CONTROL}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-          />
-        </label>
-      </div>
-      <PurchaseLineEditor
-        catalog={catalog}
-        drafts={lines}
-        setDrafts={setLines}
-      />
-      <div className={cn(INLINE_FIELDS, "mt-3")}>
-        <Button
-          type="button"
-          className={BTN_PRIMARY_SM}
-          onClick={submit}
-          disabled={busy || !orderedAt || !linesValid}
+    <Card>
+      <CardHeader>
+        <CardTitle>建立購入預約</CardTitle>
+        <CardDescription>
+          同一位賣家的卡片可合併成一筆。填寫購入數量與單價，收到卡片後再確認收貨。
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="flex flex-col gap-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!busy) void submit();
+          }}
         >
-          {busy ? "處理中…" : "新增購入預約"}
-        </Button>
-        {!orderedAt ? (
-          <span className={ERROR_TEXT} role="alert">
-            訂購日期為必填
-          </span>
-        ) : null}
-        {lines.length > 0 && !linesValid ? (
-          <span className={ERROR_TEXT} role="alert">
-            每筆卡片都需要有效的數量與單價
-          </span>
-        ) : null}
-      </div>
-      {error ? (
-        <div className={cn(ERROR_TEXT, "mt-2")} role="alert">
-          {error}
-        </div>
-      ) : null}
-    </div>
+          <FieldSet disabled={busy}>
+            <FieldLegend className="sr-only">購入預約資料</FieldLegend>
+            <FieldGroup className="grid gap-4 [container-type:normal] sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor={`${formId}-seller`}>賣家</FieldLabel>
+                <Input
+                  id={`${formId}-seller`}
+                  value={seller}
+                  onChange={(event) => setSeller(event.target.value)}
+                  placeholder="暱稱或聯絡名稱，選填"
+                />
+                <FieldDescription>僅後台可見。</FieldDescription>
+              </Field>
+              <Field data-invalid={!orderedAt}>
+                <FieldLabel htmlFor={`${formId}-date`}>訂購日期</FieldLabel>
+                <Input
+                  id={`${formId}-date`}
+                  type="date"
+                  value={orderedAt}
+                  onChange={(event) => setOrderedAt(event.target.value)}
+                  aria-invalid={!orderedAt}
+                  aria-describedby={
+                    !orderedAt ? `${formId}-date-error` : undefined
+                  }
+                />
+                {!orderedAt ? (
+                  <FieldError id={`${formId}-date-error`}>
+                    訂購日期為必填
+                  </FieldError>
+                ) : null}
+              </Field>
+            </FieldGroup>
+            <PurchaseLineEditor
+              catalog={catalog}
+              drafts={lines}
+              setDrafts={setLines}
+            />
+            <Field>
+              <FieldLabel htmlFor={`${formId}-note`}>備註</FieldLabel>
+              <Textarea
+                id={`${formId}-note`}
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="付款、寄送或面交約定，選填，僅後台可見"
+              />
+            </Field>
+          </FieldSet>
+          <output className="text-sm" aria-live="polite">
+            已選 {totalQty} 張 · 購入總額{" "}
+            {linesValid ? formatPrice(total) : "待填寫"}
+          </output>
+          {lines.length > 0 && !linesValid ? (
+            <FieldError>每筆卡片都需要有效的數量與單價</FieldError>
+          ) : null}
+          {error ? (
+            <Alert variant="destructive">
+              <AlertTitle>無法建立購入預約</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+          <Button type="submit" disabled={busy || !orderedAt || !linesValid}>
+            {busy ? "處理中…" : "新增購入預約"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -356,7 +397,7 @@ function formatPrice(value: number) {
   }).format(value)} 元`;
 }
 
-function PendingPurchaseRow({
+function PendingPurchaseReservation({
   purchase,
   onChange,
 }: {
@@ -368,20 +409,13 @@ function PendingPurchaseRow({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const rowRef = useRef<HTMLTableRowElement>(null);
+  const reservationRef = useRef<HTMLElement>(null);
   const restoreFocus = useRef<"complete" | "cancel" | null>(null);
   const totalQty = purchase.lines.reduce((sum, line) => sum + line.qty, 0);
   const total = purchase.lines.reduce(
     (sum, line) => sum + line.qty * line.unitPrice,
     0,
   );
-  const summary =
-    purchase.lines
-      .map(
-        (line) =>
-          `${line.series} ${line.character} ${line.rarity}×${line.qty}（每張 ${formatPrice(line.unitPrice)}）`,
-      )
-      .join("、") || "—";
 
   const run = async (request: () => Promise<unknown>) => {
     setBusy(true);
@@ -399,7 +433,7 @@ function PendingPurchaseRow({
 
   useEffect(() => {
     if (confirming) {
-      rowRef.current
+      reservationRef.current
         ?.querySelector<HTMLButtonElement>('[data-purchase-action="confirm"]')
         ?.focus();
       return;
@@ -407,7 +441,7 @@ function PendingPurchaseRow({
     const trigger = restoreFocus.current;
     restoreFocus.current = null;
     if (trigger) {
-      rowRef.current
+      reservationRef.current
         ?.querySelector<HTMLButtonElement>(
           `[data-purchase-action="${trigger}"]`,
         )
@@ -421,90 +455,110 @@ function PendingPurchaseRow({
   };
 
   return (
-    <tr ref={rowRef}>
-      <td className={cn(TD, "whitespace-nowrap")}>{purchase.orderedAt}</td>
-      <td className={cn(TD, "wrap-anywhere")}>{purchase.seller ?? "—"}</td>
-      <td className={cn(TD, "wrap-anywhere")}>{summary}</td>
-      <td className={cn(TD, "whitespace-nowrap")}>{formatPrice(total)}</td>
-      <td className={TD}>
-        <span className={cn(PILL_BASE, PILL_RESERVED)}>待收件</span>
-      </td>
-      <td className={cn(TD, "wrap-anywhere")}>{purchase.note ?? "—"}</td>
-      <td
-        className={cn(
-          TD,
-          "sticky right-0 min-w-[160px] bg-card shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.8)]",
-        )}
-      >
-        {confirming ? (
-          <fieldset className="flex min-w-[180px] flex-col items-start gap-2 border-0 p-0">
-            <legend className="sr-only">
-              {confirming === "complete" ? "確認收貨" : "確認取消預約"}
-            </legend>
-            <span className="text-xs leading-5 text-foreground">
-              {confirming === "complete"
-                ? `確認已收到 ${totalQty} 張卡片並加入收藏？`
-                : "確認取消這筆購入預約？"}
+    <article ref={reservationRef} aria-label={`購入預約 #${purchase.id}`}>
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center justify-between gap-2">
+            <span className="min-w-0 wrap-anywhere">
+              {purchase.seller || "未填賣家"}
             </span>
-            <div className={ROW_ACTIONS}>
-              <Button
-                data-purchase-action="confirm"
-                type="button"
-                className={BTN_PRIMARY_SM}
-                disabled={busy}
-                onClick={() =>
-                  run(() =>
-                    confirming === "complete"
-                      ? completePendingPurchase(purchase.id)
-                      : cancelPendingPurchase(purchase.id),
-                  )
-                }
+            <Badge variant="secondary">待收件</Badge>
+          </CardTitle>
+          <CardDescription>
+            預約 #{purchase.id} · {purchase.orderedAt} · {totalQty} 張 ·{" "}
+            {formatPrice(total)}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <ul className="flex flex-col gap-2">
+            {purchase.lines.map((line, index) => (
+              <li
+                key={`${line.catalogId}-${index}`}
+                className="flex flex-wrap justify-between gap-1 text-sm"
               >
-                {busy
-                  ? "處理中…"
-                  : confirming === "complete"
-                    ? "確定收貨"
-                    : "確定取消"}
+                <span className="min-w-0 wrap-anywhere">
+                  {line.series} · {line.character} · {line.rarity}
+                </span>
+                <span className="text-muted-foreground">
+                  {line.qty} 張 × {formatPrice(line.unitPrice)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {purchase.note ? (
+            <p className="whitespace-pre-wrap wrap-anywhere text-sm text-muted-foreground">
+              {purchase.note}
+            </p>
+          ) : null}
+          {error ? (
+            <Alert variant="destructive">
+              <AlertTitle>無法更新購入預約</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+        </CardContent>
+        <CardFooter>
+          {confirming ? (
+            <FieldSet className="w-full">
+              <FieldLegend className="sr-only">
+                {confirming === "complete" ? "確認收貨" : "確認取消預約"}
+              </FieldLegend>
+              <p className="text-sm">
+                {confirming === "complete"
+                  ? `確認已收到 ${totalQty} 張卡片並加入收藏？`
+                  : "確認取消這筆購入預約？"}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  data-purchase-action="confirm"
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    run(() =>
+                      confirming === "complete"
+                        ? completePendingPurchase(purchase.id)
+                        : cancelPendingPurchase(purchase.id),
+                    )
+                  }
+                >
+                  {busy
+                    ? "處理中…"
+                    : confirming === "complete"
+                      ? "確定收貨"
+                      : "確定取消"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={closeConfirmation}
+                >
+                  返回
+                </Button>
+              </div>
+            </FieldSet>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                data-purchase-action="complete"
+                type="button"
+                onClick={() => setConfirming("complete")}
+              >
+                確認收貨
               </Button>
               <Button
+                data-purchase-action="cancel"
                 type="button"
                 variant="outline"
-                className={BTN_GHOST_SM}
-                disabled={busy}
-                onClick={closeConfirmation}
+                onClick={() => setConfirming("cancel")}
               >
-                返回
+                取消預約
               </Button>
             </div>
-          </fieldset>
-        ) : (
-          <div className={ROW_ACTIONS}>
-            <Button
-              data-purchase-action="complete"
-              type="button"
-              className={BTN_PRIMARY_SM}
-              onClick={() => setConfirming("complete")}
-            >
-              確認收貨
-            </Button>
-            <Button
-              data-purchase-action="cancel"
-              type="button"
-              variant="outline"
-              className={BTN_GHOST_SM}
-              onClick={() => setConfirming("cancel")}
-            >
-              取消預約
-            </Button>
-          </div>
-        )}
-        {error ? (
-          <div className={cn(ERROR_TEXT, "mt-1.5")} role="alert">
-            {error}
-          </div>
-        ) : null}
-      </td>
-    </tr>
+          )}
+        </CardFooter>
+      </Card>
+    </article>
   );
 }
 
@@ -515,6 +569,7 @@ export function PendingPurchases({
   const [pending, setPending] = useState<AdminPendingPurchase[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestGeneration = useRef(0);
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     if (error) onCountChange?.(null);
     else if (pending !== null) onCountChange?.(pending.length);
@@ -523,6 +578,7 @@ export function PendingPurchases({
   const reload = useCallback(() => {
     const generation = ++requestGeneration.current;
     setError(null);
+    setLoading(true);
     Promise.all([fetchCatalog(), fetchAdminPendingPurchases()])
       .then(([nextCatalog, nextPending]) => {
         if (generation !== requestGeneration.current) return;
@@ -531,6 +587,9 @@ export function PendingPurchases({
       })
       .catch((reason) => {
         if (generation === requestGeneration.current) setError(String(reason));
+      })
+      .finally(() => {
+        if (generation === requestGeneration.current) setLoading(false);
       });
   }, []);
 
@@ -542,68 +601,63 @@ export function PendingPurchases({
   }, [reload]);
 
   return (
-    <section className={PANEL}>
-      <h2 className={PANEL_TITLE}>購入預約</h2>
-      <p className="mb-4 text-[13px] text-muted-foreground">
-        預約中的卡片不會計入收藏；收到實體卡片後再確認收貨。
-      </p>
-      {error ? (
-        <div className={ERROR_TEXT} role="alert">
-          {error}
+    <section className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-2">
+          <h2 className="font-serif text-xl">購入預約</h2>
+          <p className="text-sm text-muted-foreground">
+            預約中的卡片不會計入收藏；收到實體卡片後再確認收貨。
+          </p>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={reload}
+          disabled={loading}
+        >
+          重新整理
+        </Button>
+      </div>
+      {error ? (
+        <Alert variant="destructive">
+          <AlertTitle>無法載入購入預約</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       {!catalog || !pending ? (
-        error ? null : (
-          <output className={STATE_MSG}>載入中…</output>
-        )
+        <output className={STATE_MSG}>
+          {loading ? "載入中…" : "請重新整理後再試。"}
+        </output>
       ) : (
         <>
           <PurchaseReservationForm catalog={catalog} onDone={reload} />
-          {pending.length === 0 ? (
-            <output className={EMPTY_MSG}>目前沒有待收件的購入預約。</output>
-          ) : (
-            <div className="mt-4 overflow-x-auto">
-              <table className={cn(TABLE, "min-w-[980px]")}>
-                <thead>
-                  <tr>
-                    <th className={cn(TH, "w-[104px] whitespace-nowrap")}>
-                      訂購日期
-                    </th>
-                    <th className={cn(TH, "w-[120px]")}>賣家</th>
-                    <th className={TH}>卡片</th>
-                    <th className={cn(TH, "w-[96px] whitespace-nowrap")}>
-                      金額合計
-                    </th>
-                    <th className={cn(TH, "w-[80px]")}>狀態</th>
-                    <th className={cn(TH, "w-[112px]")}>備註</th>
-                    <th
-                      className={cn(
-                        TH,
-                        "sticky right-0 min-w-[160px] bg-card shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.8)]",
-                      )}
-                    >
-                      操作
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pending.map((purchase) => (
-                    <PendingPurchaseRow
-                      key={purchase.id}
-                      purchase={purchase}
-                      onChange={(id) => {
-                        setPending(
-                          (current) =>
-                            current?.filter((item) => item.id !== id) ?? [],
-                        );
-                        reload();
-                      }}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <section
+            aria-label="進行中的購入預約"
+            className="flex flex-col gap-4"
+          >
+            <h3 className="text-lg">待收件 · {pending.length} 筆</h3>
+            {pending.length === 0 ? (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>目前沒有待收件的購入預約。</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              pending.map((purchase) => (
+                <PendingPurchaseReservation
+                  key={purchase.id}
+                  purchase={purchase}
+                  onChange={(id) => {
+                    setPending(
+                      (current) =>
+                        current?.filter((item) => item.id !== id) ?? [],
+                    );
+                    reload();
+                  }}
+                />
+              ))
+            )}
+          </section>
         </>
       )}
     </section>
