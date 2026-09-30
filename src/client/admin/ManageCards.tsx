@@ -136,6 +136,7 @@ const FILTER_BUTTON = cn(
   OPT_TOGGLE,
   "min-h-8 max-w-full break-words px-3 py-1.5 text-center text-xs whitespace-normal tracking-[0.04em]",
 );
+const GROUP_CELL = cn(TD, "max-sm:border-0 max-sm:p-0");
 
 const STATUS_FILTER_OPTIONS: FilterOption<StatusFilter>[] = [
   { value: "catalog", label: "全部卡位" },
@@ -1600,7 +1601,7 @@ export function ManageCards() {
   );
 
   return (
-    <section className={PANEL}>
+    <section className={cn(PANEL, "max-sm:px-3 max-sm:py-4")}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className={PANEL_TITLE}>卡片管理</h2>
         <div className="flex flex-wrap gap-2">
@@ -1723,8 +1724,11 @@ export function ManageCards() {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className={cn(TABLE, "min-w-[760px]")} aria-label="卡片群組">
-            <thead>
+          <table
+            className={cn(TABLE, "min-w-[760px] max-sm:block max-sm:min-w-0")}
+            aria-label="卡片群組"
+          >
+            <thead className="max-sm:sr-only">
               <tr>
                 <th className={TH}>系列</th>
                 <th className={TH}>角色</th>
@@ -1734,24 +1738,26 @@ export function ManageCards() {
                 <th className={TH}>工作面板與明細</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="max-sm:grid max-sm:gap-3">
               {cardGroups.map((group, groupIndex) => {
                 const expanded = expandedGroups.has(group.key);
                 const detailsId = `${detailsIdPrefix}-group-${groupIndex}`;
                 const cell = cellByKey.get(group.key);
                 return (
                   <Fragment key={group.key}>
-                    <tr>
-                      <td className={TD}>{group.series}</td>
-                      <td className={TD}>{group.character}</td>
-                      <td className={TD}>
+                    <tr className="max-sm:grid max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:gap-2 max-sm:rounded-lg max-sm:border max-sm:border-border max-sm:p-3">
+                      <td className={cn(GROUP_CELL, "max-sm:col-span-2")}>
+                        {group.series}
+                      </td>
+                      <td className={GROUP_CELL}>{group.character}</td>
+                      <td className={cn(GROUP_CELL, "max-sm:justify-self-end")}>
                         <span
                           className={cn(PILL_BASE, PILL_RARITY[group.rarity])}
                         >
                           {group.rarity}
                         </span>
                       </td>
-                      <td className={TD}>
+                      <td className={cn(GROUP_CELL, "max-sm:col-span-2")}>
                         <span
                           aria-label={`目前庫存 ${group.inventoryCount} 張`}
                         >
@@ -1761,7 +1767,7 @@ export function ManageCards() {
                           張
                         </span>
                       </td>
-                      <td className={TD}>
+                      <td className={cn(GROUP_CELL, "max-sm:col-span-2")}>
                         <div className="flex flex-wrap gap-1.5">
                           {CARD_STATUSES.map((status) =>
                             group.statusCounts[status] > 0 ? (
@@ -1791,13 +1797,14 @@ export function ManageCards() {
                           ) : null}
                         </div>
                       </td>
-                      <td className={TD}>
+                      <td className={cn(GROUP_CELL, "max-sm:col-span-2")}>
                         <div className={ROW_ACTIONS}>
                           {cell ? (
                             <Button
                               type="button"
                               variant="outline"
-                              className={BTN_GHOST_SM}
+                              size="sm"
+                              className="max-sm:min-h-11 max-sm:flex-1"
                               aria-label={`開啟 ${group.series} ${group.character} ${group.rarity} 卡片工作面板`}
                               onClick={() =>
                                 setSelectedCatalogId(cell.catalogId)
@@ -1810,7 +1817,8 @@ export function ManageCards() {
                             <Button
                               type="button"
                               variant="outline"
-                              className={BTN_GHOST_SM}
+                              size="sm"
+                              className="max-sm:min-h-11"
                               aria-expanded={expanded}
                               aria-controls={detailsId}
                               aria-label={`${expanded ? "收合" : "展開"} ${group.series} ${group.character} ${group.rarity}，${group.cards.length} 張明細`}
@@ -1846,9 +1854,15 @@ export function ManageCards() {
                       </td>
                     </tr>
                     {expanded ? (
-                      <tr id={detailsId}>
+                      <tr
+                        id={detailsId}
+                        className="max-sm:block max-sm:min-w-0"
+                      >
                         <td
-                          className={cn(TD, "bg-[var(--bg-subtle)] px-4 py-3")}
+                          className={cn(
+                            TD,
+                            "bg-[var(--bg-subtle)] px-4 py-3 max-sm:block max-sm:min-w-0 max-sm:px-0",
+                          )}
                           colSpan={6}
                         >
                           <div className="overflow-x-auto">
