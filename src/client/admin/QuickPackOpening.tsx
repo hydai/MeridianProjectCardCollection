@@ -44,6 +44,7 @@ import { useAcquisitionSubmission } from "@/lib/acquisition";
 import { todayLocal } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { RARITY_TEXT } from "@/shared/rarity";
+import { Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   MAX_CARD_BATCH_SIZE,
@@ -456,7 +457,7 @@ export function QuickPackOpening() {
                   </FieldDescription>
                   <ToggleGroup
                     type="single"
-                    variant="outline"
+                    variant="selection"
                     spacing={2}
                     aria-label="卡包彈數"
                     value={selectedVolume == null ? "" : String(selectedVolume)}
@@ -471,6 +472,9 @@ export function QuickPackOpening() {
                         value={String(volume)}
                         disabled={total > 0 && volume !== selectedVolume}
                       >
+                        {selectedVolume === volume ? (
+                          <Check aria-hidden="true" data-icon="inline-start" />
+                        ) : null}
                         第 {volume} 彈
                       </ToggleGroupItem>
                     ))}
@@ -481,7 +485,7 @@ export function QuickPackOpening() {
                   <FieldLegend variant="label">系列</FieldLegend>
                   <ToggleGroup
                     type="single"
-                    variant="outline"
+                    variant="selection"
                     spacing={2}
                     aria-label="卡片系列"
                     value={selectedSeriesName}
@@ -492,6 +496,9 @@ export function QuickPackOpening() {
                   >
                     {seriesOptions.map((item) => (
                       <ToggleGroupItem key={item.name} value={item.name}>
+                        {selectedSeriesName === item.name ? (
+                          <Check aria-hidden="true" data-icon="inline-start" />
+                        ) : null}
                         {item.name}
                       </ToggleGroupItem>
                     ))}
@@ -502,7 +509,7 @@ export function QuickPackOpening() {
                   <FieldLegend variant="label">稀有度</FieldLegend>
                   <ToggleGroup
                     type="single"
-                    variant="outline"
+                    variant="selection"
                     spacing={2}
                     aria-label="卡片稀有度"
                     value={selectedRarity ?? ""}
@@ -516,6 +523,9 @@ export function QuickPackOpening() {
                   >
                     {(selectedSeries?.rarities ?? []).map((rarity) => (
                       <ToggleGroupItem key={rarity} value={rarity}>
+                        {selectedRarity === rarity ? (
+                          <Check aria-hidden="true" data-icon="inline-start" />
+                        ) : null}
                         {rarity}
                       </ToggleGroupItem>
                     ))}
@@ -525,7 +535,9 @@ export function QuickPackOpening() {
                 <FieldSet disabled={locked}>
                   <FieldLegend variant="label">角色</FieldLegend>
                   <FieldDescription>
-                    每點一次加入一張；同一卡種最多 {MAX_CARD_CELL_QUANTITY} 張。
+                    正在加入：第 {selectedVolume} 彈 · {selectedSeriesName} ·{" "}
+                    {selectedRarity}。每點一次加入一張；同一卡種最多{" "}
+                    {MAX_CARD_CELL_QUANTITY} 張。
                   </FieldDescription>
                   <div className="flex flex-wrap gap-2">
                     {(selectedSeries?.characters ?? []).map((character) => {
