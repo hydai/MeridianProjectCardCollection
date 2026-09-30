@@ -129,22 +129,22 @@ describe("PendingPurchases", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
       render(<PendingPurchases />);
-      await screen.findByRole("table");
+      await screen.findByRole("region", { name: "進行中的購入預約" });
       fireEvent.click(screen.getByRole("button", { name: /新增卡片/ }));
       fireEvent.change(screen.getByLabelText("單價 (TWD)"), {
         target: { value: "100" },
       });
       fireEvent.click(screen.getByRole("button", { name: "新增購入預約" }));
       await waitFor(() => expect(reads).toBe(2));
-      const row = screen.getByText("Card Shop").closest("tr");
-      if (!row) throw new Error("missing purchase row");
+      const reservation = screen.getByText("Card Shop").closest("article");
+      if (!reservation) throw new Error("missing purchase reservation");
       fireEvent.click(
-        within(row).getByRole("button", {
+        within(reservation).getByRole("button", {
           name: action === "complete" ? "確認收貨" : "取消預約",
         }),
       );
       fireEvent.click(
-        within(row).getByRole("button", {
+        within(reservation).getByRole("button", {
           name: action === "complete" ? "確定收貨" : "確定取消",
         }),
       );
@@ -170,13 +170,24 @@ describe("PendingPurchases", () => {
     vi.stubGlobal("fetch", stubFetch());
     render(<PendingPurchases />);
 
-    const table = await screen.findByRole("table");
-    const row = within(table).getByText("Card Shop").closest("tr");
-    expect(row).not.toBeNull();
-    expect(within(row as HTMLElement).getByText("待收件")).toBeInTheDocument();
-    expect(within(row as HTMLElement).getByText("500 元")).toBeInTheDocument();
+    const reservations = await screen.findByRole("region", {
+      name: "進行中的購入預約",
+    });
+    const reservation = within(reservations)
+      .getByText("Card Shop")
+      .closest("article");
+    expect(reservation).not.toBeNull();
     expect(
-      within(row as HTMLElement).getByText(/NEW YEAR Mizuki SR×2/),
+      within(reservation as HTMLElement).getByText("待收件"),
+    ).toBeInTheDocument();
+    expect(
+      within(reservation as HTMLElement).getByText(/3 張 · 500 元/),
+    ).toBeInTheDocument();
+    expect(
+      within(reservation as HTMLElement).getByText("NEW YEAR · Mizuki · SR"),
+    ).toBeInTheDocument();
+    expect(
+      within(reservation as HTMLElement).getByText("2 張 × 120 元"),
     ).toBeInTheDocument();
     expect(screen.getByText(/預約中的卡片不會計入收藏/)).toBeInTheDocument();
   });
@@ -263,20 +274,22 @@ describe("PendingPurchases", () => {
     ).toBe(false);
   });
 
-  it("confirms receipt with an empty body and removes the completed row", async () => {
+  it("confirms receipt with an empty body and removes the completed reservation", async () => {
     const fetchMock = stubFetch();
     vi.stubGlobal("fetch", fetchMock);
     render(<PendingPurchases />);
 
-    const table = await screen.findByRole("table");
-    const receiptTrigger = within(table).getByRole("button", {
+    const reservations = await screen.findByRole("region", {
+      name: "進行中的購入預約",
+    });
+    const receiptTrigger = within(reservations).getByRole("button", {
       name: "確認收貨",
     });
     receiptTrigger.focus();
     fireEvent.click(receiptTrigger);
     expect(screen.getByText(/確認已收到 3 張卡片/)).toBeInTheDocument();
     expect(screen.getByText("Card Shop")).toBeInTheDocument();
-    const confirmReceipt = within(table).getByRole("button", {
+    const confirmReceipt = within(reservations).getByRole("button", {
       name: "確定收貨",
     });
     expect(confirmReceipt).toHaveFocus();
@@ -297,23 +310,27 @@ describe("PendingPurchases", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<PendingPurchases />);
 
-    const table = await screen.findByRole("table");
-    const cancelTrigger = within(table).getByRole("button", {
+    const reservations = await screen.findByRole("region", {
+      name: "進行中的購入預約",
+    });
+    const cancelTrigger = within(reservations).getByRole("button", {
       name: "取消預約",
     });
     cancelTrigger.focus();
     fireEvent.click(cancelTrigger);
     expect(screen.getByText("確認取消這筆購入預約？")).toBeInTheDocument();
     expect(
-      within(table).getByRole("button", { name: "確定取消" }),
+      within(reservations).getByRole("button", { name: "確定取消" }),
     ).toHaveFocus();
-    fireEvent.click(within(table).getByRole("button", { name: "返回" }));
-    const restoredCancelTrigger = within(table).getByRole("button", {
+    fireEvent.click(within(reservations).getByRole("button", { name: "返回" }));
+    const restoredCancelTrigger = within(reservations).getByRole("button", {
       name: "取消預約",
     });
     expect(restoredCancelTrigger).toHaveFocus();
     fireEvent.click(restoredCancelTrigger);
-    fireEvent.click(within(table).getByRole("button", { name: "確定取消" }));
+    fireEvent.click(
+      within(reservations).getByRole("button", { name: "確定取消" }),
+    );
 
     await screen.findByText("目前沒有待收件的購入預約。");
     expect(
