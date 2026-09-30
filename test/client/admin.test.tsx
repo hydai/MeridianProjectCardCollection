@@ -711,6 +711,7 @@ describe("ManageCards", () => {
     );
     render(<ManageCards />);
     await screen.findByText("顯示 0 種卡 · 0 / 1 張");
+    fireEvent.click(screen.getByRole("button", { name: /更多篩選/ }));
     const statusFilter = screen.getByRole("radiogroup", {
       name: "狀態篩選",
     });

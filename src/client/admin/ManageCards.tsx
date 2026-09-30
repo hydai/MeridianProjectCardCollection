@@ -1,3 +1,9 @@
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +20,8 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -72,7 +80,6 @@ import {
   CONTROL,
   ERROR_TEXT,
   FIELD_LABEL,
-  OPT_TOGGLE,
   PANEL,
   PANEL_TITLE,
   PILL_BASE,
@@ -132,10 +139,7 @@ const CARD_STATUSES: CardStatus[] = [
   "traded",
   "gifted",
 ];
-const FILTER_BUTTON = cn(
-  OPT_TOGGLE,
-  "min-h-8 max-w-full break-words px-3 py-1.5 text-center text-xs whitespace-normal tracking-[0.04em]",
-);
+const FILTER_BUTTON = "h-auto min-h-9 max-w-full break-words whitespace-normal";
 const GROUP_CELL = cn(TD, "max-sm:border-0 max-sm:p-0");
 
 const STATUS_FILTER_OPTIONS: FilterOption<StatusFilter>[] = [
@@ -150,6 +154,12 @@ const STATUS_FILTER_OPTIONS: FilterOption<StatusFilter>[] = [
   { value: "traded", label: "已交換" },
   { value: "gifted", label: "已贈送" },
 ];
+const COMMON_STATUSES = new Set<StatusFilter>([
+  "catalog",
+  "active",
+  "for_sale",
+  "for_trade",
+]);
 
 const STATUS_LABEL: Record<string, string> = {
   owned: "持有",
@@ -297,10 +307,12 @@ function FilterButtonGroup<T extends FilterValue>({
   onChange: (value: T | null) => void;
 }) {
   return (
-    <div className="grid grid-cols-[76px_minmax(0,1fr)] items-start gap-3 max-[600px]:grid-cols-1 max-[600px]:gap-1.5">
-      <span className={cn(FIELD_LABEL, "pt-2 max-[600px]:pt-0")}>{label}</span>
+    <FieldSet className="gap-2">
+      <FieldLegend variant="label">{label}</FieldLegend>
       <ToggleGroup
         type="single"
+        variant="selection"
+        size="sm"
         value={value === null ? ALL_FILTER_VALUE : encodeFilterValue(value)}
         onValueChange={(next) => {
           if (!next) return;
@@ -329,7 +341,7 @@ function FilterButtonGroup<T extends FilterValue>({
           </ToggleGroupItem>
         ))}
       </ToggleGroup>
-    </div>
+    </FieldSet>
   );
 }
 
@@ -1464,6 +1476,8 @@ function CardWorkspaceSheet({
 }
 
 export function ManageCards() {
+  const [query, setQuery] = useState("");
+  const [advancedFilters, setAdvancedFilters] = useState(false);
   const detailsIdPrefix = useId();
   const [filterVolume, setFilterVolume] = useState<number | null>(null);
   const [filterSeries, setFilterSeries] = useState<string | null>(null);
@@ -1557,6 +1571,37 @@ export function ManageCards() {
   const cellByKey = new Map(
     overviewCells.map((cell) => [cardGroupKey(cell), cell]),
   );
+  const keywords = query
+    .normalize("NFKC")
+    .trim()
+    .toLocaleLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  const matchesQuery = (card: {
+    series: string;
+    character: string;
+    rarity: Rarity;
+  }) => {
+    const identity = `${card.series} ${card.character} ${card.rarity}`
+      .normalize("NFKC")
+      .toLocaleLowerCase();
+    return keywords.every((keyword) => identity.includes(keyword));
+  };
+  const statusOptions = STATUS_FILTER_OPTIONS.filter(
+    (option) =>
+      advancedFilters ||
+      COMMON_STATUSES.has(option.value) ||
+      option.value === filterStatus,
+  );
+  const appliedDetails = [filterSeries, filterCharacter, filterRarity].filter(
+    Boolean,
+  );
+  const hasFilters = Boolean(
+    query ||
+      filterVolume !== null ||
+      appliedDetails.length ||
+      filterStatus !== "active",
+  );
   const filteredRows = (rows ?? []).filter((card) => {
     const matchesStatus =
       filterStatus === null ||
@@ -1569,6 +1614,7 @@ export function ManageCards() {
           : card.status === filterStatus);
     return (
       matchesStatus &&
+      matchesQuery(card) &&
       (filterVolume === null ||
         volumeBySeries.get(card.series) === filterVolume) &&
       (filterSeries === null || card.series === filterSeries) &&
@@ -1578,6 +1624,7 @@ export function ManageCards() {
   });
   const filteredCells = overviewCells.filter(
     (cell) =>
+      matchesQuery(cell) &&
       (filterVolume === null || cell.volume === filterVolume) &&
       (filterSeries === null || cell.series === filterSeries) &&
       (filterCharacter === null || cell.character === filterCharacter) &&
@@ -1627,62 +1674,124 @@ export function ManageCards() {
           />
         </div>
       </div>
-      <div className="card-filters mb-[18px] flex flex-col gap-3 rounded-[4px] border-[0.5px] border-border bg-[var(--bg-subtle)] p-3.5">
-        <FilterButtonGroup
-          label="彈數"
-          allLabel="全部彈數"
-          value={filterVolume}
-          options={volumeOptions}
-          onChange={(volume) => {
-            setFilterVolume(volume);
-            setFilterSeries(null);
-            setFilterCharacter(null);
-            setFilterRarity(null);
-            clearOpenState();
-          }}
-        />
-        <FilterButtonGroup
-          label="系列"
-          allLabel="全部系列"
-          value={filterSeries}
-          options={seriesOptions}
-          onChange={(series) => {
-            setFilterSeries(series);
-            setFilterCharacter(null);
-            setFilterRarity(null);
-            clearOpenState();
-          }}
-        />
-        <FilterButtonGroup
-          label="角色"
-          allLabel="全部角色"
-          value={filterCharacter}
-          options={characterOptions}
-          onChange={(character) => {
-            setFilterCharacter(character);
-            clearOpenState();
-          }}
-        />
-        <FilterButtonGroup
-          label="級別"
-          allLabel="全部級別"
-          value={filterRarity}
-          options={rarityOptions}
-          onChange={(rarity) => {
-            setFilterRarity(rarity);
-            clearOpenState();
-          }}
-        />
-        <FilterButtonGroup
-          label="狀態"
-          allLabel="全部狀態"
-          value={filterStatus}
-          options={STATUS_FILTER_OPTIONS}
-          onChange={(status) => {
-            setFilterStatus(status);
-            clearOpenState();
-          }}
-        />
+      <div className="card-filters mb-4 rounded-lg border border-border p-3">
+        <FieldGroup className="gap-4">
+          <Field>
+            <FieldLabel htmlFor="manage-card-search">搜尋卡片</FieldLabel>
+            <Input
+              id="manage-card-search"
+              type="search"
+              placeholder="系列、角色或稀有度，例如 Rei SSR"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                clearOpenState();
+              }}
+            />
+          </Field>
+          <FilterButtonGroup
+            label="彈數"
+            allLabel="全部彈數"
+            value={filterVolume}
+            options={volumeOptions}
+            onChange={(volume) => {
+              setFilterVolume(volume);
+              setFilterSeries(null);
+              setFilterCharacter(null);
+              setFilterRarity(null);
+              clearOpenState();
+            }}
+          />
+          <FilterButtonGroup
+            label="狀態"
+            allLabel="全部狀態"
+            value={filterStatus}
+            options={statusOptions}
+            onChange={(status) => {
+              setFilterStatus(status);
+              clearOpenState();
+            }}
+          />
+          <Accordion
+            type="single"
+            collapsible
+            value={advancedFilters ? "filters" : ""}
+            onValueChange={(value) => setAdvancedFilters(value === "filters")}
+          >
+            <AccordionItem value="filters">
+              <AccordionTrigger>
+                更多篩選（系列、角色、級別與全部狀態）
+              </AccordionTrigger>
+              <AccordionContent>
+                <FieldGroup className="gap-4">
+                  <FilterButtonGroup
+                    label="系列"
+                    allLabel="全部系列"
+                    value={filterSeries}
+                    options={seriesOptions}
+                    onChange={(series) => {
+                      setFilterSeries(series);
+                      setFilterCharacter(null);
+                      setFilterRarity(null);
+                      clearOpenState();
+                    }}
+                  />
+                  <FilterButtonGroup
+                    label="角色"
+                    allLabel="全部角色"
+                    value={filterCharacter}
+                    options={characterOptions}
+                    onChange={(character) => {
+                      setFilterCharacter(character);
+                      clearOpenState();
+                    }}
+                  />
+                  <FilterButtonGroup
+                    label="級別"
+                    allLabel="全部級別"
+                    value={filterRarity}
+                    options={rarityOptions}
+                    onChange={(rarity) => {
+                      setFilterRarity(rarity);
+                      clearOpenState();
+                    }}
+                  />
+                </FieldGroup>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+          {appliedDetails.length > 0 ? (
+            <div
+              className="flex flex-wrap items-center gap-2"
+              aria-label="已套用的進階篩選"
+            >
+              <span className="text-sm text-muted-foreground">已套用</span>
+              {appliedDetails.map((value, index) => (
+                <Badge key={`${index}:${value}`} variant="secondary">
+                  {value}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+          {hasFilters ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="self-start"
+              onClick={() => {
+                setQuery("");
+                setFilterVolume(null);
+                setFilterSeries(null);
+                setFilterCharacter(null);
+                setFilterRarity(null);
+                setFilterStatus("active");
+                clearOpenState();
+              }}
+            >
+              重設搜尋與篩選
+            </Button>
+          ) : null}
+        </FieldGroup>
       </div>
 
       {error ? (

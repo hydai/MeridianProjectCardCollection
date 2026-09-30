@@ -105,6 +105,7 @@ describe("batch listing workflow", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "批次上架" })).toBeEnabled(),
     );
+    fireEvent.click(screen.getByRole("button", { name: /更多篩選/ }));
     const filters = screen.getByRole("radiogroup", { name: "級別篩選" });
     fireEvent.click(within(filters).getByRole("radio", { name: "UR" }));
     const dialog = await open();
