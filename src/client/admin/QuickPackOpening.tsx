@@ -1,4 +1,15 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,6 +66,51 @@ interface PackEntry {
   qty: number;
 }
 
+const DRAFT_KEY = "mpc:draft:quick-pack:v1";
+
+interface PackDraft {
+  selectedVolume: number | null;
+  selectedSeriesName: string;
+  selectedRarity: Rarity | null;
+  entries: PackEntry[];
+  openedAt: string;
+  cost: string;
+}
+
+function readDraft(): PackDraft | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as PackDraft;
+    if (
+      !Number.isInteger(draft.selectedVolume) ||
+      (draft.selectedVolume ?? 0) < 1 ||
+      typeof draft.selectedSeriesName !== "string" ||
+      !RARITY_ORDER.includes(draft.selectedRarity as Rarity) ||
+      typeof draft.openedAt !== "string" ||
+      typeof draft.cost !== "string" ||
+      !Array.isArray(draft.entries) ||
+      !draft.entries.every(
+        (entry) =>
+          entry &&
+          typeof entry.series === "string" &&
+          typeof entry.character === "string" &&
+          RARITY_ORDER.includes(entry.rarity) &&
+          Number.isInteger(entry.qty) &&
+          entry.qty > 0 &&
+          entry.qty <= MAX_CARD_CELL_QUANTITY,
+      ) ||
+      draft.entries.reduce((sum, entry) => sum + entry.qty, 0) >
+        MAX_CARD_BATCH_SIZE
+    ) {
+      return null;
+    }
+    return draft;
+  } catch {
+    return null;
+  }
+}
+
 const RARITY_CLASS = Object.fromEntries(
   RARITY_ORDER.map((rarity, index) => [rarity, RARITY_TEXT[index]]),
 ) as Record<Rarity, string>;
@@ -64,15 +120,28 @@ function entryKey(series: string, character: string, rarity: Rarity) {
 }
 
 export function QuickPackOpening() {
+  const [restoredDraft] = useState(readDraft);
+  const [dirty, setDirty] = useState(Boolean(restoredDraft));
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<CatalogSeries[] | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [selectedVolume, setSelectedVolume] = useState<number | null>(null);
-  const [selectedSeriesName, setSelectedSeriesName] = useState("");
-  const [selectedRarity, setSelectedRarity] = useState<Rarity | null>(null);
-  const [entries, setEntries] = useState<PackEntry[]>([]);
-  const [openedAt, setOpenedAt] = useState(todayLocal);
-  const [cost, setCost] = useState("");
+  const [selectedVolume, setSelectedVolume] = useState<number | null>(
+    restoredDraft?.selectedVolume ?? null,
+  );
+  const [selectedSeriesName, setSelectedSeriesName] = useState(
+    restoredDraft?.selectedSeriesName ?? "",
+  );
+  const [selectedRarity, setSelectedRarity] = useState<Rarity | null>(
+    restoredDraft?.selectedRarity ?? null,
+  );
+  const [entries, setEntries] = useState<PackEntry[]>(
+    restoredDraft?.entries ?? [],
+  );
+  const [openedAt, setOpenedAt] = useState(
+    restoredDraft?.openedAt ?? todayLocal(),
+  );
+  const [cost, setCost] = useState(restoredDraft?.cost ?? "");
   const [nextPackNumber, setNextPackNumber] = useState<number | null>(null);
   const [previewUnavailable, setPreviewUnavailable] = useState(false);
   const submission = useAcquisitionSubmission("quick-pack");
@@ -90,9 +159,23 @@ export function QuickPackOpening() {
         setCatalog(sorted);
         const first = sorted[0];
         if (!first) return;
-        setSelectedVolume(first.volume);
-        setSelectedSeriesName(first.name);
-        setSelectedRarity(first.rarities[0] ?? null);
+        const volumeSeries =
+          sorted.find(
+            (item) => item.volume === restoredDraft?.selectedVolume,
+          ) ?? first;
+        const selected =
+          sorted.find(
+            (item) =>
+              item.volume === volumeSeries.volume &&
+              item.name === restoredDraft?.selectedSeriesName,
+          ) ?? volumeSeries;
+        setSelectedVolume(selected.volume);
+        setSelectedSeriesName(selected.name);
+        setSelectedRarity(
+          selected.rarities.includes(restoredDraft?.selectedRarity as Rarity)
+            ? (restoredDraft?.selectedRarity ?? null)
+            : (selected.rarities[0] ?? null),
+        );
       })
       .catch((error) => {
         if (current) setCatalogError(String(error));
@@ -100,7 +183,38 @@ export function QuickPackOpening() {
     return () => {
       current = false;
     };
-  }, []);
+  }, [restoredDraft]);
+
+  useEffect(() => {
+    if (catalog === null) return;
+    try {
+      if (dirty) {
+        const draft: PackDraft = {
+          selectedVolume,
+          selectedSeriesName,
+          selectedRarity,
+          entries,
+          openedAt,
+          cost,
+        };
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } else {
+        sessionStorage.removeItem(DRAFT_KEY);
+      }
+      setDraftError(null);
+    } catch {
+      setDraftError("無法自動保存草稿；離開此頁前請先完成記錄。");
+    }
+  }, [
+    catalog,
+    dirty,
+    selectedVolume,
+    selectedSeriesName,
+    selectedRarity,
+    entries,
+    openedAt,
+    cost,
+  ]);
 
   useEffect(() => {
     if (selectedVolume == null) return;
@@ -135,6 +249,15 @@ export function QuickPackOpening() {
   );
   const total = entries.reduce((sum, entry) => sum + entry.qty, 0);
   const numericCost = Number(cost);
+  const entriesValid = entries.every((entry) =>
+    (catalog ?? []).some(
+      (item) =>
+        item.volume === selectedVolume &&
+        item.name === entry.series &&
+        item.characters.includes(entry.character) &&
+        item.rarities.includes(entry.rarity),
+    ),
+  );
   const costValid =
     cost.trim() === "" || (Number.isFinite(numericCost) && numericCost >= 0);
   const canSubmit =
@@ -142,11 +265,13 @@ export function QuickPackOpening() {
     selectedVolume !== null &&
     total > 0 &&
     total <= MAX_CARD_BATCH_SIZE &&
+    entriesValid &&
     Boolean(openedAt) &&
     costValid;
 
   const clearFeedback = () => {
     setSuccess(null);
+    setDirty(true);
   };
 
   const selectVolume = (volume: number) => {
@@ -251,6 +376,7 @@ export function QuickPackOpening() {
     }
     setEntries([]);
     setCost("");
+    setDirty(false);
   };
 
   return (
@@ -285,6 +411,24 @@ export function QuickPackOpening() {
         </Alert>
       ) : null}
       <AcquisitionFeedback submission={submission} onRetry={submit} />
+      {draftError ? (
+        <Alert variant="destructive">
+          <AlertTitle>草稿未保存</AlertTitle>
+          <AlertDescription>{draftError}</AlertDescription>
+        </Alert>
+      ) : dirty ? (
+        <output className="block text-sm text-muted-foreground">
+          草稿已保存在此分頁，切換功能或重新載入後可繼續。
+        </output>
+      ) : null}
+      {catalog !== null && !entriesValid ? (
+        <Alert variant="destructive">
+          <AlertTitle>草稿中的卡片目錄已變更</AlertTitle>
+          <AlertDescription>
+            請移除不再有效的卡片，或清空本包後重新選擇；原草稿尚未送出。
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {catalog === null && !catalogError ? (
         <Alert>
           <AlertTitle>正在載入卡片目錄</AlertTitle>
@@ -495,19 +639,38 @@ export function QuickPackOpening() {
                 </Table>
               )}
             </CardContent>
-            {entries.length > 0 ? (
+            {dirty ? (
               <CardFooter className="justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    setEntries([]);
-                    clearFeedback();
-                  }}
-                  disabled={locked}
-                >
-                  清空本包
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button type="button" variant="ghost" disabled={locked}>
+                      清空本包
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>清空本包草稿？</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        這會清除本包已選卡片、日期與花費，尚未記錄的內容無法復原。
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>繼續編輯</AlertDialogCancel>
+                      <AlertDialogAction
+                        variant="destructive"
+                        onClick={() => {
+                          setEntries([]);
+                          setCost("");
+                          setOpenedAt(todayLocal());
+                          setSuccess(null);
+                          setDirty(false);
+                        }}
+                      >
+                        確認清空
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </CardFooter>
             ) : null}
           </Card>
