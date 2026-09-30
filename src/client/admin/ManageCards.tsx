@@ -1678,32 +1678,34 @@ export function ManageCards() {
       </div>
       <div className="card-filters mb-4 rounded-lg border border-border p-3">
         <FieldGroup className="gap-4">
-          <Field>
-            <FieldLabel htmlFor="manage-card-search">搜尋卡片</FieldLabel>
-            <Input
-              id="manage-card-search"
-              type="search"
-              placeholder="系列、角色或稀有度，例如 Rei SSR"
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
+          <FieldGroup className="gap-4 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,0.7fr)]">
+            <Field>
+              <FieldLabel htmlFor="manage-card-search">搜尋卡片</FieldLabel>
+              <Input
+                id="manage-card-search"
+                type="search"
+                placeholder="系列、角色或稀有度，例如 Rei SSR"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  clearOpenState();
+                }}
+              />
+            </Field>
+            <FilterButtonGroup
+              label="彈數"
+              allLabel="全部彈數"
+              value={filterVolume}
+              options={volumeOptions}
+              onChange={(volume) => {
+                setFilterVolume(volume);
+                setFilterSeries(null);
+                setFilterCharacter(null);
+                setFilterRarity(null);
                 clearOpenState();
               }}
             />
-          </Field>
-          <FilterButtonGroup
-            label="彈數"
-            allLabel="全部彈數"
-            value={filterVolume}
-            options={volumeOptions}
-            onChange={(volume) => {
-              setFilterVolume(volume);
-              setFilterSeries(null);
-              setFilterCharacter(null);
-              setFilterRarity(null);
-              clearOpenState();
-            }}
-          />
+          </FieldGroup>
           <FilterButtonGroup
             label="狀態"
             allLabel="全部狀態"
