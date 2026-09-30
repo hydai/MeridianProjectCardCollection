@@ -521,7 +521,9 @@ function SaleReservation({
   );
 }
 
-export function PendingSales() {
+export function PendingSales({
+  onCountChange,
+}: { onCountChange?: (count: number | null) => void }) {
   const [data, setData] = useState<{
     cards: CardRow[];
     overview: OverviewResponse;
@@ -531,6 +533,10 @@ export function PendingSales() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const request = useRef(0);
+  useEffect(() => {
+    if (error) onCountChange?.(null);
+    else if (data !== null) onCountChange?.(data.pending.length);
+  }, [data, error, onCountChange]);
   const load = useCallback(async () => {
     const id = ++request.current;
     setLoading(true);

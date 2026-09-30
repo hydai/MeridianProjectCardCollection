@@ -122,6 +122,7 @@ describe("ManageCards card groups", () => {
     expect(within(details).getByText("#2")).toBeInTheDocument();
     expect(within(details).queryByText("#3")).toBeNull();
 
+    fireEvent.click(screen.getByRole("button", { name: /更多篩選/ }));
     fireEvent.click(
       within(screen.getByRole("radiogroup", { name: "狀態篩選" })).getByRole(
         "radio",

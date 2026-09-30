@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useRovingTablist } from "@/lib/tablist";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Activity } from "./Activity";
 import { AddCards } from "./AddCards";
 import { CatalogMedia } from "./CatalogMedia";
@@ -10,6 +10,11 @@ import { ManageCards } from "./ManageCards";
 import { Openings } from "./Openings";
 import { PendingPurchases } from "./PendingPurchases";
 import { PendingSales } from "./PendingSales";
+import {
+  type PendingTaskId,
+  PendingTaskOverview,
+  usePendingTaskCounts,
+} from "./PendingTaskOverview";
 import { PendingTrades } from "./PendingTrades";
 import { QuickPackOpening } from "./QuickPackOpening";
 import { SeriesManager } from "./SeriesManager";
@@ -41,10 +46,10 @@ const SECTIONS = [
   },
   {
     id: "activity",
-    label: "痕跡",
-    hint: "事件流與報表",
+    label: "操作紀錄",
+    hint: "紀錄與報表",
     tabs: [
-      { id: "activity", label: "全部痕跡" },
+      { id: "activity", label: "全部紀錄" },
       { id: "openings", label: "開卡成本" },
       { id: "history", label: "交易歷史" },
     ],
@@ -75,10 +80,24 @@ function sectionFor(tab: TabId): Section {
 function ActivePanel({
   tab,
   onSelectTab,
+  onPendingCountChange,
 }: {
   tab: TabId;
   onSelectTab: (tab: TabId) => void;
+  onPendingCountChange: (tab: PendingTaskId, count: number | null) => void;
 }) {
+  const onTradeCount = useCallback(
+    (count: number | null) => onPendingCountChange("reserve", count),
+    [onPendingCountChange],
+  );
+  const onPurchaseCount = useCallback(
+    (count: number | null) => onPendingCountChange("purchase", count),
+    [onPendingCountChange],
+  );
+  const onSaleCount = useCallback(
+    (count: number | null) => onPendingCountChange("sales", count),
+    [onPendingCountChange],
+  );
   switch (tab) {
     case "pack":
       return <QuickPackOpening />;
@@ -93,11 +112,11 @@ function ActivePanel({
     case "posts":
       return <TradePosts onOpenReservations={() => onSelectTab("reserve")} />;
     case "reserve":
-      return <PendingTrades />;
+      return <PendingTrades onCountChange={onTradeCount} />;
     case "purchase":
-      return <PendingPurchases />;
+      return <PendingPurchases onCountChange={onPurchaseCount} />;
     case "sales":
-      return <PendingSales />;
+      return <PendingSales onCountChange={onSaleCount} />;
     case "activity":
       return <Activity />;
     case "openings":
@@ -110,6 +129,7 @@ function ActivePanel({
 export default function Admin() {
   const [tab, setTab] = useState<TabId>(initialTab);
   const activeSection = sectionFor(tab);
+  const pendingTasks = usePendingTaskCounts(activeSection.id === "trade", tab);
   const activeTabIds = activeSection.tabs.map((item) => item.id);
 
   const selectTab = (id: TabId) => {
@@ -129,7 +149,7 @@ export default function Admin() {
   return (
     <main
       className={cn(
-        "mx-auto px-7 pt-14 pb-24 max-sm:px-4 max-sm:pt-10 max-sm:pb-[72px]",
+        "mx-auto px-7 pt-14 pb-24 max-sm:px-4 max-sm:pt-5 max-sm:pb-[72px]",
         tab === "purchase" ? "max-w-[1140px]" : "max-w-[940px]",
       )}
     >
@@ -139,7 +159,7 @@ export default function Admin() {
             收藏工作台
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            依照收藏、交易與痕跡整理日常工作。
+            依照收藏、交易與操作紀錄整理日常工作。
           </p>
         </div>
         <Button
@@ -153,7 +173,7 @@ export default function Admin() {
 
       <nav
         aria-label="管理功能分類"
-        className="mt-8 grid grid-cols-3 gap-2 max-sm:grid-cols-1"
+        className="mt-8 grid grid-cols-3 gap-2 max-sm:mt-4"
       >
         {SECTIONS.map((section) => {
           const selected = activeSection.id === section.id;
@@ -164,7 +184,7 @@ export default function Admin() {
               aria-current={selected ? "page" : undefined}
               onClick={() => selectSection(section.id)}
               className={cn(
-                "grid cursor-pointer gap-0.5 rounded-lg border px-4 py-3 text-left transition-colors",
+                "grid cursor-pointer gap-0.5 rounded-lg border px-4 py-3 text-left transition-colors max-sm:min-h-11 max-sm:px-2 max-sm:py-2 max-sm:text-center",
                 selected
                   ? "border-primary/50 bg-primary/8 text-foreground"
                   : "border-border bg-card text-muted-foreground hover:border-foreground/20 hover:text-foreground",
@@ -173,7 +193,7 @@ export default function Admin() {
               <span className="text-sm font-medium tracking-[0.08em]">
                 {section.label}
               </span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-muted-foreground max-sm:hidden">
                 {section.hint}
               </span>
             </button>
@@ -184,7 +204,7 @@ export default function Admin() {
       <nav
         role="tablist"
         aria-label={`${activeSection.label}功能`}
-        className="mt-4 mb-8 flex flex-wrap border-b border-border"
+        className="mt-4 mb-8 flex flex-wrap border-b border-border max-sm:mt-2 max-sm:mb-5 max-sm:flex-nowrap max-sm:overflow-x-auto"
       >
         {activeSection.tabs.map((item, index) => (
           <button
@@ -197,7 +217,7 @@ export default function Admin() {
             {...tabProps(index, tab === item.id)}
             onClick={() => selectTab(item.id)}
             className={cn(
-              "relative cursor-pointer border-0 bg-transparent px-[22px] pt-3.5 pb-3 font-sans text-sm tracking-[0.1em] text-muted-foreground transition-colors hover:text-foreground",
+              "relative shrink-0 cursor-pointer border-0 bg-transparent px-[22px] pt-3.5 pb-3 font-sans text-sm tracking-[0.1em] text-muted-foreground transition-colors hover:text-foreground max-sm:px-3 max-sm:py-3",
               "after:absolute after:bottom-[-0.5px] after:left-0 after:h-px after:w-full after:bg-primary after:transition-opacity",
               tab === item.id
                 ? "text-primary after:opacity-100"
@@ -209,12 +229,25 @@ export default function Admin() {
         ))}
       </nav>
 
+      {activeSection.id === "trade" ? (
+        <PendingTaskOverview
+          counts={pendingTasks.counts}
+          loading={pendingTasks.loading}
+          onRefresh={() => void pendingTasks.refresh()}
+          onSelect={selectTab}
+        />
+      ) : null}
+
       <div
         id={`admin-panel-${tab}`}
         role="tabpanel"
         aria-labelledby={`admin-tab-${tab}`}
       >
-        <ActivePanel tab={tab} onSelectTab={selectTab} />
+        <ActivePanel
+          tab={tab}
+          onSelectTab={selectTab}
+          onPendingCountChange={pendingTasks.updateCount}
+        />
       </div>
     </main>
   );

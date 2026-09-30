@@ -143,7 +143,7 @@ describe("Activity", () => {
       ),
     );
     expect(
-      await screen.findByText("已復原入藏；原痕跡與復原痕跡都會保留。"),
+      await screen.findByText("已復原入藏；原操作紀錄與復原操作紀錄都會保留。"),
     ).toBeInTheDocument();
     expect(screen.getByText("復原入藏紀錄")).toBeInTheDocument();
     expect(screen.getByText("已復原")).toBeInTheDocument();

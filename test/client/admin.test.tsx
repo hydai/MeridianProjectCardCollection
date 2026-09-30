@@ -70,6 +70,97 @@ function stubAddCardsFetch(
 }
 
 describe("QuickPackOpening", () => {
+  it("restores mixed-series cards and metadata after switching admin tabs", async () => {
+    window.history.replaceState(null, "", "/admin#pack");
+    vi.stubGlobal("fetch", stubAddCardsFetch());
+    render(<Admin />);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "加入 NEW YEAR Mizuki R 一張",
+      }),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "BUNNY GIRL" }));
+    fireEvent.click(screen.getByRole("radio", { name: /^SR$/ }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "加入 BUNNY GIRL Rei SR 一張",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("開卡日期"), {
+      target: { value: "2026-09-20" },
+    });
+    fireEvent.change(screen.getByLabelText("本包花費 (TWD)"), {
+      target: { value: "150" },
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "批次入藏" }));
+    await screen.findByRole("heading", { name: "批次收藏工作台" });
+    fireEvent.click(screen.getByRole("tab", { name: "單包開卡" }));
+
+    await screen.findByRole("button", { name: "加入 BUNNY GIRL Rei SR 一張" });
+    const details = screen.getByRole("table", { name: "本包卡片明細" });
+    expect(within(details).getByText("NEW YEAR")).toBeInTheDocument();
+    expect(within(details).getByText("BUNNY GIRL")).toBeInTheDocument();
+    expect(screen.getByLabelText("開卡日期")).toHaveValue("2026-09-20");
+    expect(screen.getByLabelText("本包花費 (TWD)")).toHaveValue(150);
+    expect(
+      screen.getByRole("button", { name: "記錄第 7 包（2 張）" }),
+    ).toBeEnabled();
+  });
+
+  it("restores the selected volume and draft after a fresh mount", async () => {
+    vi.stubGlobal("fetch", stubAddCardsFetch());
+    const page = render(<QuickPackOpening />);
+    await screen.findByRole("button", { name: "加入 NEW YEAR Mizuki R 一張" });
+    fireEvent.click(screen.getByRole("radio", { name: "第 2 彈" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "加入 MP 4TH KSP SSR 一張" }),
+    );
+    page.unmount();
+
+    render(<QuickPackOpening />);
+    await screen.findByRole("button", { name: "加入 MP 4TH KSP SSR 一張" });
+    expect(screen.getByRole("radio", { name: "第 2 彈" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(
+      within(screen.getByRole("table", { name: "本包卡片明細" })).getByText(
+        "KSP",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the draft until clearing is explicitly confirmed", async () => {
+    vi.stubGlobal("fetch", stubAddCardsFetch());
+    render(<QuickPackOpening />);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "加入 NEW YEAR Mizuki R 一張",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("本包花費 (TWD)"), {
+      target: { value: "150" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "清空本包" }));
+    expect(
+      screen.getByRole("alertdialog", { name: "清空本包草稿？" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "繼續編輯" }));
+    expect(
+      screen.getByRole("table", { name: "本包卡片明細" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("本包花費 (TWD)")).toHaveValue(150);
+
+    fireEvent.click(screen.getByRole("button", { name: "清空本包" }));
+    fireEvent.click(screen.getByRole("button", { name: "確認清空" }));
+    expect(
+      screen.queryByRole("table", { name: "本包卡片明細" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("本包花費 (TWD)")).toHaveValue(null);
+    expect(sessionStorage.getItem("mpc:draft:quick-pack:v1")).toBeNull();
+  });
+
   it("keeps single-pack entry separate from the batch workbench", async () => {
     window.history.replaceState(null, "", "/");
     vi.stubGlobal("fetch", stubAddCardsFetch());
@@ -155,6 +246,7 @@ describe("QuickPackOpening", () => {
       ],
     });
     expect(screen.getByText("第 1 彈 · 第 8 包")).toBeInTheDocument();
+    expect(sessionStorage.getItem("mpc:draft:quick-pack:v1")).toBeNull();
   });
 
   it("allows a single pack when the next pack number preview is unavailable", async () => {
@@ -619,6 +711,7 @@ describe("ManageCards", () => {
     );
     render(<ManageCards />);
     await screen.findByText("顯示 0 種卡 · 0 / 1 張");
+    fireEvent.click(screen.getByRole("button", { name: /更多篩選/ }));
     const statusFilter = screen.getByRole("radiogroup", {
       name: "狀態篩選",
     });

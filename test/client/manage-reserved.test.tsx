@@ -125,6 +125,7 @@ describe("ManageCards acquisition and reservation state", () => {
     render(<ManageCards />);
     await screen.findByRole("table");
 
+    fireEvent.click(screen.getByRole("button", { name: /更多篩選/ }));
     const seriesOption = within(
       screen.getByRole("radiogroup", { name: "系列篩選" }),
     ).getByRole("radio", { name: "__all__" });
@@ -234,6 +235,7 @@ describe("ManageCards acquisition and reservation state", () => {
     const { container } = render(<ManageCards />);
     await screen.findByText("顯示 3 種卡 · 3 / 4 張");
 
+    fireEvent.click(screen.getByRole("button", { name: /更多篩選/ }));
     expect(container.querySelector(".card-filters select")).toBeNull();
     expect(screen.getByRole("status")).toHaveTextContent(
       "顯示 3 種卡 · 3 / 4 張",

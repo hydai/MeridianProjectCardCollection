@@ -1,4 +1,15 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +44,7 @@ import { useAcquisitionSubmission } from "@/lib/acquisition";
 import { todayLocal } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { RARITY_TEXT } from "@/shared/rarity";
+import { Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   MAX_CARD_BATCH_SIZE,
@@ -46,6 +58,7 @@ import type {
   Rarity,
 } from "../../shared/types";
 import { fetchCatalog, fetchNextPackNumber } from "../api";
+import { AcquisitionActionBar } from "./AcquisitionActionBar";
 import { AcquisitionFeedback } from "./AcquisitionFeedback";
 
 interface PackEntry {
@@ -53,6 +66,51 @@ interface PackEntry {
   character: string;
   rarity: Rarity;
   qty: number;
+}
+
+const DRAFT_KEY = "mpc:draft:quick-pack:v1";
+
+interface PackDraft {
+  selectedVolume: number | null;
+  selectedSeriesName: string;
+  selectedRarity: Rarity | null;
+  entries: PackEntry[];
+  openedAt: string;
+  cost: string;
+}
+
+function readDraft(): PackDraft | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as PackDraft;
+    if (
+      !Number.isInteger(draft.selectedVolume) ||
+      (draft.selectedVolume ?? 0) < 1 ||
+      typeof draft.selectedSeriesName !== "string" ||
+      !RARITY_ORDER.includes(draft.selectedRarity as Rarity) ||
+      typeof draft.openedAt !== "string" ||
+      typeof draft.cost !== "string" ||
+      !Array.isArray(draft.entries) ||
+      !draft.entries.every(
+        (entry) =>
+          entry &&
+          typeof entry.series === "string" &&
+          typeof entry.character === "string" &&
+          RARITY_ORDER.includes(entry.rarity) &&
+          Number.isInteger(entry.qty) &&
+          entry.qty > 0 &&
+          entry.qty <= MAX_CARD_CELL_QUANTITY,
+      ) ||
+      draft.entries.reduce((sum, entry) => sum + entry.qty, 0) >
+        MAX_CARD_BATCH_SIZE
+    ) {
+      return null;
+    }
+    return draft;
+  } catch {
+    return null;
+  }
 }
 
 const RARITY_CLASS = Object.fromEntries(
@@ -64,15 +122,28 @@ function entryKey(series: string, character: string, rarity: Rarity) {
 }
 
 export function QuickPackOpening() {
+  const [restoredDraft] = useState(readDraft);
+  const [dirty, setDirty] = useState(Boolean(restoredDraft));
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<CatalogSeries[] | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [selectedVolume, setSelectedVolume] = useState<number | null>(null);
-  const [selectedSeriesName, setSelectedSeriesName] = useState("");
-  const [selectedRarity, setSelectedRarity] = useState<Rarity | null>(null);
-  const [entries, setEntries] = useState<PackEntry[]>([]);
-  const [openedAt, setOpenedAt] = useState(todayLocal);
-  const [cost, setCost] = useState("");
+  const [selectedVolume, setSelectedVolume] = useState<number | null>(
+    restoredDraft?.selectedVolume ?? null,
+  );
+  const [selectedSeriesName, setSelectedSeriesName] = useState(
+    restoredDraft?.selectedSeriesName ?? "",
+  );
+  const [selectedRarity, setSelectedRarity] = useState<Rarity | null>(
+    restoredDraft?.selectedRarity ?? null,
+  );
+  const [entries, setEntries] = useState<PackEntry[]>(
+    restoredDraft?.entries ?? [],
+  );
+  const [openedAt, setOpenedAt] = useState(
+    restoredDraft?.openedAt ?? todayLocal(),
+  );
+  const [cost, setCost] = useState(restoredDraft?.cost ?? "");
   const [nextPackNumber, setNextPackNumber] = useState<number | null>(null);
   const [previewUnavailable, setPreviewUnavailable] = useState(false);
   const submission = useAcquisitionSubmission("quick-pack");
@@ -90,9 +161,23 @@ export function QuickPackOpening() {
         setCatalog(sorted);
         const first = sorted[0];
         if (!first) return;
-        setSelectedVolume(first.volume);
-        setSelectedSeriesName(first.name);
-        setSelectedRarity(first.rarities[0] ?? null);
+        const volumeSeries =
+          sorted.find(
+            (item) => item.volume === restoredDraft?.selectedVolume,
+          ) ?? first;
+        const selected =
+          sorted.find(
+            (item) =>
+              item.volume === volumeSeries.volume &&
+              item.name === restoredDraft?.selectedSeriesName,
+          ) ?? volumeSeries;
+        setSelectedVolume(selected.volume);
+        setSelectedSeriesName(selected.name);
+        setSelectedRarity(
+          selected.rarities.includes(restoredDraft?.selectedRarity as Rarity)
+            ? (restoredDraft?.selectedRarity ?? null)
+            : (selected.rarities[0] ?? null),
+        );
       })
       .catch((error) => {
         if (current) setCatalogError(String(error));
@@ -100,7 +185,38 @@ export function QuickPackOpening() {
     return () => {
       current = false;
     };
-  }, []);
+  }, [restoredDraft]);
+
+  useEffect(() => {
+    if (catalog === null) return;
+    try {
+      if (dirty) {
+        const draft: PackDraft = {
+          selectedVolume,
+          selectedSeriesName,
+          selectedRarity,
+          entries,
+          openedAt,
+          cost,
+        };
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } else {
+        sessionStorage.removeItem(DRAFT_KEY);
+      }
+      setDraftError(null);
+    } catch {
+      setDraftError("無法自動保存草稿；離開此頁前請先完成記錄。");
+    }
+  }, [
+    catalog,
+    dirty,
+    selectedVolume,
+    selectedSeriesName,
+    selectedRarity,
+    entries,
+    openedAt,
+    cost,
+  ]);
 
   useEffect(() => {
     if (selectedVolume == null) return;
@@ -135,6 +251,15 @@ export function QuickPackOpening() {
   );
   const total = entries.reduce((sum, entry) => sum + entry.qty, 0);
   const numericCost = Number(cost);
+  const entriesValid = entries.every((entry) =>
+    (catalog ?? []).some(
+      (item) =>
+        item.volume === selectedVolume &&
+        item.name === entry.series &&
+        item.characters.includes(entry.character) &&
+        item.rarities.includes(entry.rarity),
+    ),
+  );
   const costValid =
     cost.trim() === "" || (Number.isFinite(numericCost) && numericCost >= 0);
   const canSubmit =
@@ -142,11 +267,13 @@ export function QuickPackOpening() {
     selectedVolume !== null &&
     total > 0 &&
     total <= MAX_CARD_BATCH_SIZE &&
+    entriesValid &&
     Boolean(openedAt) &&
     costValid;
 
   const clearFeedback = () => {
     setSuccess(null);
+    setDirty(true);
   };
 
   const selectVolume = (volume: number) => {
@@ -251,15 +378,16 @@ export function QuickPackOpening() {
     }
     setEntries([]);
     setCost("");
+    setDirty(false);
   };
 
   return (
-    <section aria-labelledby="quick-pack-title" className="grid gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section aria-labelledby="quick-pack-title" className="grid gap-5 pb-36">
+      <div className="relative flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
           <h2
             id="quick-pack-title"
-            className="font-serif text-xl font-medium tracking-[0.04em] text-foreground"
+            className="font-serif text-xl font-medium tracking-[0.04em] text-foreground max-sm:pr-36"
           >
             單包開卡
           </h2>
@@ -267,7 +395,10 @@ export function QuickPackOpening() {
             選好系列與稀有度後，每點一次角色就加入一張；送出時只會建立一包。
           </p>
         </div>
-        <Badge variant="outline">
+        <Badge
+          variant="outline"
+          className="max-sm:absolute max-sm:top-0 max-sm:right-0"
+        >
           本包 {total} / {MAX_CARD_BATCH_SIZE} 張
         </Badge>
       </div>
@@ -285,6 +416,24 @@ export function QuickPackOpening() {
         </Alert>
       ) : null}
       <AcquisitionFeedback submission={submission} onRetry={submit} />
+      {draftError ? (
+        <Alert variant="destructive">
+          <AlertTitle>草稿未保存</AlertTitle>
+          <AlertDescription>{draftError}</AlertDescription>
+        </Alert>
+      ) : dirty ? (
+        <output className="block text-sm text-muted-foreground">
+          草稿已保存在此分頁，切換功能或重新載入後可繼續。
+        </output>
+      ) : null}
+      {catalog !== null && !entriesValid ? (
+        <Alert variant="destructive">
+          <AlertTitle>草稿中的卡片目錄已變更</AlertTitle>
+          <AlertDescription>
+            請移除不再有效的卡片，或清空本包後重新選擇；原草稿尚未送出。
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {catalog === null && !catalogError ? (
         <Alert>
           <AlertTitle>正在載入卡片目錄</AlertTitle>
@@ -299,20 +448,20 @@ export function QuickPackOpening() {
               <CardTitle asChild>
                 <h3>1. 點選本包卡片</h3>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="max-sm:sr-only">
                 同一包可切換同彈的不同系列與稀有度；加入第一張後會鎖定彈數。
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <FieldGroup>
-                <FieldSet disabled={locked}>
+              <FieldGroup className="max-sm:gap-3">
+                <FieldSet disabled={locked} className="max-sm:gap-2">
                   <FieldLegend variant="label">彈數</FieldLegend>
-                  <FieldDescription>
+                  <FieldDescription className="max-sm:sr-only">
                     一包只能包含同一彈的卡片。
                   </FieldDescription>
                   <ToggleGroup
                     type="single"
-                    variant="outline"
+                    variant="selection"
                     spacing={2}
                     aria-label="卡包彈數"
                     value={selectedVolume == null ? "" : String(selectedVolume)}
@@ -327,17 +476,20 @@ export function QuickPackOpening() {
                         value={String(volume)}
                         disabled={total > 0 && volume !== selectedVolume}
                       >
+                        {selectedVolume === volume ? (
+                          <Check aria-hidden="true" data-icon="inline-start" />
+                        ) : null}
                         第 {volume} 彈
                       </ToggleGroupItem>
                     ))}
                   </ToggleGroup>
                 </FieldSet>
 
-                <FieldSet disabled={locked}>
+                <FieldSet disabled={locked} className="max-sm:gap-2">
                   <FieldLegend variant="label">系列</FieldLegend>
                   <ToggleGroup
                     type="single"
-                    variant="outline"
+                    variant="selection"
                     spacing={2}
                     aria-label="卡片系列"
                     value={selectedSeriesName}
@@ -348,17 +500,20 @@ export function QuickPackOpening() {
                   >
                     {seriesOptions.map((item) => (
                       <ToggleGroupItem key={item.name} value={item.name}>
+                        {selectedSeriesName === item.name ? (
+                          <Check aria-hidden="true" data-icon="inline-start" />
+                        ) : null}
                         {item.name}
                       </ToggleGroupItem>
                     ))}
                   </ToggleGroup>
                 </FieldSet>
 
-                <FieldSet disabled={locked}>
+                <FieldSet disabled={locked} className="max-sm:gap-2">
                   <FieldLegend variant="label">稀有度</FieldLegend>
                   <ToggleGroup
                     type="single"
-                    variant="outline"
+                    variant="selection"
                     spacing={2}
                     aria-label="卡片稀有度"
                     value={selectedRarity ?? ""}
@@ -372,16 +527,21 @@ export function QuickPackOpening() {
                   >
                     {(selectedSeries?.rarities ?? []).map((rarity) => (
                       <ToggleGroupItem key={rarity} value={rarity}>
+                        {selectedRarity === rarity ? (
+                          <Check aria-hidden="true" data-icon="inline-start" />
+                        ) : null}
                         {rarity}
                       </ToggleGroupItem>
                     ))}
                   </ToggleGroup>
                 </FieldSet>
 
-                <FieldSet disabled={locked}>
+                <FieldSet disabled={locked} className="max-sm:gap-2">
                   <FieldLegend variant="label">角色</FieldLegend>
                   <FieldDescription>
-                    每點一次加入一張；同一卡種最多 {MAX_CARD_CELL_QUANTITY} 張。
+                    正在加入：第 {selectedVolume} 彈 · {selectedSeriesName} ·{" "}
+                    {selectedRarity}。每點一次加入一張；同一卡種最多{" "}
+                    {MAX_CARD_CELL_QUANTITY} 張。
                   </FieldDescription>
                   <div className="flex flex-wrap gap-2">
                     {(selectedSeries?.characters ?? []).map((character) => {
@@ -495,19 +655,38 @@ export function QuickPackOpening() {
                 </Table>
               )}
             </CardContent>
-            {entries.length > 0 ? (
+            {dirty ? (
               <CardFooter className="justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    setEntries([]);
-                    clearFeedback();
-                  }}
-                  disabled={locked}
-                >
-                  清空本包
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button type="button" variant="ghost" disabled={locked}>
+                      清空本包
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>清空本包草稿？</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        這會清除本包已選卡片、日期與花費，尚未記錄的內容無法復原。
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>繼續編輯</AlertDialogCancel>
+                      <AlertDialogAction
+                        variant="destructive"
+                        onClick={() => {
+                          setEntries([]);
+                          setCost("");
+                          setOpenedAt(todayLocal());
+                          setSuccess(null);
+                          setDirty(false);
+                        }}
+                      >
+                        確認清空
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </CardFooter>
             ) : null}
           </Card>
@@ -518,7 +697,7 @@ export function QuickPackOpening() {
                 <h3>2. 填寫開卡資訊</h3>
               </CardTitle>
               <CardDescription>
-                日期會成為這筆開卡痕跡的時間，本包花費可留空。
+                日期會成為這筆開卡操作紀錄的時間，本包花費可留空。
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-5">
@@ -577,20 +756,41 @@ export function QuickPackOpening() {
                 </AlertDescription>
               </Alert>
             </CardContent>
-            <CardFooter className="justify-end">
-              <Button
-                type="button"
-                onClick={submit}
-                disabled={!canSubmit || locked}
-              >
-                {busy
-                  ? "記錄中…"
-                  : nextPackNumber == null
-                    ? `記錄本包（${total} 張）`
-                    : `記錄第 ${nextPackNumber} 包（${total} 張）`}
-              </Button>
-            </CardFooter>
           </Card>
+          <AcquisitionActionBar
+            label="本包摘要與操作"
+            quantity={total}
+            kinds={entries.length}
+            description={
+              !costValid
+                ? "花費無效"
+                : cost.trim() === ""
+                  ? "花費未填"
+                  : `花費 ${Number(cost).toLocaleString("zh-TW")} TWD`
+            }
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={locked}
+              onClick={() =>
+                document.getElementById("quick-pack-cost")?.focus()
+              }
+            >
+              編輯花費
+            </Button>
+            <Button
+              type="button"
+              onClick={submit}
+              disabled={!canSubmit || locked}
+            >
+              {busy
+                ? "記錄中…"
+                : nextPackNumber == null
+                  ? `記錄本包（${total} 張）`
+                  : `記錄第 ${nextPackNumber} 包（${total} 張）`}
+            </Button>
+          </AcquisitionActionBar>
         </>
       ) : null}
     </section>

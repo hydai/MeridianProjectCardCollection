@@ -1,3 +1,9 @@
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +20,8 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -72,7 +80,6 @@ import {
   CONTROL,
   ERROR_TEXT,
   FIELD_LABEL,
-  OPT_TOGGLE,
   PANEL,
   PANEL_TITLE,
   PILL_BASE,
@@ -132,10 +139,8 @@ const CARD_STATUSES: CardStatus[] = [
   "traded",
   "gifted",
 ];
-const FILTER_BUTTON = cn(
-  OPT_TOGGLE,
-  "min-h-8 max-w-full break-words px-3 py-1.5 text-center text-xs whitespace-normal tracking-[0.04em]",
-);
+const FILTER_BUTTON = "h-auto min-h-9 max-w-full break-words whitespace-normal";
+const GROUP_CELL = cn(TD, "max-sm:border-0 max-sm:p-0");
 
 const STATUS_FILTER_OPTIONS: FilterOption<StatusFilter>[] = [
   { value: "catalog", label: "全部卡位" },
@@ -149,6 +154,12 @@ const STATUS_FILTER_OPTIONS: FilterOption<StatusFilter>[] = [
   { value: "traded", label: "已交換" },
   { value: "gifted", label: "已贈送" },
 ];
+const COMMON_STATUSES = new Set<StatusFilter>([
+  "catalog",
+  "active",
+  "for_sale",
+  "for_trade",
+]);
 
 const STATUS_LABEL: Record<string, string> = {
   owned: "持有",
@@ -296,10 +307,12 @@ function FilterButtonGroup<T extends FilterValue>({
   onChange: (value: T | null) => void;
 }) {
   return (
-    <div className="grid grid-cols-[76px_minmax(0,1fr)] items-start gap-3 max-[600px]:grid-cols-1 max-[600px]:gap-1.5">
-      <span className={cn(FIELD_LABEL, "pt-2 max-[600px]:pt-0")}>{label}</span>
+    <FieldSet className="gap-2">
+      <FieldLegend variant="label">{label}</FieldLegend>
       <ToggleGroup
         type="single"
+        variant="selection"
+        size="sm"
         value={value === null ? ALL_FILTER_VALUE : encodeFilterValue(value)}
         onValueChange={(next) => {
           if (!next) return;
@@ -328,7 +341,7 @@ function FilterButtonGroup<T extends FilterValue>({
           </ToggleGroupItem>
         ))}
       </ToggleGroup>
-    </div>
+    </FieldSet>
   );
 }
 
@@ -1359,7 +1372,7 @@ function CardWorkspaceSheet({
                   id="workspace-activity-title"
                   className="mb-3 text-sm font-medium text-foreground"
                 >
-                  這張卡的痕跡
+                  這張卡的操作紀錄
                 </h3>
                 {activityError ? (
                   <div role="alert" className="text-sm text-destructive">
@@ -1369,14 +1382,16 @@ function CardWorkspaceSheet({
                       variant="outline"
                       onClick={() => setActivityRetry((current) => current + 1)}
                     >
-                      重新載入痕跡
+                      重新載入操作紀錄
                     </Button>
                   </div>
                 ) : activities === null ? (
-                  <p className="text-sm text-muted-foreground">載入痕跡中…</p>
+                  <p className="text-sm text-muted-foreground">
+                    載入操作紀錄中…
+                  </p>
                 ) : activities.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    還沒有與這個卡位相關的痕跡。
+                    還沒有與這個卡位相關的操作紀錄。
                   </p>
                 ) : (
                   <ol className="flex flex-col gap-2">
@@ -1463,6 +1478,8 @@ function CardWorkspaceSheet({
 }
 
 export function ManageCards() {
+  const [query, setQuery] = useState("");
+  const [advancedFilters, setAdvancedFilters] = useState(false);
   const detailsIdPrefix = useId();
   const [filterVolume, setFilterVolume] = useState<number | null>(null);
   const [filterSeries, setFilterSeries] = useState<string | null>(null);
@@ -1556,6 +1573,37 @@ export function ManageCards() {
   const cellByKey = new Map(
     overviewCells.map((cell) => [cardGroupKey(cell), cell]),
   );
+  const keywords = query
+    .normalize("NFKC")
+    .trim()
+    .toLocaleLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  const matchesQuery = (card: {
+    series: string;
+    character: string;
+    rarity: Rarity;
+  }) => {
+    const identity = `${card.series} ${card.character} ${card.rarity}`
+      .normalize("NFKC")
+      .toLocaleLowerCase();
+    return keywords.every((keyword) => identity.includes(keyword));
+  };
+  const statusOptions = STATUS_FILTER_OPTIONS.filter(
+    (option) =>
+      advancedFilters ||
+      COMMON_STATUSES.has(option.value) ||
+      option.value === filterStatus,
+  );
+  const appliedDetails = [filterSeries, filterCharacter, filterRarity].filter(
+    Boolean,
+  );
+  const hasFilters = Boolean(
+    query ||
+      filterVolume !== null ||
+      appliedDetails.length ||
+      filterStatus !== "active",
+  );
   const filteredRows = (rows ?? []).filter((card) => {
     const matchesStatus =
       filterStatus === null ||
@@ -1568,6 +1616,7 @@ export function ManageCards() {
           : card.status === filterStatus);
     return (
       matchesStatus &&
+      matchesQuery(card) &&
       (filterVolume === null ||
         volumeBySeries.get(card.series) === filterVolume) &&
       (filterSeries === null || card.series === filterSeries) &&
@@ -1577,6 +1626,7 @@ export function ManageCards() {
   });
   const filteredCells = overviewCells.filter(
     (cell) =>
+      matchesQuery(cell) &&
       (filterVolume === null || cell.volume === filterVolume) &&
       (filterSeries === null || cell.series === filterSeries) &&
       (filterCharacter === null || cell.character === filterCharacter) &&
@@ -1600,7 +1650,7 @@ export function ManageCards() {
   );
 
   return (
-    <section className={PANEL}>
+    <section className={cn(PANEL, "max-sm:px-3 max-sm:py-4")}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className={PANEL_TITLE}>卡片管理</h2>
         <div className="flex flex-wrap gap-2">
@@ -1626,62 +1676,126 @@ export function ManageCards() {
           />
         </div>
       </div>
-      <div className="card-filters mb-[18px] flex flex-col gap-3 rounded-[4px] border-[0.5px] border-border bg-[var(--bg-subtle)] p-3.5">
-        <FilterButtonGroup
-          label="彈數"
-          allLabel="全部彈數"
-          value={filterVolume}
-          options={volumeOptions}
-          onChange={(volume) => {
-            setFilterVolume(volume);
-            setFilterSeries(null);
-            setFilterCharacter(null);
-            setFilterRarity(null);
-            clearOpenState();
-          }}
-        />
-        <FilterButtonGroup
-          label="系列"
-          allLabel="全部系列"
-          value={filterSeries}
-          options={seriesOptions}
-          onChange={(series) => {
-            setFilterSeries(series);
-            setFilterCharacter(null);
-            setFilterRarity(null);
-            clearOpenState();
-          }}
-        />
-        <FilterButtonGroup
-          label="角色"
-          allLabel="全部角色"
-          value={filterCharacter}
-          options={characterOptions}
-          onChange={(character) => {
-            setFilterCharacter(character);
-            clearOpenState();
-          }}
-        />
-        <FilterButtonGroup
-          label="級別"
-          allLabel="全部級別"
-          value={filterRarity}
-          options={rarityOptions}
-          onChange={(rarity) => {
-            setFilterRarity(rarity);
-            clearOpenState();
-          }}
-        />
-        <FilterButtonGroup
-          label="狀態"
-          allLabel="全部狀態"
-          value={filterStatus}
-          options={STATUS_FILTER_OPTIONS}
-          onChange={(status) => {
-            setFilterStatus(status);
-            clearOpenState();
-          }}
-        />
+      <div className="card-filters mb-4 rounded-lg border border-border p-3">
+        <FieldGroup className="gap-4">
+          <FieldGroup className="gap-4 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,0.7fr)]">
+            <Field>
+              <FieldLabel htmlFor="manage-card-search">搜尋卡片</FieldLabel>
+              <Input
+                id="manage-card-search"
+                type="search"
+                placeholder="系列、角色或稀有度，例如 Rei SSR"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  clearOpenState();
+                }}
+              />
+            </Field>
+            <FilterButtonGroup
+              label="彈數"
+              allLabel="全部彈數"
+              value={filterVolume}
+              options={volumeOptions}
+              onChange={(volume) => {
+                setFilterVolume(volume);
+                setFilterSeries(null);
+                setFilterCharacter(null);
+                setFilterRarity(null);
+                clearOpenState();
+              }}
+            />
+          </FieldGroup>
+          <FilterButtonGroup
+            label="狀態"
+            allLabel="全部狀態"
+            value={filterStatus}
+            options={statusOptions}
+            onChange={(status) => {
+              setFilterStatus(status);
+              clearOpenState();
+            }}
+          />
+          <Accordion
+            type="single"
+            collapsible
+            value={advancedFilters ? "filters" : ""}
+            onValueChange={(value) => setAdvancedFilters(value === "filters")}
+          >
+            <AccordionItem value="filters">
+              <AccordionTrigger>
+                更多篩選（系列、角色、級別與全部狀態）
+              </AccordionTrigger>
+              <AccordionContent>
+                <FieldGroup className="gap-4">
+                  <FilterButtonGroup
+                    label="系列"
+                    allLabel="全部系列"
+                    value={filterSeries}
+                    options={seriesOptions}
+                    onChange={(series) => {
+                      setFilterSeries(series);
+                      setFilterCharacter(null);
+                      setFilterRarity(null);
+                      clearOpenState();
+                    }}
+                  />
+                  <FilterButtonGroup
+                    label="角色"
+                    allLabel="全部角色"
+                    value={filterCharacter}
+                    options={characterOptions}
+                    onChange={(character) => {
+                      setFilterCharacter(character);
+                      clearOpenState();
+                    }}
+                  />
+                  <FilterButtonGroup
+                    label="級別"
+                    allLabel="全部級別"
+                    value={filterRarity}
+                    options={rarityOptions}
+                    onChange={(rarity) => {
+                      setFilterRarity(rarity);
+                      clearOpenState();
+                    }}
+                  />
+                </FieldGroup>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+          {appliedDetails.length > 0 ? (
+            <div
+              className="flex flex-wrap items-center gap-2"
+              aria-label="已套用的進階篩選"
+            >
+              <span className="text-sm text-muted-foreground">已套用</span>
+              {appliedDetails.map((value, index) => (
+                <Badge key={`${index}:${value}`} variant="secondary">
+                  {value}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+          {hasFilters ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="self-start"
+              onClick={() => {
+                setQuery("");
+                setFilterVolume(null);
+                setFilterSeries(null);
+                setFilterCharacter(null);
+                setFilterRarity(null);
+                setFilterStatus("active");
+                clearOpenState();
+              }}
+            >
+              重設搜尋與篩選
+            </Button>
+          ) : null}
+        </FieldGroup>
       </div>
 
       {error ? (
@@ -1723,8 +1837,11 @@ export function ManageCards() {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className={cn(TABLE, "min-w-[760px]")} aria-label="卡片群組">
-            <thead>
+          <table
+            className={cn(TABLE, "min-w-[760px] max-sm:block max-sm:min-w-0")}
+            aria-label="卡片群組"
+          >
+            <thead className="max-sm:sr-only">
               <tr>
                 <th className={TH}>系列</th>
                 <th className={TH}>角色</th>
@@ -1734,24 +1851,26 @@ export function ManageCards() {
                 <th className={TH}>工作面板與明細</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="max-sm:grid max-sm:gap-3">
               {cardGroups.map((group, groupIndex) => {
                 const expanded = expandedGroups.has(group.key);
                 const detailsId = `${detailsIdPrefix}-group-${groupIndex}`;
                 const cell = cellByKey.get(group.key);
                 return (
                   <Fragment key={group.key}>
-                    <tr>
-                      <td className={TD}>{group.series}</td>
-                      <td className={TD}>{group.character}</td>
-                      <td className={TD}>
+                    <tr className="max-sm:grid max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:gap-2 max-sm:rounded-lg max-sm:border max-sm:border-border max-sm:p-3">
+                      <td className={cn(GROUP_CELL, "max-sm:col-span-2")}>
+                        {group.series}
+                      </td>
+                      <td className={GROUP_CELL}>{group.character}</td>
+                      <td className={cn(GROUP_CELL, "max-sm:justify-self-end")}>
                         <span
                           className={cn(PILL_BASE, PILL_RARITY[group.rarity])}
                         >
                           {group.rarity}
                         </span>
                       </td>
-                      <td className={TD}>
+                      <td className={cn(GROUP_CELL, "max-sm:col-span-2")}>
                         <span
                           aria-label={`目前庫存 ${group.inventoryCount} 張`}
                         >
@@ -1761,7 +1880,7 @@ export function ManageCards() {
                           張
                         </span>
                       </td>
-                      <td className={TD}>
+                      <td className={cn(GROUP_CELL, "max-sm:col-span-2")}>
                         <div className="flex flex-wrap gap-1.5">
                           {CARD_STATUSES.map((status) =>
                             group.statusCounts[status] > 0 ? (
@@ -1791,13 +1910,14 @@ export function ManageCards() {
                           ) : null}
                         </div>
                       </td>
-                      <td className={TD}>
+                      <td className={cn(GROUP_CELL, "max-sm:col-span-2")}>
                         <div className={ROW_ACTIONS}>
                           {cell ? (
                             <Button
                               type="button"
                               variant="outline"
-                              className={BTN_GHOST_SM}
+                              size="sm"
+                              className="max-sm:min-h-11 max-sm:flex-1"
                               aria-label={`開啟 ${group.series} ${group.character} ${group.rarity} 卡片工作面板`}
                               onClick={() =>
                                 setSelectedCatalogId(cell.catalogId)
@@ -1810,7 +1930,8 @@ export function ManageCards() {
                             <Button
                               type="button"
                               variant="outline"
-                              className={BTN_GHOST_SM}
+                              size="sm"
+                              className="max-sm:min-h-11"
                               aria-expanded={expanded}
                               aria-controls={detailsId}
                               aria-label={`${expanded ? "收合" : "展開"} ${group.series} ${group.character} ${group.rarity}，${group.cards.length} 張明細`}
@@ -1846,9 +1967,15 @@ export function ManageCards() {
                       </td>
                     </tr>
                     {expanded ? (
-                      <tr id={detailsId}>
+                      <tr
+                        id={detailsId}
+                        className="max-sm:block max-sm:min-w-0"
+                      >
                         <td
-                          className={cn(TD, "bg-[var(--bg-subtle)] px-4 py-3")}
+                          className={cn(
+                            TD,
+                            "bg-[var(--bg-subtle)] px-4 py-3 max-sm:block max-sm:min-w-0 max-sm:px-0",
+                          )}
                           colSpan={6}
                         >
                           <div className="overflow-x-auto">

@@ -508,11 +508,17 @@ function PendingPurchaseRow({
   );
 }
 
-export function PendingPurchases() {
+export function PendingPurchases({
+  onCountChange,
+}: { onCountChange?: (count: number | null) => void }) {
   const [catalog, setCatalog] = useState<CatalogSeries[] | null>(null);
   const [pending, setPending] = useState<AdminPendingPurchase[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestGeneration = useRef(0);
+  useEffect(() => {
+    if (error) onCountChange?.(null);
+    else if (pending !== null) onCountChange?.(pending.length);
+  }, [pending, error, onCountChange]);
 
   const reload = useCallback(() => {
     const generation = ++requestGeneration.current;

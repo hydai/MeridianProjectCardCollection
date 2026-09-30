@@ -105,6 +105,7 @@ describe("batch repricing workflow", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "批次改價" })).toBeEnabled(),
     );
+    fireEvent.click(screen.getByRole("button", { name: /更多篩選/ }));
     fireEvent.click(
       within(screen.getByRole("radiogroup", { name: "級別篩選" })).getByRole(
         "radio",

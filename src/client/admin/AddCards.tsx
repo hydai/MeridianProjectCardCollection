@@ -47,6 +47,7 @@ import type {
   Rarity,
 } from "../../shared/types";
 import { fetchCatalog, fetchNextPackNumber } from "../api";
+import { AcquisitionActionBar } from "./AcquisitionActionBar";
 import { AcquisitionFeedback } from "./AcquisitionFeedback";
 
 type AcquisitionMode = "pack" | "purchase" | "other";
@@ -414,7 +415,10 @@ export function AddCards() {
   };
 
   return (
-    <section aria-labelledby="batch-workbench-title" className="grid gap-5">
+    <section
+      aria-labelledby="batch-workbench-title"
+      className="grid gap-5 pb-36"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
           <h2
@@ -424,7 +428,7 @@ export function AddCards() {
             批次收藏工作台
           </h2>
           <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            先選來源與彈數，再直接在矩陣填入數量；同一批送出後會合併成一筆痕跡。
+            先選來源與彈數，再直接在矩陣填入數量；同一批送出後會合併成一筆操作紀錄。
           </p>
         </div>
         <Badge variant="outline">每批最多 {MAX_CARD_BATCH_SIZE} 張</Badge>
@@ -453,7 +457,7 @@ export function AddCards() {
               </h3>
             </CardTitle>
             <CardDescription>
-              請核對來源、張數與明細；確認後會一次寫入收藏與痕跡。
+              請核對來源、張數與明細；確認後會一次寫入收藏與操作紀錄。
             </CardDescription>
             <CardAction>
               <Badge>{total} 張</Badge>
@@ -544,22 +548,6 @@ export function AddCards() {
               </TableBody>
             </Table>
           </CardContent>
-          <CardFooter className="flex flex-wrap justify-between gap-3">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                restoreReviewFocus.current = true;
-                setReviewing(false);
-              }}
-              disabled={locked}
-            >
-              返回修改
-            </Button>
-            <Button type="button" onClick={submit} disabled={locked}>
-              {busy ? "寫入中…" : `確認寫入 ${total} 張`}
-            </Button>
-          </CardFooter>
         </Card>
       ) : (
         <>
@@ -811,7 +799,7 @@ export function AddCards() {
               </CardTitle>
               <CardDescription>
                 {mode === "pack"
-                  ? "日期會成為這筆開卡痕跡的時間，花費可留空。"
+                  ? "日期會成為這筆開卡操作紀錄的時間，花費可留空。"
                   : mode === "purchase"
                     ? "填寫這批已收卡片的實付總額。"
                     : "其他入藏不需要額外資料，確認明細後即可寫入。"}
@@ -908,7 +896,7 @@ export function AddCards() {
                 <Alert>
                   <AlertTitle>會直接計入收藏</AlertTitle>
                   <AlertDescription>
-                    這批卡片會形成一筆「新增入藏」痕跡，不建立開卡包或購入紀錄。
+                    這批卡片會形成一筆「新增入藏」操作紀錄，不建立開卡包或購入紀錄。
                   </AlertDescription>
                 </Alert>
               )}
@@ -917,18 +905,58 @@ export function AddCards() {
               <p className="text-xs text-muted-foreground">
                 送出前還會有一次完整確認，不會在這一步寫入。
               </p>
-              <Button
-                id="batch-review-button"
-                type="button"
-                onClick={openReview}
-                disabled={locked || !canReview}
-              >
-                檢查本次入藏（{total} 張）
-              </Button>
             </CardFooter>
           </Card>
         </>
       )}
+      <AcquisitionActionBar
+        label="批次入藏摘要與操作"
+        quantity={total}
+        kinds={tally.length}
+        description={
+          mode === "other"
+            ? MODE_COPY[mode].label
+            : mode === "pack"
+              ? !costValid
+                ? "花費無效"
+                : cost.trim() === ""
+                  ? "花費未填"
+                  : `花費 ${formatMoney(numericCost)} TWD`
+              : purchaseTotal.trim() === ""
+                ? "購入總額待填"
+                : !purchaseTotalValid
+                  ? "購入總額無效"
+                  : `購入總額 ${formatMoney(numericPurchaseTotal)} TWD`
+        }
+      >
+        {reviewing ? (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                restoreReviewFocus.current = true;
+                setReviewing(false);
+              }}
+              disabled={locked}
+            >
+              返回修改
+            </Button>
+            <Button type="button" onClick={submit} disabled={locked}>
+              {busy ? "寫入中…" : `確認寫入 ${total} 張`}
+            </Button>
+          </>
+        ) : (
+          <Button
+            id="batch-review-button"
+            type="button"
+            onClick={openReview}
+            disabled={locked || !canReview}
+          >
+            檢查本次入藏（{total} 張）
+          </Button>
+        )}
+      </AcquisitionActionBar>
     </section>
   );
 }
