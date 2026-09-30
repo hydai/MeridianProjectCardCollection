@@ -47,6 +47,7 @@ import type {
   Rarity,
 } from "../../shared/types";
 import { fetchCatalog, fetchNextPackNumber } from "../api";
+import { AcquisitionActionBar } from "./AcquisitionActionBar";
 import { AcquisitionFeedback } from "./AcquisitionFeedback";
 
 type AcquisitionMode = "pack" | "purchase" | "other";
@@ -414,7 +415,10 @@ export function AddCards() {
   };
 
   return (
-    <section aria-labelledby="batch-workbench-title" className="grid gap-5">
+    <section
+      aria-labelledby="batch-workbench-title"
+      className="grid gap-5 pb-36"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
           <h2
@@ -544,22 +548,6 @@ export function AddCards() {
               </TableBody>
             </Table>
           </CardContent>
-          <CardFooter className="flex flex-wrap justify-between gap-3">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                restoreReviewFocus.current = true;
-                setReviewing(false);
-              }}
-              disabled={locked}
-            >
-              返回修改
-            </Button>
-            <Button type="button" onClick={submit} disabled={locked}>
-              {busy ? "寫入中…" : `確認寫入 ${total} 張`}
-            </Button>
-          </CardFooter>
         </Card>
       ) : (
         <>
@@ -917,18 +905,58 @@ export function AddCards() {
               <p className="text-xs text-muted-foreground">
                 送出前還會有一次完整確認，不會在這一步寫入。
               </p>
-              <Button
-                id="batch-review-button"
-                type="button"
-                onClick={openReview}
-                disabled={locked || !canReview}
-              >
-                檢查本次入藏（{total} 張）
-              </Button>
             </CardFooter>
           </Card>
         </>
       )}
+      <AcquisitionActionBar
+        label="批次入藏摘要與操作"
+        quantity={total}
+        kinds={tally.length}
+        description={
+          mode === "other"
+            ? MODE_COPY[mode].label
+            : mode === "pack"
+              ? !costValid
+                ? "花費無效"
+                : cost.trim() === ""
+                  ? "花費未填"
+                  : `花費 ${formatMoney(numericCost)} TWD`
+              : purchaseTotal.trim() === ""
+                ? "購入總額待填"
+                : !purchaseTotalValid
+                  ? "購入總額無效"
+                  : `購入總額 ${formatMoney(numericPurchaseTotal)} TWD`
+        }
+      >
+        {reviewing ? (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                restoreReviewFocus.current = true;
+                setReviewing(false);
+              }}
+              disabled={locked}
+            >
+              返回修改
+            </Button>
+            <Button type="button" onClick={submit} disabled={locked}>
+              {busy ? "寫入中…" : `確認寫入 ${total} 張`}
+            </Button>
+          </>
+        ) : (
+          <Button
+            id="batch-review-button"
+            type="button"
+            onClick={openReview}
+            disabled={locked || !canReview}
+          >
+            檢查本次入藏（{total} 張）
+          </Button>
+        )}
+      </AcquisitionActionBar>
     </section>
   );
 }

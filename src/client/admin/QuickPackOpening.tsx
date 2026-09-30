@@ -58,6 +58,7 @@ import type {
   Rarity,
 } from "../../shared/types";
 import { fetchCatalog, fetchNextPackNumber } from "../api";
+import { AcquisitionActionBar } from "./AcquisitionActionBar";
 import { AcquisitionFeedback } from "./AcquisitionFeedback";
 
 interface PackEntry {
@@ -381,12 +382,12 @@ export function QuickPackOpening() {
   };
 
   return (
-    <section aria-labelledby="quick-pack-title" className="grid gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section aria-labelledby="quick-pack-title" className="grid gap-5 pb-36">
+      <div className="relative flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
           <h2
             id="quick-pack-title"
-            className="font-serif text-xl font-medium tracking-[0.04em] text-foreground"
+            className="font-serif text-xl font-medium tracking-[0.04em] text-foreground max-sm:pr-36"
           >
             單包開卡
           </h2>
@@ -394,7 +395,10 @@ export function QuickPackOpening() {
             選好系列與稀有度後，每點一次角色就加入一張；送出時只會建立一包。
           </p>
         </div>
-        <Badge variant="outline">
+        <Badge
+          variant="outline"
+          className="max-sm:absolute max-sm:top-0 max-sm:right-0"
+        >
           本包 {total} / {MAX_CARD_BATCH_SIZE} 張
         </Badge>
       </div>
@@ -752,20 +756,41 @@ export function QuickPackOpening() {
                 </AlertDescription>
               </Alert>
             </CardContent>
-            <CardFooter className="justify-end">
-              <Button
-                type="button"
-                onClick={submit}
-                disabled={!canSubmit || locked}
-              >
-                {busy
-                  ? "記錄中…"
-                  : nextPackNumber == null
-                    ? `記錄本包（${total} 張）`
-                    : `記錄第 ${nextPackNumber} 包（${total} 張）`}
-              </Button>
-            </CardFooter>
           </Card>
+          <AcquisitionActionBar
+            label="本包摘要與操作"
+            quantity={total}
+            kinds={entries.length}
+            description={
+              !costValid
+                ? "花費無效"
+                : cost.trim() === ""
+                  ? "花費未填"
+                  : `花費 ${Number(cost).toLocaleString("zh-TW")} TWD`
+            }
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={locked}
+              onClick={() =>
+                document.getElementById("quick-pack-cost")?.focus()
+              }
+            >
+              編輯花費
+            </Button>
+            <Button
+              type="button"
+              onClick={submit}
+              disabled={!canSubmit || locked}
+            >
+              {busy
+                ? "記錄中…"
+                : nextPackNumber == null
+                  ? `記錄本包（${total} 張）`
+                  : `記錄第 ${nextPackNumber} 包（${total} 張）`}
+            </Button>
+          </AcquisitionActionBar>
         </>
       ) : null}
     </section>
