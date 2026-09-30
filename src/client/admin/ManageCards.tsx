@@ -1372,7 +1372,7 @@ function CardWorkspaceSheet({
                   id="workspace-activity-title"
                   className="mb-3 text-sm font-medium text-foreground"
                 >
-                  這張卡的痕跡
+                  這張卡的操作紀錄
                 </h3>
                 {activityError ? (
                   <div role="alert" className="text-sm text-destructive">
@@ -1382,14 +1382,16 @@ function CardWorkspaceSheet({
                       variant="outline"
                       onClick={() => setActivityRetry((current) => current + 1)}
                     >
-                      重新載入痕跡
+                      重新載入操作紀錄
                     </Button>
                   </div>
                 ) : activities === null ? (
-                  <p className="text-sm text-muted-foreground">載入痕跡中…</p>
+                  <p className="text-sm text-muted-foreground">
+                    載入操作紀錄中…
+                  </p>
                 ) : activities.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    還沒有與這個卡位相關的痕跡。
+                    還沒有與這個卡位相關的操作紀錄。
                   </p>
                 ) : (
                   <ol className="flex flex-col gap-2">

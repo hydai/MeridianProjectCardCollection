@@ -196,7 +196,7 @@ function EventCard({
       <CardContent className="pt-3">
         {event.lines.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            這筆痕跡沒有卡片明細。
+            這筆操作紀錄沒有卡片明細。
           </p>
         ) : (
           <ul
@@ -250,7 +250,7 @@ function EventCard({
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-xs text-muted-foreground">
             {event.kind === "undo" && event.revertsEventId
-              ? `復原痕跡 #${event.revertsEventId}`
+              ? `復原操作紀錄 #${event.revertsEventId}`
               : `${event.lines.length} 種明細 · ${totalQty} 張`}
           </p>
           {event.tradePostId && event.tradePostPublicId ? (
@@ -348,11 +348,11 @@ export function Activity() {
     try {
       await undoActivity(id);
       setConfirmingId(null);
-      setMessage("已復原入藏；原痕跡與復原痕跡都會保留。");
+      setMessage("已復原入藏；原操作紀錄與復原操作紀錄都會保留。");
       try {
         setEvents(await fetchActivities());
       } catch {
-        setError("復原已完成，但痕跡未能重新載入；請重新整理頁面。");
+        setError("復原已完成，但操作紀錄未能重新載入；請重新整理頁面。");
       }
     } catch (caught) {
       setError(String(caught));
@@ -362,7 +362,7 @@ export function Activity() {
   };
 
   if (events === null && !error) {
-    return <div className={STATE_MSG}>載入痕跡中…</div>;
+    return <div className={STATE_MSG}>載入操作紀錄中…</div>;
   }
 
   return (
@@ -373,14 +373,14 @@ export function Activity() {
             id="activity-title"
             className="font-serif text-xl font-medium tracking-[0.04em] text-foreground"
           >
-            痕跡
+            操作紀錄
           </h2>
           <p className="max-w-2xl text-sm text-muted-foreground">
             新增、狀態調整、預約與成交都集中在同一條事件流。尚未被修改或使用的直接入藏與開卡紀錄可以安全復原。
           </p>
         </div>
         <fieldset className="m-0 flex min-w-0 flex-wrap gap-2 border-0 p-0">
-          <legend className="sr-only">痕跡篩選</legend>
+          <legend className="sr-only">操作紀錄篩選</legend>
           {FILTERS.map((option) => (
             <Button
               key={option.id}
@@ -407,7 +407,9 @@ export function Activity() {
 
       {events === null ? null : visible.length === 0 ? (
         <div className={EMPTY_MSG}>
-          {events?.length === 0 ? "尚無痕跡。" : "這個分類目前沒有痕跡。"}
+          {events?.length === 0
+            ? "尚無操作紀錄。"
+            : "這個分類目前沒有操作紀錄。"}
         </div>
       ) : (
         <div className="grid gap-8">

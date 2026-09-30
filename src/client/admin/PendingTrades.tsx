@@ -4,7 +4,7 @@ import { Switch } from "@/components/ui/switch";
 import { todayLocal } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { EMPTY_MSG, STATE_MSG } from "@/shared/states";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AdminPendingTrade,
   Rarity,
@@ -412,10 +412,17 @@ function PendingRowItem({
   );
 }
 
-export function PendingTrades() {
+export function PendingTrades({
+  onCountChange,
+}: { onCountChange?: (count: number | null) => void }) {
   const [m, setM] = useState<Matrix | null>(null);
   const [pending, setPending] = useState<AdminPendingTrade[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const requestGeneration = useRef(0);
+  useEffect(() => {
+    if (error) onCountChange?.(null);
+    else if (pending !== null) onCountChange?.(pending.length);
+  }, [pending, error, onCountChange]);
   const [showPrivateDetails, setShowPrivateDetails] = useState(
     loadPrivateDetailsPreference,
   );
@@ -426,15 +433,24 @@ export function PendingTrades() {
   };
 
   const reload = useCallback(() => {
+    const generation = ++requestGeneration.current;
     setError(null);
     Promise.all([fetchOverview(), fetchAdminPendingTrades()])
       .then(([ov, pt]) => {
+        if (generation !== requestGeneration.current) return;
         setM(buildMatrix(ov));
         setPending(pt);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => {
+        if (generation === requestGeneration.current) setError(String(e));
+      });
   }, []);
-  useEffect(() => reload(), [reload]);
+  useEffect(() => {
+    reload();
+    return () => {
+      requestGeneration.current++;
+    };
+  }, [reload]);
 
   const { giveOpts, recvOpts } = useMemo(() => {
     if (!m || !pending) return { giveOpts: [] as Opt[], recvOpts: [] as Opt[] };

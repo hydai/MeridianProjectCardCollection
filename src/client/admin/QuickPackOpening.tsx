@@ -697,7 +697,7 @@ export function QuickPackOpening() {
                 <h3>2. 填寫開卡資訊</h3>
               </CardTitle>
               <CardDescription>
-                日期會成為這筆開卡痕跡的時間，本包花費可留空。
+                日期會成為這筆開卡操作紀錄的時間，本包花費可留空。
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-5">

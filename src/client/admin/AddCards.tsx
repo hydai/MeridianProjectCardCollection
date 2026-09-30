@@ -428,7 +428,7 @@ export function AddCards() {
             批次收藏工作台
           </h2>
           <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            先選來源與彈數，再直接在矩陣填入數量；同一批送出後會合併成一筆痕跡。
+            先選來源與彈數，再直接在矩陣填入數量；同一批送出後會合併成一筆操作紀錄。
           </p>
         </div>
         <Badge variant="outline">每批最多 {MAX_CARD_BATCH_SIZE} 張</Badge>
@@ -457,7 +457,7 @@ export function AddCards() {
               </h3>
             </CardTitle>
             <CardDescription>
-              請核對來源、張數與明細；確認後會一次寫入收藏與痕跡。
+              請核對來源、張數與明細；確認後會一次寫入收藏與操作紀錄。
             </CardDescription>
             <CardAction>
               <Badge>{total} 張</Badge>
@@ -799,7 +799,7 @@ export function AddCards() {
               </CardTitle>
               <CardDescription>
                 {mode === "pack"
-                  ? "日期會成為這筆開卡痕跡的時間，花費可留空。"
+                  ? "日期會成為這筆開卡操作紀錄的時間，花費可留空。"
                   : mode === "purchase"
                     ? "填寫這批已收卡片的實付總額。"
                     : "其他入藏不需要額外資料，確認明細後即可寫入。"}
@@ -896,7 +896,7 @@ export function AddCards() {
                 <Alert>
                   <AlertTitle>會直接計入收藏</AlertTitle>
                   <AlertDescription>
-                    這批卡片會形成一筆「新增入藏」痕跡，不建立開卡包或購入紀錄。
+                    這批卡片會形成一筆「新增入藏」操作紀錄，不建立開卡包或購入紀錄。
                   </AlertDescription>
                 </Alert>
               )}

@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useRovingTablist } from "@/lib/tablist";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Activity } from "./Activity";
 import { AddCards } from "./AddCards";
 import { CatalogMedia } from "./CatalogMedia";
@@ -10,6 +10,11 @@ import { ManageCards } from "./ManageCards";
 import { Openings } from "./Openings";
 import { PendingPurchases } from "./PendingPurchases";
 import { PendingSales } from "./PendingSales";
+import {
+  type PendingTaskId,
+  PendingTaskOverview,
+  usePendingTaskCounts,
+} from "./PendingTaskOverview";
 import { PendingTrades } from "./PendingTrades";
 import { QuickPackOpening } from "./QuickPackOpening";
 import { SeriesManager } from "./SeriesManager";
@@ -41,10 +46,10 @@ const SECTIONS = [
   },
   {
     id: "activity",
-    label: "痕跡",
-    hint: "事件流與報表",
+    label: "操作紀錄",
+    hint: "紀錄與報表",
     tabs: [
-      { id: "activity", label: "全部痕跡" },
+      { id: "activity", label: "全部紀錄" },
       { id: "openings", label: "開卡成本" },
       { id: "history", label: "交易歷史" },
     ],
@@ -75,10 +80,24 @@ function sectionFor(tab: TabId): Section {
 function ActivePanel({
   tab,
   onSelectTab,
+  onPendingCountChange,
 }: {
   tab: TabId;
   onSelectTab: (tab: TabId) => void;
+  onPendingCountChange: (tab: PendingTaskId, count: number | null) => void;
 }) {
+  const onTradeCount = useCallback(
+    (count: number | null) => onPendingCountChange("reserve", count),
+    [onPendingCountChange],
+  );
+  const onPurchaseCount = useCallback(
+    (count: number | null) => onPendingCountChange("purchase", count),
+    [onPendingCountChange],
+  );
+  const onSaleCount = useCallback(
+    (count: number | null) => onPendingCountChange("sales", count),
+    [onPendingCountChange],
+  );
   switch (tab) {
     case "pack":
       return <QuickPackOpening />;
@@ -93,11 +112,11 @@ function ActivePanel({
     case "posts":
       return <TradePosts onOpenReservations={() => onSelectTab("reserve")} />;
     case "reserve":
-      return <PendingTrades />;
+      return <PendingTrades onCountChange={onTradeCount} />;
     case "purchase":
-      return <PendingPurchases />;
+      return <PendingPurchases onCountChange={onPurchaseCount} />;
     case "sales":
-      return <PendingSales />;
+      return <PendingSales onCountChange={onSaleCount} />;
     case "activity":
       return <Activity />;
     case "openings":
@@ -110,6 +129,7 @@ function ActivePanel({
 export default function Admin() {
   const [tab, setTab] = useState<TabId>(initialTab);
   const activeSection = sectionFor(tab);
+  const pendingTasks = usePendingTaskCounts(activeSection.id === "trade", tab);
   const activeTabIds = activeSection.tabs.map((item) => item.id);
 
   const selectTab = (id: TabId) => {
@@ -139,7 +159,7 @@ export default function Admin() {
             收藏工作台
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            依照收藏、交易與痕跡整理日常工作。
+            依照收藏、交易與操作紀錄整理日常工作。
           </p>
         </div>
         <Button
@@ -209,12 +229,25 @@ export default function Admin() {
         ))}
       </nav>
 
+      {activeSection.id === "trade" ? (
+        <PendingTaskOverview
+          counts={pendingTasks.counts}
+          loading={pendingTasks.loading}
+          onRefresh={() => void pendingTasks.refresh()}
+          onSelect={selectTab}
+        />
+      ) : null}
+
       <div
         id={`admin-panel-${tab}`}
         role="tabpanel"
         aria-labelledby={`admin-tab-${tab}`}
       >
-        <ActivePanel tab={tab} onSelectTab={selectTab} />
+        <ActivePanel
+          tab={tab}
+          onSelectTab={selectTab}
+          onPendingCountChange={pendingTasks.updateCount}
+        />
       </div>
     </main>
   );
