@@ -129,7 +129,7 @@ export default function Admin() {
   return (
     <main
       className={cn(
-        "mx-auto px-7 pt-14 pb-24 max-sm:px-4 max-sm:pt-10 max-sm:pb-[72px]",
+        "mx-auto px-7 pt-14 pb-24 max-sm:px-4 max-sm:pt-5 max-sm:pb-[72px]",
         tab === "purchase" ? "max-w-[1140px]" : "max-w-[940px]",
       )}
     >
@@ -153,7 +153,7 @@ export default function Admin() {
 
       <nav
         aria-label="管理功能分類"
-        className="mt-8 grid grid-cols-3 gap-2 max-sm:grid-cols-1"
+        className="mt-8 grid grid-cols-3 gap-2 max-sm:mt-4"
       >
         {SECTIONS.map((section) => {
           const selected = activeSection.id === section.id;
@@ -164,7 +164,7 @@ export default function Admin() {
               aria-current={selected ? "page" : undefined}
               onClick={() => selectSection(section.id)}
               className={cn(
-                "grid cursor-pointer gap-0.5 rounded-lg border px-4 py-3 text-left transition-colors",
+                "grid cursor-pointer gap-0.5 rounded-lg border px-4 py-3 text-left transition-colors max-sm:min-h-11 max-sm:px-2 max-sm:py-2 max-sm:text-center",
                 selected
                   ? "border-primary/50 bg-primary/8 text-foreground"
                   : "border-border bg-card text-muted-foreground hover:border-foreground/20 hover:text-foreground",
@@ -173,7 +173,7 @@ export default function Admin() {
               <span className="text-sm font-medium tracking-[0.08em]">
                 {section.label}
               </span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-muted-foreground max-sm:hidden">
                 {section.hint}
               </span>
             </button>
@@ -184,7 +184,7 @@ export default function Admin() {
       <nav
         role="tablist"
         aria-label={`${activeSection.label}功能`}
-        className="mt-4 mb-8 flex flex-wrap border-b border-border"
+        className="mt-4 mb-8 flex flex-wrap border-b border-border max-sm:mt-2 max-sm:mb-5 max-sm:flex-nowrap max-sm:overflow-x-auto"
       >
         {activeSection.tabs.map((item, index) => (
           <button
@@ -197,7 +197,7 @@ export default function Admin() {
             {...tabProps(index, tab === item.id)}
             onClick={() => selectTab(item.id)}
             className={cn(
-              "relative cursor-pointer border-0 bg-transparent px-[22px] pt-3.5 pb-3 font-sans text-sm tracking-[0.1em] text-muted-foreground transition-colors hover:text-foreground",
+              "relative shrink-0 cursor-pointer border-0 bg-transparent px-[22px] pt-3.5 pb-3 font-sans text-sm tracking-[0.1em] text-muted-foreground transition-colors hover:text-foreground max-sm:px-3 max-sm:py-3",
               "after:absolute after:bottom-[-0.5px] after:left-0 after:h-px after:w-full after:bg-primary after:transition-opacity",
               tab === item.id
                 ? "text-primary after:opacity-100"

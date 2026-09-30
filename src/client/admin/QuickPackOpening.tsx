@@ -444,15 +444,15 @@ export function QuickPackOpening() {
               <CardTitle asChild>
                 <h3>1. 點選本包卡片</h3>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="max-sm:sr-only">
                 同一包可切換同彈的不同系列與稀有度；加入第一張後會鎖定彈數。
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <FieldGroup>
-                <FieldSet disabled={locked}>
+              <FieldGroup className="max-sm:gap-3">
+                <FieldSet disabled={locked} className="max-sm:gap-2">
                   <FieldLegend variant="label">彈數</FieldLegend>
-                  <FieldDescription>
+                  <FieldDescription className="max-sm:sr-only">
                     一包只能包含同一彈的卡片。
                   </FieldDescription>
                   <ToggleGroup
@@ -481,7 +481,7 @@ export function QuickPackOpening() {
                   </ToggleGroup>
                 </FieldSet>
 
-                <FieldSet disabled={locked}>
+                <FieldSet disabled={locked} className="max-sm:gap-2">
                   <FieldLegend variant="label">系列</FieldLegend>
                   <ToggleGroup
                     type="single"
@@ -505,7 +505,7 @@ export function QuickPackOpening() {
                   </ToggleGroup>
                 </FieldSet>
 
-                <FieldSet disabled={locked}>
+                <FieldSet disabled={locked} className="max-sm:gap-2">
                   <FieldLegend variant="label">稀有度</FieldLegend>
                   <ToggleGroup
                     type="single"
@@ -532,7 +532,7 @@ export function QuickPackOpening() {
                   </ToggleGroup>
                 </FieldSet>
 
-                <FieldSet disabled={locked}>
+                <FieldSet disabled={locked} className="max-sm:gap-2">
                   <FieldLegend variant="label">角色</FieldLegend>
                   <FieldDescription>
                     正在加入：第 {selectedVolume} 彈 · {selectedSeriesName} ·{" "}
